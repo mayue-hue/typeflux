@@ -29,15 +29,15 @@ extension STTRouter {
 
         switch settingsStore.sttProvider {
         case .freeModel, .whisperAPI, .aliCloud, .doubaoRealtime, .googleCloud, .soniox:
-            try await transcribeWithRemoteProvider(
+            return try await transcribeWithRemoteProvider(
                 route: remoteSTTRoute(for: settingsStore.sttProvider),
                 audioFile: audioFile,
                 onUpdate: onUpdate
             )
         case .appleSpeech:
-            try await appleSpeech.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
+            return try await appleSpeech.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
         case .localModel:
-            try await transcribeWithLocalModel(
+            return try await transcribeWithLocalModel(
                 audioFile: audioFile,
                 scenario: scenario,
                 optimize: optimize,
@@ -45,15 +45,15 @@ extension STTRouter {
                 onUpdate: onUpdate
             )
         case .multimodalLLM:
-            try await transcribeWithRemoteProvider(
+            return try await transcribeWithRemoteProvider(
                 route: remoteSTTRoute(for: .multimodalLLM),
                 audioFile: audioFile,
                 onUpdate: onUpdate
             )
         case .groq:
-            try await transcribeWithGroq(audioFile: audioFile, onUpdate: onUpdate)
+            return try await transcribeWithGroq(audioFile: audioFile, onUpdate: onUpdate)
         case .typefluxOfficial:
-            try await transcribeWithTypefluxOfficialProvider(
+            return try await transcribeWithTypefluxOfficialProvider(
                 audioFile: audioFile,
                 scenario: scenario,
                 optimize: optimize,

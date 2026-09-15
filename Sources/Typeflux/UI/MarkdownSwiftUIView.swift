@@ -4,8 +4,8 @@ import SwiftUI
 struct MarkdownSwiftUIView: View {
     let markdown: String
 
-    private var document: Document {
-        Document(parsing: markdown)
+    private var document: Markdown.Document {
+        Markdown.Document(parsing: markdown)
     }
 
     var body: some View {
