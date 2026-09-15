@@ -78,6 +78,24 @@ final class TypefluxOfficialASRRoutingClientTests: XCTestCase {
         }
     }
 
+    func testFetchRouteExposesLocalFallbackDirective() async throws {
+        let session = RoutingStubSession()
+        await session.setHandler { request in
+            (
+                Data(#"{"code":"ASR_LOCAL_FALLBACK_REQUIRED","message":"Cloud ASR requires a paid plan.","data":null}"#.utf8),
+                Self.httpResponse(url: request.url!, status: 403)
+            )
+        }
+        let client = makeClient(session: session)
+
+        do {
+            _ = try await client.fetchRoute(accessToken: "cloud-token", scenario: .voiceInput)
+            XCTFail("Expected local fallback directive")
+        } catch {
+            XCTAssertNotNil(TypefluxCloudASRDirectiveError.fromError(error))
+        }
+    }
+
     private func makeClient(session: RoutingStubSession) -> TypefluxOfficialASRRoutingHTTPClient {
         let selector = CloudEndpointSelector(
             baseURLs: [URL(string: "https://api.example")!],

@@ -1,6 +1,26 @@
 import Foundation
 
 extension STTRouter {
+    func transcribeWithTypefluxCloudLocalOnly(
+        audioFile: AudioFile,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        if let fallback = typefluxCloudLoginFallbackLocalModel {
+            do {
+                NetworkDebugLogger.logMessage(
+                    "Using the default local speech model because Cloud ASR requires a paid plan"
+                )
+                return try await fallback.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
+            } catch {
+                NetworkDebugLogger.logError(context: "Default local paid-plan fallback failed", error: error)
+            }
+        }
+        if let localResult = await transcribeWithAutoModelIfReady(audioFile: audioFile, onUpdate: onUpdate) {
+            return localResult
+        }
+        throw TypefluxCloudASRDirectiveError()
+    }
+
     func handleLocalModelFailure(
         _ error: Error,
         audioFile: AudioFile,
@@ -125,6 +145,13 @@ extension STTRouter {
             )
             return (transcript: integratedError.transcript, rewritten: nil)
         }
+        if TypefluxCloudASRDirectiveError.fromError(error) != nil {
+            let transcript = try await transcribeWithTypefluxCloudLocalOnly(
+                audioFile: audioFile,
+                onUpdate: onASRUpdate
+            )
+            return (transcript: transcript, rewritten: nil)
+        }
         if let billingError = TypefluxCloudBillingError.fromError(error) {
             if let localResult = await transcribeWithTypefluxCloudCreditFallbackModelIfAvailable(
                 billingError: billingError,
@@ -197,6 +224,9 @@ extension STTRouter {
         guard settingsStore.useAppleSpeechFallback else {
             return nil
         }
+        guard await hasPaidTypefluxCloudSubscription() else {
+            return nil
+        }
         NetworkDebugLogger.logMessage(message)
         return try await appleSpeech.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
     }
@@ -226,6 +256,9 @@ extension STTRouter {
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         NetworkDebugLogger.logError(context: "Typeflux Cloud fallback failed", error: error)
+        if TypefluxCloudASRDirectiveError.fromError(error) != nil {
+            return try await transcribeWithTypefluxCloudLocalOnly(audioFile: audioFile, onUpdate: onUpdate)
+        }
         if let billingError = TypefluxCloudBillingError.fromError(error) {
             if let localResult = await transcribeWithTypefluxCloudCreditFallbackModelIfAvailable(
                 billingError: billingError,
@@ -260,6 +293,22 @@ extension STTRouter {
         skipTypefluxCloudLocalFallback: Bool = false
     ) async throws -> String {
         NetworkDebugLogger.logError(context: "Typeflux Official STT failed", error: error)
+        if TypefluxCloudASRDirectiveError.fromError(error) != nil {
+            if !skipTypefluxCloudLocalFallback {
+                return try await transcribeWithTypefluxCloudLocalOnly(audioFile: audioFile, onUpdate: onUpdate)
+            }
+            if let localResult = await transcribeWithAutoModelIfReady(audioFile: audioFile, onUpdate: onUpdate) {
+                return localResult
+            }
+            if let appleResult = try await transcribeWithAppleSpeechFallbackIfEnabled(
+                message: "Falling back to Apple Speech after a Cloud ASR local-fallback directive",
+                audioFile: audioFile,
+                onUpdate: onUpdate
+            ) {
+                return appleResult
+            }
+            throw TypefluxCloudASRDirectiveError()
+        }
         if let billingError = TypefluxCloudBillingError.fromError(error) {
             if !skipTypefluxCloudLocalFallback,
                let localResult = await transcribeWithTypefluxCloudCreditFallbackModelIfAvailable(
@@ -380,6 +429,7 @@ extension STTRouter {
         else {
             return false
         }
-        return await isTypefluxCloudLoggedIn()
+        guard await isTypefluxCloudLoggedIn() else { return false }
+        return await hasPaidTypefluxCloudSubscription()
     }
 }

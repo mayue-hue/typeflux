@@ -1,5 +1,9 @@
 extension STTRouter {
     func prepareForRecording() async {
+        if settingsStore.sttProvider != .localModel {
+            guard await hasPaidTypefluxCloudSubscription() else { return }
+        }
+
         switch settingsStore.sttProvider {
         case .doubaoRealtime:
             await (doubaoRealtime as? RecordingPrewarmingTranscriber)?.prepareForRecording()
@@ -30,37 +34,39 @@ extension STTRouter {
         optimize: Bool = true,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async -> (any RealtimeTranscriptionSession)? {
+        guard await hasPaidTypefluxCloudSubscription() else { return nil }
+
         switch settingsStore.sttProvider {
         case .aliCloud:
-            await makeRealtimeTranscriptionSession(
+            return await makeRealtimeTranscriptionSession(
                 provider: aliCloud,
                 scenario: scenario,
                 onUpdate: onUpdate,
                 failureContext: "Alibaba Cloud realtime session setup failed"
             )
         case .doubaoRealtime:
-            await makeRealtimeTranscriptionSession(
+            return await makeRealtimeTranscriptionSession(
                 provider: doubaoRealtime,
                 scenario: scenario,
                 onUpdate: onUpdate,
                 failureContext: "Doubao realtime session setup failed"
             )
         case .googleCloud:
-            await makeRealtimeTranscriptionSession(
+            return await makeRealtimeTranscriptionSession(
                 provider: googleCloud,
                 scenario: scenario,
                 onUpdate: onUpdate,
                 failureContext: "Google Cloud realtime session setup failed"
             )
         case .soniox:
-            await makeRealtimeTranscriptionSession(
+            return await makeRealtimeTranscriptionSession(
                 provider: soniox,
                 scenario: scenario,
                 onUpdate: onUpdate,
                 failureContext: "Soniox realtime session setup failed"
             )
         case .typefluxOfficial:
-            await makeRealtimeTranscriptionSession(
+            return await makeRealtimeTranscriptionSession(
                 provider: typefluxOfficial,
                 scenario: scenario,
                 optimize: optimize,
@@ -68,7 +74,7 @@ extension STTRouter {
                 failureContext: "Typeflux Cloud realtime session setup failed"
             )
         default:
-            nil
+            return nil
         }
     }
 

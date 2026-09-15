@@ -11,6 +11,7 @@ final class AppCoordinator {
     private let asrPublicConfigRefreshScheduler = TypefluxASRPublicConfigRefreshScheduler()
     private var authAnalyticsObserver: NSObjectProtocol?
     private var authLogoutObserver: NSObjectProtocol?
+    private var authSubscriptionObserver: NSObjectProtocol?
     private var permissionAnalyticsTimer: Timer?
 
     // swiftlint:disable:next function_body_length
@@ -35,7 +36,9 @@ final class AppCoordinator {
             Task {
                 await CloudEndpointRegistry.shared.probeAll()
                 await TypefluxOfficialASRRouteCache.shared.invalidate()
-                if let token = await MainActor.run(body: { AuthState.shared.accessToken }) {
+                if let token = await MainActor.run(body: {
+                    AuthState.shared.canUseCloudASR ? AuthState.shared.accessToken : nil
+                }) {
                     await TypefluxOfficialASRRouteCache.shared.prefetch(accessToken: token)
                 }
             }
@@ -48,6 +51,20 @@ final class AppCoordinator {
             Task {
                 await CloudEndpointRegistry.shared.probeAll()
                 await TypefluxOfficialASRRouteCache.shared.invalidate()
+            }
+        }
+        authSubscriptionObserver = NotificationCenter.default.addObserver(
+            forName: .authSubscriptionDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                await TypefluxOfficialASRRouteCache.shared.invalidate()
+                if let token = await MainActor.run(body: {
+                    AuthState.shared.canUseCloudASR ? AuthState.shared.accessToken : nil
+                }) {
+                    await TypefluxOfficialASRRouteCache.shared.prefetch(accessToken: token)
+                }
             }
         }
         let settingsStore = di.settingsStore
@@ -87,7 +104,10 @@ final class AppCoordinator {
                     )
                 },
                 openAIBackendFactory: { OpenAIRealtimePreviewBackend(settingsStore: settingsStore) },
-                appleBackendFactory: { AppleSpeechPreviewBackend() }
+                appleBackendFactory: { AppleSpeechPreviewBackend() },
+                canUseCloudASR: {
+                    await MainActor.run { AuthState.shared.canUseCloudASR }
+                }
             ),
             localModelManager: localModelManager,
             notificationService: di.notificationService,
@@ -134,7 +154,9 @@ final class AppCoordinator {
         asrPublicConfigRefreshScheduler.start()
         Task {
             await AuthState.shared.refreshTokenIfNeeded()
-            if let token = await MainActor.run(body: { AuthState.shared.accessToken }) {
+            if let token = await MainActor.run(body: {
+                AuthState.shared.canUseCloudASR ? AuthState.shared.accessToken : nil
+            }) {
                 await TypefluxOfficialASRRouteCache.shared.prefetch(accessToken: token)
             }
         }
@@ -149,8 +171,10 @@ final class AppCoordinator {
     func stop() {
         if let authAnalyticsObserver { NotificationCenter.default.removeObserver(authAnalyticsObserver) }
         if let authLogoutObserver { NotificationCenter.default.removeObserver(authLogoutObserver) }
+        if let authSubscriptionObserver { NotificationCenter.default.removeObserver(authSubscriptionObserver) }
         authAnalyticsObserver = nil
         authLogoutObserver = nil
+        authSubscriptionObserver = nil
         permissionAnalyticsTimer?.invalidate()
         permissionAnalyticsTimer = nil
         cloudEndpointProbeScheduler.stop()

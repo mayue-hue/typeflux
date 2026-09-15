@@ -14,6 +14,8 @@ extension Notification.Name {
 protocol CloudModelDefaultsPrompting: AnyObject {
     func confirmSwitchToCloudDefaults() -> Bool
     func showCloudDefaultsApplied()
+    func confirmSwitchToCloudLLMDefault() -> Bool
+    func showCloudLLMDefaultApplied()
 }
 
 @MainActor
@@ -38,6 +40,27 @@ final class CloudModelDefaultsAlertPresenter: CloudModelDefaultsPrompting {
         NSApp.activate(ignoringOtherApps: true)
         _ = alert.runModal()
     }
+
+    func confirmSwitchToCloudLLMDefault() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L("cloud.freeLLMSwitch.title")
+        alert.informativeText = L("cloud.freeLLMSwitch.body")
+        alert.addButton(withTitle: L("cloud.freeLLMSwitch.confirm"))
+        alert.addButton(withTitle: L("cloud.subscriptionSwitch.keepCurrent"))
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    func showCloudLLMDefaultApplied() {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L("cloud.subscriptionSwitch.successTitle")
+        alert.informativeText = L("cloud.freeLLMSwitch.successBody")
+        alert.addButton(withTitle: L("common.ok"))
+        NSApp.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+    }
 }
 
 /// Offers to switch STT and LLM selections to the Typeflux Cloud providers
@@ -49,15 +72,20 @@ final class CloudModelDefaultsAlertPresenter: CloudModelDefaultsPrompting {
 final class CloudLoginSyncCoordinator {
     private let settingsStore: SettingsStore
     private let promptPresenter: CloudModelDefaultsPrompting
+    private let hasPaidCloudSubscription: @MainActor () -> Bool
     private let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "CloudLoginSyncCoordinator")
     private var observers: [NSObjectProtocol] = []
 
     init(
         settingsStore: SettingsStore,
-        promptPresenter: CloudModelDefaultsPrompting? = nil
+        promptPresenter: CloudModelDefaultsPrompting? = nil,
+        hasPaidCloudSubscription: @escaping @MainActor () -> Bool = {
+            AuthState.shared.canUseCloudASR
+        }
     ) {
         self.settingsStore = settingsStore
         self.promptPresenter = promptPresenter ?? CloudModelDefaultsAlertPresenter()
+        self.hasPaidCloudSubscription = hasPaidCloudSubscription
         observers.append(NotificationCenter.default.addObserver(
             forName: .authDidLogin,
             object: nil,
@@ -91,6 +119,10 @@ final class CloudLoginSyncCoordinator {
     /// Exposed for tests; in production triggered after login, or after checkout
     /// confirms a newly entitled or newly paid subscription.
     func offerCloudDefaultsIfNeeded() {
+        guard hasPaidCloudSubscription() else {
+            offerCloudLLMDefaultIfNeeded()
+            return
+        }
         let alreadySTTCloud = settingsStore.sttProvider == .typefluxOfficial
         let alreadyLLMCloud = settingsStore.llmProvider == .openAICompatible
             && settingsStore.llmRemoteProvider == .typefluxCloud
@@ -116,5 +148,24 @@ final class CloudLoginSyncCoordinator {
         settingsStore.llmRemoteProvider = .typefluxCloud
         settingsStore.applyDefaultPersonaIfLLMConfigured()
         NotificationCenter.default.post(name: .cloudAccountModelDefaultsDidApply, object: settingsStore)
+    }
+
+    private func offerCloudLLMDefaultIfNeeded() {
+        let alreadyLLMCloud = settingsStore.llmProvider == .openAICompatible
+            && settingsStore.llmRemoteProvider == .typefluxCloud
+        guard !alreadyLLMCloud else {
+            logger.debug("Typeflux Cloud LLM is already selected; skipping free-plan prompt")
+            return
+        }
+        guard promptPresenter.confirmSwitchToCloudLLMDefault() else {
+            logger.debug("User kept the existing LLM provider after login")
+            return
+        }
+
+        settingsStore.llmProvider = .openAICompatible
+        settingsStore.llmRemoteProvider = .typefluxCloud
+        settingsStore.applyDefaultPersonaIfLLMConfigured()
+        NotificationCenter.default.post(name: .cloudAccountModelDefaultsDidApply, object: settingsStore)
+        promptPresenter.showCloudLLMDefaultApplied()
     }
 }

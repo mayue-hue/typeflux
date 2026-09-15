@@ -91,6 +91,10 @@ final class TypefluxCloudServerErrorMessageTests: XCTestCase {
             .quotaExceeded
         )
         XCTAssertEqual(
+            TypefluxCloudBillingError.fromServerCode("CREDITS_EXHAUSTED", message: nil)?.reason,
+            .quotaExceeded
+        )
+        XCTAssertEqual(
             TypefluxCloudBillingError.fromServerCode("PAYMENT_REQUIRED", message: nil)?.reason,
             .subscriptionRequired
         )

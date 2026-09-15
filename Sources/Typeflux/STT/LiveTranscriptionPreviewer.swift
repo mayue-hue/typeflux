@@ -28,6 +28,7 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
     private let localBackendFactory: () -> any LivePreviewBackend
     private let openAIBackendFactory: () -> any LivePreviewBackend
     private let appleBackendFactory: () -> any LivePreviewBackend
+    private let canUseCloudASR: @Sendable () async -> Bool
     private var backend: (any LivePreviewBackend)?
     private var state: State = .idle
     private var pendingBuffers: [AVAudioPCMBuffer] = []
@@ -37,6 +38,9 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
         localBackendFactory = { UnavailableLivePreviewBackend(providerName: "Local model") }
         openAIBackendFactory = { OpenAIRealtimePreviewBackend(settingsStore: settingsStore) }
         appleBackendFactory = { AppleSpeechPreviewBackend() }
+        canUseCloudASR = {
+            await MainActor.run { AuthState.shared.canUseCloudASR }
+        }
     }
 
     init(
@@ -45,12 +49,14 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
             UnavailableLivePreviewBackend(providerName: "Local model")
         },
         openAIBackendFactory: @escaping () -> any LivePreviewBackend,
-        appleBackendFactory: @escaping () -> any LivePreviewBackend
+        appleBackendFactory: @escaping () -> any LivePreviewBackend,
+        canUseCloudASR: @escaping @Sendable () async -> Bool = { true }
     ) {
         self.settingsStore = settingsStore
         self.localBackendFactory = localBackendFactory
         self.openAIBackendFactory = openAIBackendFactory
         self.appleBackendFactory = appleBackendFactory
+        self.canUseCloudASR = canUseCloudASR
     }
 
     func prepareForStart() {
@@ -68,7 +74,11 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
             state = .starting
         }
 
-        if shouldUseLocalBackend {
+        var useLocalBackend = shouldUseLocalBackend
+        if !useLocalBackend {
+            useLocalBackend = !(await canUseCloudASR())
+        }
+        if useLocalBackend {
             let local = localBackendFactory()
             try await local.start(onTextUpdate: onTextUpdate)
             backend = local

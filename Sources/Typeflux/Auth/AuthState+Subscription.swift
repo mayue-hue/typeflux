@@ -4,6 +4,12 @@ import Foundation
 extension AuthState {
     // MARK: - Subscription
 
+    var canUseCloudASR: Bool {
+        !isLoadingSubscription
+            && subscriptionError == nil
+            && subscription.hasPaidSubscription
+    }
+
     func refreshSubscriptionIfNeeded() {
         guard isLoggedIn || accessToken != nil else { return }
         Task { await refreshSubscription() }
@@ -134,8 +140,12 @@ extension AuthState {
     private func applySubscriptionSnapshot(_ snapshot: BillingSubscriptionSnapshot) {
         let wasEntitled = subscription.entitled
         let hadPaidSubscription = subscription.hasPaidSubscription
+        let subscriptionChanged = subscription != snapshot
         subscription = snapshot
         subscriptionError = nil
+        if subscriptionChanged {
+            NotificationCenter.default.post(name: .authSubscriptionDidChange, object: self)
+        }
         let becameEntitled = !wasEntitled && snapshot.entitled
         let becamePaid = !hadPaidSubscription && snapshot.hasPaidSubscription
         if pendingCheckoutSubscriptionEntitlement, becameEntitled || becamePaid {

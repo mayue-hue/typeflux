@@ -33,6 +33,9 @@ enum RequestRetry {
                 if TypefluxCloudLoginRequiredError.fromError(error) != nil {
                     throw error
                 }
+                if TypefluxCloudASRDirectiveError.fromError(error) != nil {
+                    throw error
+                }
                 guard shouldRetry(error) else {
                     throw error
                 }

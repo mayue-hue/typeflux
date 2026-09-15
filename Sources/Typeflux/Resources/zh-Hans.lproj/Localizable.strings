@@ -964,6 +964,10 @@
 "cloud.subscriptionSwitch.keepCurrent" = "保留当前模型";
 "cloud.subscriptionSwitch.successTitle" = "设置成功";
 "cloud.subscriptionSwitch.successBody" = "语音模型和大语言模型已切换为 Typeflux Cloud。";
+"cloud.freeLLMSwitch.title" = "是否使用 Typeflux Cloud AI？";
+"cloud.freeLLMSwitch.body" = "免费计划可以使用每月积分调用 Typeflux Cloud 进行 AI 改写，语音识别将继续使用本地模型。";
+"cloud.freeLLMSwitch.confirm" = "使用云端 AI";
+"cloud.freeLLMSwitch.successBody" = "AI 模型已切换为 Typeflux Cloud，语音识别仍使用本地模型。";
 "settings.models.redownload" = "重新下载";
 "settings.models.deleteModelFiles" = "删除模型文件";
 "settings.models.redownloadDialog.title" = "重新下载 %@？";
@@ -1372,3 +1376,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "按键到麦克风有声音";
 "history.stats.inputZeroPrefix" = "开头全零音频";
+"workflow.typefluxCloud.localFallbackRequired" = "云端语音识别仅对付费计划开放，请改用本地语音模型。";

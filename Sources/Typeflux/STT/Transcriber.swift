@@ -147,7 +147,7 @@ final class STTRouter {
             await MainActor.run { AuthState.shared.isLoggedIn }
         },
         hasPaidTypefluxCloudSubscription: @escaping @Sendable () async -> Bool = {
-            await MainActor.run { AuthState.shared.subscription.hasPaidSubscription }
+            await MainActor.run { AuthState.shared.canUseCloudASR }
         }
     ) {
         self.settingsStore = settingsStore

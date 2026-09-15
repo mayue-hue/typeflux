@@ -953,6 +953,10 @@
 "cloud.subscriptionSwitch.keepCurrent" = "現在のモデルを維持";
 "cloud.subscriptionSwitch.successTitle" = "設定が完了しました";
 "cloud.subscriptionSwitch.successBody" = "音声モデルと大規模言語モデルが Typeflux Cloud に切り替わりました。";
+"cloud.freeLLMSwitch.title" = "AI に Typeflux Cloud を使用しますか？";
+"cloud.freeLLMSwitch.body" = "無料プランでも月間クレジットを使って Typeflux Cloud の AI リライトを利用できます。音声認識はローカルモデルを使用します。";
+"cloud.freeLLMSwitch.confirm" = "Cloud AI を使用";
+"cloud.freeLLMSwitch.successBody" = "AI モデルを Typeflux Cloud に切り替えました。音声認識はローカルのままです。";
 "settings.models.redownload" = "再ダウンロード";
 "settings.models.deleteModelFiles" = "モデルファイルの削除";
 "settings.models.redownloadDialog.title" = "%@ を再ダウンロードしますか?";
@@ -1357,3 +1361,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "キー操作からマイク信号まで";
 "history.stats.inputZeroPrefix" = "先頭のデジタル無音";
+"workflow.typefluxCloud.localFallbackRequired" = "クラウド音声認識には有料プランが必要です。ローカル音声モデルを使用してください。";

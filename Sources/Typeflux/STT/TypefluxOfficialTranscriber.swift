@@ -258,6 +258,9 @@ final class TypefluxOfficialTranscriber: ASROptimizeAwareTranscriber, TypefluxCl
     }
 
     static func testConnection() async throws -> String {
+        guard await MainActor.run(body: { AuthState.shared.canUseCloudASR }) else {
+            throw TypefluxCloudASRDirectiveError()
+        }
         let token = await MainActor.run { AuthState.shared.accessToken }
         guard let token, !token.isEmpty else {
             throw TypefluxOfficialASRError.notLoggedIn
@@ -309,6 +312,8 @@ final class TypefluxOfficialTranscriber: ASROptimizeAwareTranscriber, TypefluxCl
                 return try await operation(baseURL.absoluteString)
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let error where TypefluxCloudASRDirectiveError.fromError(error) != nil {
+                throw TypefluxCloudASRDirectiveError()
             } catch let error where TypefluxCloudBillingError.fromError(error) != nil {
                 throw TypefluxCloudBillingError.fromError(error) ?? error
             } catch let error as TypefluxOfficialASRError {
@@ -793,6 +798,13 @@ private actor TypefluxOfficialASRSession {
             session.finishTasksAndInvalidate()
         }
 
+        // Begin receiving before sending the start message. Entitlement failures
+        // can arrive immediately after the WebSocket upgrade, so waiting until
+        // after the first send can lose the server's fallback directive.
+        let receiveTask = Task { [self] in
+            await receiveLoop(socketTask: socketTask)
+        }
+
         let startMessage = TypefluxOfficialASRStartMessageFactory.make(
             optimize: optimize,
             llmConfig: llmConfig,
@@ -806,11 +818,6 @@ private actor TypefluxOfficialASRSession {
                 "mode=\(timing.mode) optimize=\(optimize) " +
                 "connect_ms=\(TypefluxASRTiming.milliseconds(from: timing.startedAt, to: timing.connectionReadyAt))"
         )
-
-        // Start receive loop in a separate task
-        let receiveTask = Task { [self] in
-            await receiveLoop(socketTask: socketTask)
-        }
 
         // Stream audio chunks
         let chunkSize = CloudASRAudioConverter.chunkSize
@@ -884,6 +891,7 @@ private actor TypefluxOfficialASRSession {
                 ) {
                     logger.error("WebSocket receive error: \(error.localizedDescription)")
                     sessionError = sessionError
+                        ?? TypefluxCloudASRDirectiveError.fromError(error)
                         ?? TypefluxCloudBillingError.fromError(error)
                         ?? TypefluxOfficialASRError.unexpectedClose
                 }
@@ -941,13 +949,16 @@ private actor TypefluxOfficialASRSession {
             completed = true
 
         case "error":
-            let errorText = json["error"] as? String ?? "Unknown error"
+            let errorCode = json["code"] as? String
+            let errorText = errorCode ?? (json["error"] as? String) ?? "Unknown error"
             if TypefluxOfficialASRClosePolicy.isNormalProviderCompletion(errorText) {
                 completed = true
                 return
             }
             logger.error("ASR server error: \(errorText)")
-            sessionError = TypefluxCloudBillingError.fromMessage(errorText)
+            sessionError = errorCode.flatMap(TypefluxCloudASRDirectiveError.fromServerCode)
+                ?? TypefluxCloudASRDirectiveError.fromMessage(errorText)
+                ?? TypefluxCloudBillingError.fromMessage(errorText)
                 ?? TypefluxOfficialASRError.serverError(errorText)
             completed = true
 
@@ -1051,6 +1062,10 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
         transportDiagnostics.markWebSocketTaskResumed()
         socketTask.resume()
 
+        receiveTask = Task { [weak self] in
+            await self?.receiveLoop()
+        }
+
         let startMessage = TypefluxOfficialASRStartMessageFactory.make(optimize: optimize)
         try await sendJSON(startMessage)
         transportDiagnostics.markStartMessageSent()
@@ -1061,9 +1076,6 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
                 "connect_ms=\(TypefluxASRTiming.milliseconds(from: timing.startedAt, to: timing.connectionReadyAt))"
         )
 
-        receiveTask = Task { [weak self] in
-            await self?.receiveLoop()
-        }
     }
 
     func appendPCM16(_ data: Data) async throws {
@@ -1147,6 +1159,7 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
                    ) {
                     logger.error("WebSocket receive error: \(error.localizedDescription)")
                     sessionError = sessionError
+                        ?? TypefluxCloudASRDirectiveError.fromError(error)
                         ?? TypefluxCloudBillingError.fromError(error)
                         ?? TypefluxOfficialASRError.unexpectedClose
                 }
@@ -1187,13 +1200,16 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
                 completed = true
             }
         case "error":
-            let errorText = json["error"] as? String ?? "Unknown error"
+            let errorCode = json["code"] as? String
+            let errorText = errorCode ?? (json["error"] as? String) ?? "Unknown error"
             if TypefluxOfficialASRClosePolicy.isNormalProviderCompletion(errorText) {
                 completed = true
                 return
             }
             logger.error("ASR server error: \(errorText)")
-            sessionError = TypefluxCloudBillingError.fromMessage(errorText)
+            sessionError = errorCode.flatMap(TypefluxCloudASRDirectiveError.fromServerCode)
+                ?? TypefluxCloudASRDirectiveError.fromMessage(errorText)
+                ?? TypefluxCloudBillingError.fromMessage(errorText)
                 ?? TypefluxOfficialASRError.serverError(errorText)
             completed = true
         default:

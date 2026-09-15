@@ -953,6 +953,10 @@
 "cloud.subscriptionSwitch.keepCurrent" = "현재 모델 유지";
 "cloud.subscriptionSwitch.successTitle" = "설정 완료";
 "cloud.subscriptionSwitch.successBody" = "음성 모델과 대규모 언어 모델이 Typeflux Cloud로 전환되었습니다.";
+"cloud.freeLLMSwitch.title" = "AI에 Typeflux Cloud를 사용하시겠습니까?";
+"cloud.freeLLMSwitch.body" = "무료 플랜에서도 월간 크레딧으로 Typeflux Cloud AI 다시 쓰기를 사용할 수 있습니다. 음성 인식은 로컬 모델을 계속 사용합니다.";
+"cloud.freeLLMSwitch.confirm" = "Cloud AI 사용";
+"cloud.freeLLMSwitch.successBody" = "AI 모델이 Typeflux Cloud로 전환되었습니다. 음성 인식은 로컬 모델을 유지합니다.";
 "settings.models.redownload" = "다시 다운로드";
 "settings.models.deleteModelFiles" = "모델 파일 삭제";
 "settings.models.redownloadDialog.title" = "%@을(를) 다시 다운로드하시겠습니까?";
@@ -1357,3 +1361,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "단축키부터 마이크 신호까지";
 "history.stats.inputZeroPrefix" = "시작 부분 디지털 무음";
+"workflow.typefluxCloud.localFallbackRequired" = "클라우드 음성 인식은 유료 요금제에서만 사용할 수 있습니다. 로컬 음성 모델을 사용하세요.";

@@ -964,6 +964,10 @@
 "cloud.subscriptionSwitch.keepCurrent" = "Keep Current Models";
 "cloud.subscriptionSwitch.successTitle" = "Models Updated";
 "cloud.subscriptionSwitch.successBody" = "Voice recognition and AI models now use Typeflux Cloud.";
+"cloud.freeLLMSwitch.title" = "Use Typeflux Cloud for AI?";
+"cloud.freeLLMSwitch.body" = "Your free plan can use Typeflux Cloud for AI rewriting with monthly credits. Speech recognition will continue using the local model.";
+"cloud.freeLLMSwitch.confirm" = "Use Cloud AI";
+"cloud.freeLLMSwitch.successBody" = "The AI model now uses Typeflux Cloud. Speech recognition remains local.";
 "settings.models.redownload" = "Re-download";
 "settings.models.deleteModelFiles" = "Delete Model Files";
 "settings.models.redownloadDialog.title" = "Re-download %@?";
@@ -1372,3 +1376,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "Hotkey to microphone signal";
 "history.stats.inputZeroPrefix" = "Initial digital silence";
+"workflow.typefluxCloud.localFallbackRequired" = "Cloud speech recognition requires a paid plan. Use the local speech model instead.";

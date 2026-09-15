@@ -11,7 +11,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmRemoteProvider = .openAI
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
         let authState = makeAuthState(subscription: activeSubscription())
 
         await authState.handleLoginSuccess(
@@ -30,14 +34,18 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         withExtendedLifetime(coordinator) {}
     }
 
-    func testPromptsAndAppliesCloudDefaultsAfterLoginWithoutEntitlement() async throws {
+    func testFreePlanOffersCloudLLMWithoutChangingSTTProvider() async throws {
         let settingsStore = makeSettingsStore()
         settingsStore.sttProvider = .whisperAPI
         settingsStore.llmProvider = .openAICompatible
         settingsStore.llmRemoteProvider = .openAI
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { false }
+        )
         let authState = makeAuthState(subscription: .none)
 
         await authState.handleLoginSuccess(
@@ -47,9 +55,10 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
 
         try await waitForPromptCount(1, in: prompt)
 
-        XCTAssertEqual(prompt.confirmCallCount, 1)
-        XCTAssertEqual(prompt.successCallCount, 1)
-        XCTAssertEqual(settingsStore.sttProvider, .typefluxOfficial)
+        XCTAssertEqual(prompt.cloudDefaultsConfirmCallCount, 0)
+        XCTAssertEqual(prompt.cloudLLMConfirmCallCount, 1)
+        XCTAssertEqual(prompt.cloudLLMSuccessCallCount, 1)
+        XCTAssertEqual(settingsStore.sttProvider, .whisperAPI)
         XCTAssertEqual(settingsStore.llmProvider, .openAICompatible)
         XCTAssertEqual(settingsStore.llmRemoteProvider, .typefluxCloud)
         withExtendedLifetime(coordinator) {}
@@ -62,7 +71,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmRemoteProvider = .openAI
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
 
         NotificationCenter.default.post(name: .authCheckoutSubscriptionDidBecomeEntitled, object: nil)
 
@@ -83,7 +96,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmProvider = .ollama
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
         let expectation = expectation(description: "cloud defaults notification")
         let observer = NotificationCenter.default.addObserver(
             forName: .cloudAccountModelDefaultsDidApply,
@@ -107,7 +124,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmRemoteProvider = .openAI
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: false)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
 
         NotificationCenter.default.post(name: .authCheckoutSubscriptionDidBecomeEntitled, object: nil)
 
@@ -127,7 +148,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmRemoteProvider = .openAI
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
 
         NotificationCenter.default.post(name: .authCheckoutSubscriptionDidBecomeEntitled, object: nil)
 
@@ -143,7 +168,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmRemoteProvider = .typefluxCloud
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
 
         NotificationCenter.default.post(name: .authCheckoutSubscriptionDidBecomeEntitled, object: nil)
 
@@ -164,7 +193,11 @@ final class CloudLoginSyncCoordinatorTests: XCTestCase {
         settingsStore.llmRemoteProvider = .openAI
 
         let prompt = RecordingCloudModelDefaultsPrompt(shouldConfirm: true)
-        let coordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore, promptPresenter: prompt)
+        let coordinator = CloudLoginSyncCoordinator(
+            settingsStore: settingsStore,
+            promptPresenter: prompt,
+            hasPaidCloudSubscription: { true }
+        )
 
         NotificationCenter.default.post(
             name: Notification.Name("SomeOtherNotification"),
@@ -241,6 +274,9 @@ private final class RecordingCloudModelDefaultsPrompt: CloudModelDefaultsPrompti
     private let shouldConfirm: Bool
     private(set) var confirmCallCount = 0
     private(set) var successCallCount = 0
+    private(set) var cloudDefaultsConfirmCallCount = 0
+    private(set) var cloudLLMConfirmCallCount = 0
+    private(set) var cloudLLMSuccessCallCount = 0
 
     init(shouldConfirm: Bool) {
         self.shouldConfirm = shouldConfirm
@@ -248,10 +284,22 @@ private final class RecordingCloudModelDefaultsPrompt: CloudModelDefaultsPrompti
 
     func confirmSwitchToCloudDefaults() -> Bool {
         confirmCallCount += 1
+        cloudDefaultsConfirmCallCount += 1
         return shouldConfirm
     }
 
     func showCloudDefaultsApplied() {
         successCallCount += 1
+    }
+
+    func confirmSwitchToCloudLLMDefault() -> Bool {
+        confirmCallCount += 1
+        cloudLLMConfirmCallCount += 1
+        return shouldConfirm
+    }
+
+    func showCloudLLMDefaultApplied() {
+        successCallCount += 1
+        cloudLLMSuccessCallCount += 1
     }
 }

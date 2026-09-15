@@ -17,6 +17,16 @@ extension STTRouter {
         diagnosticsRecorder: ASRRaceDiagnosticsRecorder? = nil,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
+        if settingsStore.sttProvider != .localModel {
+            let hasPaidSubscription = await hasPaidTypefluxCloudSubscription()
+            if !hasPaidSubscription {
+                return try await transcribeWithTypefluxCloudLocalOnly(
+                    audioFile: audioFile,
+                    onUpdate: onUpdate
+                )
+            }
+        }
+
         switch settingsStore.sttProvider {
         case .freeModel, .whisperAPI, .aliCloud, .doubaoRealtime, .googleCloud, .soniox:
             try await transcribeWithRemoteProvider(
@@ -63,6 +73,13 @@ extension STTRouter {
         onLLMStart: @escaping @Sendable () async -> Void,
         onLLMChunk: @escaping @Sendable (String) async -> Void
     ) async throws -> (transcript: String, rewritten: String?) {
+        guard await hasPaidTypefluxCloudSubscription() else {
+            let transcript = try await transcribeWithTypefluxCloudLocalOnly(
+                audioFile: audioFile,
+                onUpdate: onASRUpdate
+            )
+            return (transcript: transcript, rewritten: nil)
+        }
         guard let integrated = typefluxOfficial as? TypefluxCloudLLMIntegratedTranscriber else {
             let transcript = try await transcribeStream(audioFile: audioFile, scenario: scenario, onUpdate: onASRUpdate)
             return (transcript: transcript, rewritten: nil)

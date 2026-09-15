@@ -15,6 +15,9 @@ extension Notification.Name {
     /// restoration where `authDidLogin` is intentionally not emitted.
     static let authTokenDidRefresh = Notification.Name("AuthState.authTokenDidRefresh")
 
+    /// Posted after the server-backed subscription snapshot is refreshed.
+    static let authSubscriptionDidChange = Notification.Name("AuthState.authSubscriptionDidChange")
+
     /// Posted on the main actor when a checkout-started subscription refresh
     /// observes that the account has become entitled to Typeflux Cloud or has
     /// upgraded from a free/non-paid plan to a paid Cloud subscription.

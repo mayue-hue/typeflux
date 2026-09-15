@@ -193,7 +193,8 @@ struct TypefluxCloudBillingError: LocalizedError, Equatable {
         "LLM_QUOTA_EXCEEDED",
         "INSUFFICIENT_CREDITS",
         "CREDIT_BALANCE_EXHAUSTED",
-        "CREDIT_EXHAUSTED"
+        "CREDIT_EXHAUSTED",
+        "CREDITS_EXHAUSTED"
     ]
 
     private static func normalized(_ value: String) -> String {
