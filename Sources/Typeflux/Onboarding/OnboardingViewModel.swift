@@ -29,6 +29,7 @@ final class OnboardingViewModel: ObservableObject {
         case idle
         case testing
         case success(totalMs: Int, preview: String)
+        case notice(message: String)
         case failure(message: String)
     }
 
@@ -418,7 +419,7 @@ final class OnboardingViewModel: ObservableObject {
         sttTestTask?.cancel()
 
         if sttProvider != .localModel, !AuthState.shared.canUseCloudASR {
-            sttConnectionTestState = .failure(
+            sttConnectionTestState = .notice(
                 message: TypefluxCloudASRDirectiveError().localizedDescription
             )
             return

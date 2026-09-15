@@ -1372,4 +1372,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "按鍵到麥克風有聲音";
 "history.stats.inputZeroPrefix" = "開頭全零音訊";
-"workflow.typefluxCloud.localFallbackRequired" = "雲端語音辨識僅對付費方案開放，請改用本機語音模型。";
+"workflow.typefluxCloud.localFallbackRequired" = "雲端語音辨識僅對付費方案開放，您的請求將由本機模型處理。";

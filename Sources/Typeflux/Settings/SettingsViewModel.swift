@@ -58,6 +58,7 @@ enum ConnectionTestState: Equatable {
     case idle
     case testing
     case success(firstTokenMs: Int, totalMs: Int, preview: String)
+    case notice(message: String)
     case failure(message: String)
 }
 
@@ -2710,7 +2711,7 @@ final class StudioViewModel: ObservableObject {
         sttTestTask?.cancel()
 
         if focusedModelProvider != .localSTT, !AuthState.shared.canUseCloudASR {
-            sttConnectionTestState = .failure(
+            sttConnectionTestState = .notice(
                 message: TypefluxCloudASRDirectiveError().localizedDescription
             )
             return

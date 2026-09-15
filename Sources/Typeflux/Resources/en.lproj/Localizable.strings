@@ -1376,4 +1376,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "Hotkey to microphone signal";
 "history.stats.inputZeroPrefix" = "Initial digital silence";
-"workflow.typefluxCloud.localFallbackRequired" = "Cloud speech recognition requires a paid plan. Use the local speech model instead.";
+"workflow.typefluxCloud.localFallbackRequired" = "Cloud speech recognition is available on paid plans. Your request will be processed by the local model.";

@@ -1361,4 +1361,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "キー操作からマイク信号まで";
 "history.stats.inputZeroPrefix" = "先頭のデジタル無音";
-"workflow.typefluxCloud.localFallbackRequired" = "クラウド音声認識には有料プランが必要です。ローカル音声モデルを使用してください。";
+"workflow.typefluxCloud.localFallbackRequired" = "クラウド音声認識は有料プランでご利用いただけます。リクエストはローカルモデルで処理されます。";

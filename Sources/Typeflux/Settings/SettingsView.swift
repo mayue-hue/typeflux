@@ -5438,6 +5438,16 @@ struct StudioView: View {
                         )
                 }
             }
+        case let .notice(message):
+            HStack(alignment: .top, spacing: StudioTheme.Spacing.xSmall) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(StudioTheme.textSecondary)
+                Text(message)
+                    .font(.studioBody(StudioTheme.Typography.caption))
+                    .foregroundStyle(StudioTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         case let .failure(message):
             HStack(alignment: .top, spacing: StudioTheme.Spacing.xSmall) {
                 Image(systemName: "xmark.circle.fill")

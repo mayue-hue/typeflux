@@ -1186,6 +1186,16 @@ struct OnboardingView: View {
                         )
                 }
             }
+        case let .notice(message):
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(onboardingSecondaryText)
+                    .font(.system(size: 13))
+                Text(message)
+                    .font(.studioBody(12))
+                    .foregroundStyle(onboardingSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         case let .failure(message):
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "xmark.circle.fill")

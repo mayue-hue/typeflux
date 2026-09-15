@@ -1376,4 +1376,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "按键到麦克风有声音";
 "history.stats.inputZeroPrefix" = "开头全零音频";
-"workflow.typefluxCloud.localFallbackRequired" = "云端语音识别仅对付费计划开放，请改用本地语音模型。";
+"workflow.typefluxCloud.localFallbackRequired" = "云端语音识别仅对付费计划开放，您的请求将由本地模型进行处理。";

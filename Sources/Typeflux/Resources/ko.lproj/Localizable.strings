@@ -1361,4 +1361,4 @@
 
 "history.stats.hotkeyToFirstSignal" = "단축키부터 마이크 신호까지";
 "history.stats.inputZeroPrefix" = "시작 부분 디지털 무음";
-"workflow.typefluxCloud.localFallbackRequired" = "클라우드 음성 인식은 유료 요금제에서만 사용할 수 있습니다. 로컬 음성 모델을 사용하세요.";
+"workflow.typefluxCloud.localFallbackRequired" = "클라우드 음성 인식은 유료 요금제에서 사용할 수 있습니다. 요청은 로컬 모델에서 처리됩니다.";
