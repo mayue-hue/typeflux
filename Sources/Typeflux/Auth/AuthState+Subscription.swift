@@ -7,7 +7,7 @@ extension AuthState {
     var canUseCloudASR: Bool {
         !isLoadingSubscription
             && subscriptionError == nil
-            && subscription.hasPaidSubscription
+            && subscription.cloudASRAllowed
     }
 
     func refreshSubscriptionIfNeeded() {

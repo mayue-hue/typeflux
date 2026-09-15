@@ -38,6 +38,7 @@ final class BillingAPIServiceTests: XCTestCase {
         XCTAssertFalse(snapshot.treatsCreditsAsFreeAllowance)
         XCTAssertTrue(snapshot.entitled)
         XCTAssertTrue(snapshot.hasSubscription)
+        XCTAssertTrue(snapshot.cloudASRAllowed)
     }
 
     func testFetchSubscriptionDecodesNestedPlanResponse() async throws {
@@ -100,7 +101,8 @@ final class BillingAPIServiceTests: XCTestCase {
                 "current_period_start": "2026-05-12T00:00:00Z",
                 "current_period_end": "2026-06-12T00:00:00Z",
                 "cancel_at_period_end": false,
-                "period_source": "free"
+                "period_source": "free",
+                "cloud_asr_allowed": true
               }
             }
             """
@@ -119,6 +121,30 @@ final class BillingAPIServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.hasSubscription)
         XCTAssertFalse(snapshot.hasPaidSubscription)
         XCTAssertTrue(snapshot.isFreePlan)
+        XCTAssertTrue(snapshot.cloudASRAllowed)
+    }
+
+    func testSubscriptionDecodingDefaultsCloudASRAccessToPaidStatusForOlderServers() throws {
+        let paidJSON = """
+        {
+          "plan_code": "pro",
+          "status": "active",
+          "paid": true
+        }
+        """
+        let freeJSON = """
+        {
+          "plan_code": "free",
+          "status": "free",
+          "paid": false
+        }
+        """
+
+        let paid = try JSONDecoder().decode(BillingSubscriptionSnapshot.self, from: Data(paidJSON.utf8))
+        let free = try JSONDecoder().decode(BillingSubscriptionSnapshot.self, from: Data(freeJSON.utf8))
+
+        XCTAssertTrue(paid.cloudASRAllowed)
+        XCTAssertFalse(free.cloudASRAllowed)
     }
 }
 

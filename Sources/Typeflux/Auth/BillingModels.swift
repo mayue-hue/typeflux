@@ -11,11 +11,13 @@ struct BillingSubscriptionSnapshot: Decodable, Equatable {
     let entitled: Bool
     let active: Bool
     let paid: Bool
+    let cloudASRAllowed: Bool
     let periodSource: String?
 
     enum CodingKeys: String, CodingKey {
         case active
         case paid
+        case cloudASRAllowed = "cloud_asr_allowed"
         case billingEnabled = "billing_enabled"
         case planCode = "plan_code"
         case planName = "plan_name"
@@ -43,6 +45,7 @@ struct BillingSubscriptionSnapshot: Decodable, Equatable {
         planName: String? = nil,
         active: Bool? = nil,
         paid: Bool? = nil,
+        cloudASRAllowed: Bool? = nil,
         periodSource: String? = nil,
         billingEnabled: Bool = false
     ) {
@@ -56,6 +59,10 @@ struct BillingSubscriptionSnapshot: Decodable, Equatable {
         self.entitled = entitled
         self.active = active ?? entitled
         self.paid = paid ?? Self.defaultPaid(planCode: planCode, status: status)
+        self.cloudASRAllowed = cloudASRAllowed ?? Self.defaultCloudASRAllowed(
+            paid: self.paid,
+            status: status
+        )
         self.periodSource = periodSource
     }
 
@@ -86,6 +93,8 @@ struct BillingSubscriptionSnapshot: Decodable, Equatable {
             planName: source.decodeIfPresent(String.self, forKey: .planName),
             active: active,
             paid: source.decodeIfPresent(Bool.self, forKey: .paid),
+            cloudASRAllowed: source.decodeIfPresent(Bool.self, forKey: .cloudASRAllowed)
+                ?? root.decodeIfPresent(Bool.self, forKey: .cloudASRAllowed),
             periodSource: source.decodeIfPresent(String.self, forKey: .periodSource),
             billingEnabled: root.decodeIfPresent(Bool.self, forKey: .billingEnabled)
                 ?? source.decodeIfPresent(Bool.self, forKey: .billingEnabled)
@@ -119,6 +128,7 @@ struct BillingSubscriptionSnapshot: Decodable, Equatable {
             planName: planName,
             active: active,
             paid: paid,
+            cloudASRAllowed: cloudASRAllowed,
             periodSource: periodSource,
             billingEnabled: false
         )
@@ -168,6 +178,11 @@ struct BillingSubscriptionSnapshot: Decodable, Equatable {
         let normalizedPlan = planCode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let normalizedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalizedPlan != "free" && normalizedStatus != "free"
+    }
+
+    private static func defaultCloudASRAllowed(paid: Bool, status: String?) -> Bool {
+        guard paid, let status else { return false }
+        return !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 
