@@ -1592,8 +1592,8 @@ struct StudioHistoryRow: View {
                         }
                     }
                 }
-
-                Spacer(minLength: StudioTheme.Spacing.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
                 HStack(spacing: StudioTheme.Spacing.small) {
                     if let onCopyResult, record.hasTranscriptToCopy {
@@ -1618,6 +1618,7 @@ struct StudioHistoryRow: View {
                         action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }
                     )
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             if isExpanded {
@@ -1700,6 +1701,7 @@ struct StudioHistoryRow: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .fixedSize(horizontal: true, vertical: false)
         .studioTooltip(L("history.action.more"), yOffset: 42)
         .accessibilityLabel(L("history.action.more"))
     }
