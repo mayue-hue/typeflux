@@ -10,7 +10,7 @@ enum AliCloudASRDefaults {
 }
 
 enum DoubaoASRDefaults {
-    static let resourceID = "volc.bigasr.sauc.duration"
+    static let resourceID = "volc.seedasr.sauc.duration"
 }
 
 enum GoogleCloudSpeechDefaults {
