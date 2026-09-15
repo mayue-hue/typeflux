@@ -688,6 +688,21 @@ final class SQLiteHistoryStore: HistoryStore {
             if let timeout = llmOutcome.timeoutMilliseconds {
                 lines.append("  - Timeout limit: \(timeout) ms")
             }
+            if let baseTimeout = llmOutcome.baseTimeoutMilliseconds {
+                lines.append("  - Base timeout: \(baseTimeout) ms")
+            }
+            if let inputUnits = llmOutcome.estimatedInputUnits {
+                lines.append("  - Estimated input units: \(inputUnits)")
+            }
+            if let firstOutputTimeout = llmOutcome.firstOutputTimeoutMilliseconds {
+                lines.append("  - First output timeout: \(firstOutputTimeout) ms")
+            }
+            if let stallTimeout = llmOutcome.stallTimeoutMilliseconds {
+                lines.append("  - Stall timeout: \(stallTimeout) ms")
+            }
+            if let timeoutKind = llmOutcome.timeoutKind {
+                lines.append("  - Timeout kind: \(timeoutKind.rawValue)")
+            }
             lines.append("  - Used transcript fallback: \(llmOutcome.usedTranscriptFallback)")
         }
 

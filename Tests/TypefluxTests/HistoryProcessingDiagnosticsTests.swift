@@ -52,6 +52,30 @@ final class HistoryProcessingDiagnosticsTests: XCTestCase {
         XCTAssertEqual(LLMProcessingOutcomeDiagnostics.clampedMilliseconds(for: .nan), 0)
     }
 
+    func testLLMOutcomePreservesDynamicTimeoutDiagnostics() throws {
+        let start = Date(timeIntervalSince1970: 100)
+        let outcome = LLMProcessingOutcomeDiagnostics(
+            startedAt: start,
+            completedAt: start.addingTimeInterval(10),
+            timeoutMilliseconds: 15_000,
+            outcome: .timedOutFallback,
+            usedTranscriptFallback: true,
+            baseTimeoutMilliseconds: 3_000,
+            estimatedInputUnits: 500,
+            firstOutputTimeoutMilliseconds: 5_000,
+            stallTimeoutMilliseconds: 10_000,
+            timeoutKind: .stalledOutput
+        )
+
+        let data = try JSONEncoder().encode(outcome)
+        let decoded = try JSONDecoder().decode(LLMProcessingOutcomeDiagnostics.self, from: data)
+
+        XCTAssertEqual(decoded, outcome)
+        XCTAssertEqual(decoded.baseTimeoutMilliseconds, 3_000)
+        XCTAssertEqual(decoded.estimatedInputUnits, 500)
+        XCTAssertEqual(decoded.timeoutKind, .stalledOutput)
+    }
+
     private static func raceDiagnostics() -> ASRRaceDiagnostics {
         let start = Date(timeIntervalSince1970: 1_000)
         return ASRRaceDiagnostics(

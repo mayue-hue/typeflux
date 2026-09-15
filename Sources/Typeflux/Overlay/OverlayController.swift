@@ -595,9 +595,9 @@ final class OverlayController {
         refreshWindow()
     }
 
-    func transitionToLLMPhase() {
+    func transitionToLLMPhase(timeout: TimeInterval? = nil) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.transitionToLLMPhase() }
+            DispatchQueue.main.async { [weak self] in self?.transitionToLLMPhase(timeout: timeout) }
             return
         }
         var shouldRefresh = false
@@ -607,6 +607,9 @@ final class OverlayController {
            let startedAt = processingProgressStartedAt {
             contentProcessingStartedElapsed = ProcessInfo.processInfo.systemUptime - startedAt
             model.processingProgress = ProcessingProgressTimeline.recognitionCompleteProgress
+        }
+        if let timeout {
+            startProcessingProgress(timeout: timeout, contentProcessingAlreadyStarted: true)
         }
         if model.statusText.isEmpty {
             model.statusText = L(Self.processingStatusLocalizationKey)

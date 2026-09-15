@@ -11,8 +11,8 @@ struct RecordingStartupContext: Sendable, Equatable {
 final class WorkflowController {
     let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "WorkflowController")
     static let recordingTimeoutNanoseconds: UInt64 = 600_000_000_000 // 10 minutes
-    /// Last-resort protection for a processing pipeline that remains stuck.
-    /// User-configured recognition wait time controls fallback selection instead.
+    /// Last-resort protection while transcription finishes after recording.
+    /// The watchdog is rearmed with a source-length budget when LLM rewriting starts.
     static let processingWatchdogTimeoutSeconds: TimeInterval = 30
     static let minimumRecordingDuration: TimeInterval = 0.35
     static let recordingTailCaptureDuration: Duration = .milliseconds(200)
@@ -52,11 +52,24 @@ final class WorkflowController {
         get { llmTimeoutAfterTranscriptionOverride ?? settingsStore.voiceProcessingTimeout.seconds }
         set { llmTimeoutAfterTranscriptionOverride = max(0, newValue) }
     }
+
+    func llmRewriteTimeoutBudget(for sourceText: String) -> LLMRewriteTimeoutBudget {
+        if let llmTimeoutAfterTranscriptionOverride {
+            return .fixed(llmTimeoutAfterTranscriptionOverride)
+        }
+        return LLMRewriteTimeoutPolicy.budget(
+            sourceText: sourceText,
+            baseSeconds: settingsStore.voiceProcessingTimeout.seconds
+        )
+    }
+
     struct LLMRequestTimeoutError: LocalizedError {
         let timeoutSeconds: TimeInterval
+        let kind: LLMRewriteTimeoutKind
 
         var errorDescription: String? {
-            "Persona rewrite timed out after \(Int(timeoutSeconds)) seconds, inserting transcript as fallback"
+            "Persona rewrite timed out after \(Int(timeoutSeconds)) seconds " +
+                "(\(kind.rawValue)), inserting transcript as fallback"
         }
     }
 

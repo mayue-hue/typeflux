@@ -30,6 +30,7 @@ extension WorkflowController {
         let llmStartedAt: Date?
         let llmFirstOutputAt: Date?
         let llmCompletedAt: Date?
+        let timeoutBudget: LLMRewriteTimeoutBudget
     }
 
     var shouldSuppressPostRecordingStreamingPreviewForCurrentSTTProvider: Bool {
@@ -45,7 +46,7 @@ extension WorkflowController {
         request: LLMRewriteRequest,
         sessionID: UUID,
         showsStreamingPreview: Bool = true,
-        timeout: TimeInterval? = nil
+        timeoutBudget: LLMRewriteTimeoutBudget? = nil
     ) async throws -> RewriteGenerationResult {
         let configStatus = await validateLLMConfiguration()
         guard case .ready = configStatus else {
@@ -55,6 +56,8 @@ extension WorkflowController {
             }
             throw CancellationError()
         }
+
+        let progressTracker = LLMRewriteProgressTracker()
 
         func performRewrite() async throws -> RewriteGenerationResult {
             let diagnosticsRecorder = request.diagnosticsRecorder ?? LLMRequestDiagnosticsRecorder()
@@ -81,6 +84,9 @@ extension WorkflowController {
                     if firstOutputAt == nil, !chunk.isEmpty {
                         firstOutputAt = Date()
                     }
+                    if !chunk.isEmpty {
+                        progressTracker.markOutput()
+                    }
                     buffer += chunk
                     let now = Date()
                     if now.timeIntervalSince(lastChunkAt) > 0.15 {
@@ -105,16 +111,43 @@ extension WorkflowController {
             }
         }
 
-        guard let timeout else {
+        func timeoutOperation() async throws -> RewriteGenerationResult {
+            guard let timeoutBudget else { throw CancellationError() }
+            while true {
+                try Task.checkCancellation()
+                let elapsed = progressTracker.elapsed
+                let progress = progressTracker.snapshot()
+                if progress.firstOutputElapsed == nil,
+                   elapsed >= timeoutBudget.firstOutputSeconds {
+                    throw LLMRequestTimeoutError(
+                        timeoutSeconds: timeoutBudget.firstOutputSeconds,
+                        kind: .firstOutput
+                    )
+                }
+                if let lastOutputElapsed = progress.lastOutputElapsed,
+                   elapsed - lastOutputElapsed >= timeoutBudget.stallSeconds {
+                    throw LLMRequestTimeoutError(
+                        timeoutSeconds: timeoutBudget.stallSeconds,
+                        kind: .stalledOutput
+                    )
+                }
+                if elapsed >= timeoutBudget.totalSeconds {
+                    throw LLMRequestTimeoutError(
+                        timeoutSeconds: timeoutBudget.totalSeconds,
+                        kind: .total
+                    )
+                }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
+
+        guard timeoutBudget != nil else {
             return try await performRewrite()
         }
 
         return try await withThrowingTaskGroup(of: RewriteGenerationResult.self) { group in
             group.addTask { try await performRewrite() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw LLMRequestTimeoutError(timeoutSeconds: timeout)
-            }
+            group.addTask { try await timeoutOperation() }
             defer { group.cancelAll() }
             guard let result = try await group.next() else {
                 throw CancellationError()
@@ -776,10 +809,16 @@ extension WorkflowController {
         await MainActor.run {
             guard self.processingSessionID == sessionID else { return }
             self.lastRetryableFailureRecord = nil
-            self.overlayController.transitionToLLMPhase()
+            let timeoutBudget = self.llmRewriteTimeoutBudget(for: sourceText)
+            self.overlayController.transitionToLLMPhase(timeout: timeoutBudget.totalSeconds)
         }
 
         do {
+            let timeoutBudget = llmRewriteTimeoutBudget(for: sourceText)
+            startProcessingWatchdog(
+                sessionID: sessionID,
+                timeoutSeconds: timeoutBudget.watchdogSeconds
+            )
             let showsStreamingPreview = switch source {
             case .selection:
                 WorkflowOverlayPresentationPolicy.shouldShowLLMStreamingPreviewForPersonaSelectionApplication()
@@ -795,7 +834,8 @@ extension WorkflowController {
                     appSystemContext: AppSystemContext(snapshot: TextSelectionSnapshot())
                 ),
                 sessionID: sessionID,
-                showsStreamingPreview: showsStreamingPreview
+                showsStreamingPreview: showsStreamingPreview,
+                timeoutBudget: timeoutBudget
             )
             try ensureProcessingIsActive(sessionID)
 
@@ -965,6 +1005,7 @@ extension WorkflowController {
             var mergedLLMStartedAt: Date?
             var mergedLLMFirstOutputAt: Date?
             var mergedLLMCompletedAt: Date?
+            var mergedLLMTimeoutBudget: LLMRewriteTimeoutBudget?
             let fallbackPreviewText = recordingPreviewText.trimmingCharacters(in: .whitespacesAndNewlines)
 
             let transcriptionStartedAt = Date()
@@ -1020,6 +1061,7 @@ extension WorkflowController {
                 mergedLLMStartedAt = mergedResult.llmStartedAt
                 mergedLLMFirstOutputAt = mergedResult.llmFirstOutputAt
                 mergedLLMCompletedAt = mergedResult.llmCompletedAt
+                mergedLLMTimeoutBudget = mergedResult.timeoutBudget
             } else {
                 do {
                     rawTranscribedText = try await sttRouter.transcribeStream(
@@ -1167,6 +1209,7 @@ extension WorkflowController {
                     inputContext: inputContext,
                     multimodalHandlesPersona: multimodalHandlesPersona && !hasInputContext,
                     mergedLLMResult: mergedLLMResult,
+                    mergedLLMTimeoutBudget: mergedLLMTimeoutBudget,
                     sessionID: sessionID,
                     record: &record,
                     pipelineTiming: &pipelineTiming
@@ -1875,6 +1918,23 @@ extension WorkflowController {
         }
     }
 
+    private final class LatestTranscriptionBuffer: @unchecked Sendable {
+        private var value = ""
+        private let lock = NSLock()
+
+        func update(_ text: String) {
+            lock.lock()
+            value = text
+            lock.unlock()
+        }
+
+        var text: String {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+    }
+
     /// Builds an `ASRLLMConfig` by constructing the same prompts the LLM service would
     /// use for a `rewriteTranscript` request, substituting `{{transcript}}` as a
     /// placeholder for the actual transcript text.
@@ -1933,19 +1993,27 @@ extension WorkflowController {
             selectionSnapshot: selectionSnapshot
         )
         let llmBuffer = LLMStreamBuffer()
+        let transcriptionBuffer = LatestTranscriptionBuffer()
         let suppressStreamingPreview = shouldSuppressPostRecordingStreamingPreviewForCurrentSTTProvider
 
         let result = try await sttRouter.transcribeStreamWithLLMRewrite(
             audioFile: audioFile,
             llmConfig: llmConfig,
             scenario: cloudScenario,
-            onASRUpdate: { _ in },
+            onASRUpdate: { snapshot in
+                transcriptionBuffer.update(snapshot.text)
+            },
             onLLMStart: { [weak self] in
                 guard let self else { return }
                 llmBuffer.markStarted()
+                let timeoutBudget = self.llmRewriteTimeoutBudget(for: transcriptionBuffer.text)
+                self.startProcessingWatchdog(
+                    sessionID: sessionID,
+                    timeoutSeconds: timeoutBudget.watchdogSeconds
+                )
                 await MainActor.run {
                     if self.processingSessionID == sessionID {
-                        self.overlayController.transitionToLLMPhase()
+                        self.overlayController.transitionToLLMPhase(timeout: timeoutBudget.totalSeconds)
                     }
                 }
             },
@@ -1967,7 +2035,8 @@ extension WorkflowController {
             rewritten: result.rewritten,
             llmStartedAt: timing.startedAt,
             llmFirstOutputAt: timing.firstOutputAt,
-            llmCompletedAt: result.rewritten == nil ? nil : Date()
+            llmCompletedAt: result.rewritten == nil ? nil : Date(),
+            timeoutBudget: llmRewriteTimeoutBudget(for: result.transcript)
         )
     }
 
@@ -1979,6 +2048,7 @@ extension WorkflowController {
         inputContext: InputContextSnapshot?,
         multimodalHandlesPersona: Bool,
         mergedLLMResult: String? = nil,
+        mergedLLMTimeoutBudget: LLMRewriteTimeoutBudget? = nil,
         sessionID: UUID,
         record: inout HistoryRecord,
         pipelineTiming: inout HistoryPipelineTiming
@@ -2024,27 +2094,58 @@ extension WorkflowController {
             pipelineTiming.llmProcessingCompletedAt = pipelineTiming.llmProcessingCompletedAt ?? Date()
             if let startedAt = pipelineTiming.llmProcessingStartedAt,
                let completedAt = pipelineTiming.llmProcessingCompletedAt {
+                let timeoutBudget = mergedLLMTimeoutBudget ?? llmRewriteTimeoutBudget(for: transcribedText)
                 pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
                     startedAt: startedAt,
                     completedAt: completedAt,
-                    timeoutMilliseconds: nil,
+                    timeoutMilliseconds: timeoutBudget.totalMilliseconds,
                     outcome: .completed,
-                    usedTranscriptFallback: false
+                    usedTranscriptFallback: false,
+                    baseTimeoutMilliseconds: timeoutBudget.baseMilliseconds,
+                    estimatedInputUnits: timeoutBudget.estimatedInputUnits,
+                    firstOutputTimeoutMilliseconds: timeoutBudget.firstOutputMilliseconds,
+                    stallTimeoutMilliseconds: timeoutBudget.stallMilliseconds
                 )
             }
             record.pipelineTiming = pipelineTiming
             rewriteOutput = merged
             logPipelineEvent("llm-processing-completed", for: record)
         } else {
-            await MainActor.run { self.overlayController.transitionToLLMPhase() }
+            let timeoutBudget = llmRewriteTimeoutBudget(for: transcribedText)
+            await MainActor.run {
+                self.overlayController.transitionToLLMPhase(timeout: timeoutBudget.totalSeconds)
+            }
+            startProcessingWatchdog(
+                sessionID: sessionID,
+                timeoutSeconds: timeoutBudget.watchdogSeconds
+            )
             pipelineTiming.llmProcessingStartedAt = Date()
             record.pipelineTiming = pipelineTiming
             saveHistoryRecord(record)
             logPipelineEvent("llm-processing-started", for: record)
             let llmStartedAt = pipelineTiming.llmProcessingStartedAt ?? Date()
             let llmTimeoutMilliseconds = LLMProcessingOutcomeDiagnostics.clampedMilliseconds(
-                for: llmTimeoutAfterTranscription
+                for: timeoutBudget.totalSeconds
             )
+            func makeLLMOutcome(
+                completedAt: Date,
+                outcome: LLMProcessingOutcome,
+                usedTranscriptFallback: Bool,
+                timeoutKind: LLMRewriteTimeoutKind? = nil
+            ) -> LLMProcessingOutcomeDiagnostics {
+                LLMProcessingOutcomeDiagnostics(
+                    startedAt: llmStartedAt,
+                    completedAt: completedAt,
+                    timeoutMilliseconds: llmTimeoutMilliseconds,
+                    outcome: outcome,
+                    usedTranscriptFallback: usedTranscriptFallback,
+                    baseTimeoutMilliseconds: timeoutBudget.baseMilliseconds,
+                    estimatedInputUnits: timeoutBudget.estimatedInputUnits,
+                    firstOutputTimeoutMilliseconds: timeoutBudget.firstOutputMilliseconds,
+                    stallTimeoutMilliseconds: timeoutBudget.stallMilliseconds,
+                    timeoutKind: timeoutKind
+                )
+            }
 
             do {
                 let rewriteResult = try await generateRewrite(
@@ -2061,7 +2162,7 @@ extension WorkflowController {
                     sessionID: sessionID,
                     showsStreamingPreview: WorkflowOverlayPresentationPolicy
                         .shouldShowLLMStreamingPreviewAfterTranscription(),
-                    timeout: llmTimeoutAfterTranscription
+                    timeoutBudget: timeoutBudget
                 )
 
                 try ensureProcessingIsActive(sessionID)
@@ -2071,38 +2172,34 @@ extension WorkflowController {
                 if rewriteResult.text.isEmpty {
                     ErrorLogStore.shared.log("Persona rewrite returned an empty response, using transcript as fallback")
                     rewriteOutput = transcribedText
-                    pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                        startedAt: llmStartedAt,
+                    pipelineTiming.llmOutcome = makeLLMOutcome(
                         completedAt: rewriteResult.completedAt,
-                        timeoutMilliseconds: llmTimeoutMilliseconds,
                         outcome: .emptyResponseFallback,
                         usedTranscriptFallback: true
                     )
                 } else {
                     rewriteOutput = rewriteResult.text
-                    pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                        startedAt: llmStartedAt,
+                    pipelineTiming.llmOutcome = makeLLMOutcome(
                         completedAt: rewriteResult.completedAt,
-                        timeoutMilliseconds: llmTimeoutMilliseconds,
                         outcome: .completed,
                         usedTranscriptFallback: false
                     )
                 }
                 logPipelineEvent("llm-processing-completed", for: record)
-            } catch is LLMRequestTimeoutError {
+            } catch let timeoutError as LLMRequestTimeoutError {
                 // Timeout: insert transcript as fallback so the user isn't left empty-handed
                 // after waiting the full timeout period. Log for diagnostics.
                 ErrorLogStore.shared.log(
-                    "Persona rewrite timed out after \(String(format: "%.2f", llmTimeoutAfterTranscription))s, using transcript as fallback"
+                    "Persona rewrite timed out after \(String(format: "%.2f", timeoutError.timeoutSeconds))s " +
+                        "(\(timeoutError.kind.rawValue)), using transcript as fallback"
                 )
                 let completedAt = Date()
                 pipelineTiming.llmProcessingCompletedAt = completedAt
-                pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                    startedAt: llmStartedAt,
+                pipelineTiming.llmOutcome = makeLLMOutcome(
                     completedAt: completedAt,
-                    timeoutMilliseconds: llmTimeoutMilliseconds,
                     outcome: .timedOutFallback,
-                    usedTranscriptFallback: true
+                    usedTranscriptFallback: true,
+                    timeoutKind: timeoutError.kind
                 )
                 rewriteOutput = transcribedText
             } catch let error where Self.isServiceOverloadedError(error) {
@@ -2111,10 +2208,8 @@ extension WorkflowController {
                 ErrorLogStore.shared.log("LLM service overloaded after retries, using transcript as fallback")
                 let completedAt = Date()
                 pipelineTiming.llmProcessingCompletedAt = completedAt
-                pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                    startedAt: llmStartedAt,
+                pipelineTiming.llmOutcome = makeLLMOutcome(
                     completedAt: completedAt,
-                    timeoutMilliseconds: llmTimeoutMilliseconds,
                     outcome: .serviceOverloadedFallback,
                     usedTranscriptFallback: true
                 )
@@ -2125,10 +2220,8 @@ extension WorkflowController {
                 )
                 let completedAt = Date()
                 pipelineTiming.llmProcessingCompletedAt = completedAt
-                pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                    startedAt: llmStartedAt,
+                pipelineTiming.llmOutcome = makeLLMOutcome(
                     completedAt: completedAt,
-                    timeoutMilliseconds: llmTimeoutMilliseconds,
                     outcome: .configurationUnavailableFallback,
                     usedTranscriptFallback: true
                 )
@@ -2140,10 +2233,8 @@ extension WorkflowController {
                 )
                 let completedAt = Date()
                 pipelineTiming.llmProcessingCompletedAt = completedAt
-                pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                    startedAt: llmStartedAt,
+                pipelineTiming.llmOutcome = makeLLMOutcome(
                     completedAt: completedAt,
-                    timeoutMilliseconds: llmTimeoutMilliseconds,
                     outcome: .billingFallback,
                     usedTranscriptFallback: true
                 )
@@ -2152,10 +2243,8 @@ extension WorkflowController {
             } catch let error where error is CancellationError || (error as? URLError)?.code == .cancelled {
                 let completedAt = Date()
                 pipelineTiming.llmProcessingCompletedAt = completedAt
-                pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                    startedAt: llmStartedAt,
+                pipelineTiming.llmOutcome = makeLLMOutcome(
                     completedAt: completedAt,
-                    timeoutMilliseconds: llmTimeoutMilliseconds,
                     outcome: .cancelled,
                     usedTranscriptFallback: false
                 )
@@ -2168,10 +2257,8 @@ extension WorkflowController {
                 ErrorLogStore.shared.log("Persona rewrite request failed, using transcript as fallback")
                 let completedAt = Date()
                 pipelineTiming.llmProcessingCompletedAt = completedAt
-                pipelineTiming.llmOutcome = LLMProcessingOutcomeDiagnostics(
-                    startedAt: llmStartedAt,
+                pipelineTiming.llmOutcome = makeLLMOutcome(
                     completedAt: completedAt,
-                    timeoutMilliseconds: llmTimeoutMilliseconds,
                     outcome: .requestFailedFallback,
                     usedTranscriptFallback: true
                 )

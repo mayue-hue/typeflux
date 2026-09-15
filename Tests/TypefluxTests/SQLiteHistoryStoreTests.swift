@@ -101,7 +101,12 @@ final class SQLiteHistoryStoreTests: XCTestCase {
             completedAt: startedAt.addingTimeInterval(6),
             timeoutMilliseconds: 3_000,
             outcome: .timedOutFallback,
-            usedTranscriptFallback: true
+            usedTranscriptFallback: true,
+            baseTimeoutMilliseconds: 3_000,
+            estimatedInputUnits: 253,
+            firstOutputTimeoutMilliseconds: 4_000,
+            stallTimeoutMilliseconds: 10_000,
+            timeoutKind: .total
         )
         var record = makeRecord(transcriptText: "diagnostic transcript")
         record.pipelineTiming = HistoryPipelineTiming(asrRace: race, llmOutcome: llmOutcome)
@@ -120,6 +125,9 @@ final class SQLiteHistoryStoreTests: XCTestCase {
         XCTAssertTrue(markdown.contains("ASR race selected: local"))
         XCTAssertTrue(markdown.contains("Cloud: 3000 ms (cancelled)"))
         XCTAssertTrue(markdown.contains("LLM outcome: timedOutFallback"))
+        XCTAssertTrue(markdown.contains("Base timeout: 3000 ms"))
+        XCTAssertTrue(markdown.contains("Estimated input units: 253"))
+        XCTAssertTrue(markdown.contains("Timeout kind: total"))
         XCTAssertTrue(markdown.contains("Used transcript fallback: true"))
     }
 

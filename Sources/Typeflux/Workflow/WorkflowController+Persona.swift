@@ -176,8 +176,11 @@ extension WorkflowController {
 
         cancelCurrentProcessing(resetUI: false, reason: L("workflow.cancel.newRecording"))
         let sessionID = beginProcessingSession()
-        let fallbackWaitSeconds = settingsStore.voiceProcessingTimeout.seconds
-        startProcessingWatchdog(sessionID: sessionID)
+        let timeoutBudget = llmRewriteTimeoutBudget(for: context.selectedText)
+        startProcessingWatchdog(
+            sessionID: sessionID,
+            timeoutSeconds: timeoutBudget.watchdogSeconds
+        )
 
         var record = HistoryRecord(
             date: Date(),
@@ -195,7 +198,7 @@ extension WorkflowController {
         Task { @MainActor in
             guard self.processingSessionID == sessionID else { return }
             self.appState.setStatus(.processing)
-            self.overlayController.showLLMProcessing(timeout: fallbackWaitSeconds)
+            self.overlayController.showLLMProcessing(timeout: timeoutBudget.totalSeconds)
         }
 
         let shouldShowResultDialog = shouldPresentResultDialog(for: context.snapshot)
@@ -214,7 +217,8 @@ extension WorkflowController {
                     ),
                     sessionID: sessionID,
                     showsStreamingPreview: WorkflowOverlayPresentationPolicy
-                        .shouldShowLLMStreamingPreviewForPersonaSelectionApplication()
+                        .shouldShowLLMStreamingPreviewForPersonaSelectionApplication(),
+                    timeoutBudget: timeoutBudget
                 )
                 try ensureProcessingIsActive(sessionID)
 

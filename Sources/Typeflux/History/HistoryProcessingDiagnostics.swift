@@ -87,6 +87,11 @@ struct LLMProcessingOutcomeDiagnostics: Codable, Equatable, Sendable {
     let startedAt: Date
     let completedAt: Date
     let timeoutMilliseconds: Int?
+    let baseTimeoutMilliseconds: Int?
+    let estimatedInputUnits: Int?
+    let firstOutputTimeoutMilliseconds: Int?
+    let stallTimeoutMilliseconds: Int?
+    let timeoutKind: LLMRewriteTimeoutKind?
     let durationMilliseconds: Int
     let outcome: LLMProcessingOutcome
     let usedTranscriptFallback: Bool
@@ -96,11 +101,21 @@ struct LLMProcessingOutcomeDiagnostics: Codable, Equatable, Sendable {
         completedAt: Date,
         timeoutMilliseconds: Int?,
         outcome: LLMProcessingOutcome,
-        usedTranscriptFallback: Bool
+        usedTranscriptFallback: Bool,
+        baseTimeoutMilliseconds: Int? = nil,
+        estimatedInputUnits: Int? = nil,
+        firstOutputTimeoutMilliseconds: Int? = nil,
+        stallTimeoutMilliseconds: Int? = nil,
+        timeoutKind: LLMRewriteTimeoutKind? = nil
     ) {
         self.startedAt = startedAt
         self.completedAt = completedAt
         self.timeoutMilliseconds = timeoutMilliseconds.map { max(0, $0) }
+        self.baseTimeoutMilliseconds = baseTimeoutMilliseconds.map { max(0, $0) }
+        self.estimatedInputUnits = estimatedInputUnits.map { max(0, $0) }
+        self.firstOutputTimeoutMilliseconds = firstOutputTimeoutMilliseconds.map { max(0, $0) }
+        self.stallTimeoutMilliseconds = stallTimeoutMilliseconds.map { max(0, $0) }
+        self.timeoutKind = timeoutKind
         durationMilliseconds = Self.clampedMilliseconds(
             for: completedAt.timeIntervalSince(startedAt)
         )

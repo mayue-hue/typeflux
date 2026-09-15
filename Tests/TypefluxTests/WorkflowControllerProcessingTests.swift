@@ -1100,6 +1100,19 @@ final class WorkflowControllerProcessingTests: XCTestCase {
         XCTAssertEqual(controller.llmTimeoutAfterTranscription, 30)
     }
 
+    func testPersonaRewriteTimeoutBudgetScalesWithSourceText() {
+        let controller = makeWorkflowController(configureSettings: { settingsStore in
+            settingsStore.voiceProcessingTimeout = .threeSeconds
+        })
+
+        let shortBudget = controller.llmRewriteTimeoutBudget(for: String(repeating: "中", count: 100))
+        let longBudget = controller.llmRewriteTimeoutBudget(for: String(repeating: "中", count: 1_000))
+
+        XCTAssertEqual(shortBudget.totalSeconds, 3)
+        XCTAssertEqual(longBudget.totalSeconds, 30)
+        XCTAssertEqual(longBudget.watchdogSeconds, 40)
+    }
+
     func testProcessingWatchdogIsIndependentFromFallbackWaitSetting() {
         let controller = makeWorkflowController(configureSettings: { settingsStore in
             settingsStore.voiceProcessingTimeout = .oneSecond
@@ -1150,10 +1163,80 @@ final class WorkflowControllerProcessingTests: XCTestCase {
                     personaPrompt: "Rewrite this"
                 ),
                 sessionID: controller.processingSessionID,
-                timeout: 0.01
+                timeoutBudget: .fixed(0.01)
             )
         }) { error in
-            XCTAssertTrue(error is WorkflowController.LLMRequestTimeoutError)
+            XCTAssertEqual(
+                (error as? WorkflowController.LLMRequestTimeoutError)?.kind,
+                .firstOutput
+            )
+        }
+    }
+
+    func testGenerateRewriteContinuesPastFirstOutputDeadlineWhileStreamMakesProgress() async throws {
+        let controller = makeWorkflowController(
+            llmService: ProgressingProcessingLLMService(
+                chunks: ["one", " two", " three", " four"],
+                delay: .milliseconds(40)
+            ),
+            configureSettings: configureReadyLLM
+        )
+        let budget = LLMRewriteTimeoutBudget(
+            estimatedInputUnits: 200,
+            baseSeconds: 0.05,
+            firstOutputSeconds: 0.05,
+            stallSeconds: 0.1,
+            totalSeconds: 0.3,
+            watchdogSeconds: 0.4
+        )
+
+        let result = try await controller.generateRewrite(
+            request: LLMRewriteRequest(
+                mode: .rewriteTranscript,
+                sourceText: "hello",
+                spokenInstruction: nil,
+                personaPrompt: "Rewrite this"
+            ),
+            sessionID: controller.processingSessionID,
+            timeoutBudget: budget
+        )
+
+        XCTAssertEqual(result.text, "one two three four")
+    }
+
+    func testGenerateRewriteDetectsStalledStreamAfterFirstOutput() async {
+        let controller = makeWorkflowController(
+            llmService: ProgressingProcessingLLMService(
+                chunks: ["first", "late"],
+                delay: .milliseconds(200)
+            ),
+            configureSettings: configureReadyLLM
+        )
+        let budget = LLMRewriteTimeoutBudget(
+            estimatedInputUnits: 200,
+            baseSeconds: 0.05,
+            firstOutputSeconds: 0.05,
+            stallSeconds: 0.05,
+            totalSeconds: 0.3,
+            watchdogSeconds: 0.4
+        )
+
+        await XCTAssertThrowsErrorAsync({
+            try await controller.generateRewrite(
+                request: LLMRewriteRequest(
+                    mode: .rewriteTranscript,
+                    sourceText: "hello",
+                    spokenInstruction: nil,
+                    personaPrompt: "Rewrite this"
+                ),
+                sessionID: controller.processingSessionID,
+                timeoutBudget: budget
+            )
+        }) { error in
+            XCTAssertEqual(
+                (error as? WorkflowController.LLMRequestTimeoutError)?.kind,
+                .stalledOutput
+            )
         }
     }
 
@@ -1197,6 +1280,8 @@ final class WorkflowControllerProcessingTests: XCTestCase {
         XCTAssertEqual(savedRecord?.applyStatus, .succeeded)
         XCTAssertEqual(savedRecord?.pipelineTiming?.llmOutcome?.outcome, .timedOutFallback)
         XCTAssertEqual(savedRecord?.pipelineTiming?.llmOutcome?.timeoutMilliseconds, 10)
+        XCTAssertEqual(savedRecord?.pipelineTiming?.llmOutcome?.baseTimeoutMilliseconds, 10)
+        XCTAssertEqual(savedRecord?.pipelineTiming?.llmOutcome?.timeoutKind, .firstOutput)
         XCTAssertEqual(savedRecord?.pipelineTiming?.llmOutcome?.usedTranscriptFallback, true)
     }
 
@@ -3175,6 +3260,42 @@ private final class SlowProcessingLLMService: LLMService {
                 do {
                     try await Task.sleep(for: delay)
                     continuation.yield("late")
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func complete(systemPrompt _: String, userPrompt _: String) async throws -> String {
+        ""
+    }
+
+    func completeJSON(systemPrompt _: String, userPrompt _: String, schema _: LLMJSONSchema) async throws -> String {
+        "{}"
+    }
+}
+
+private final class ProgressingProcessingLLMService: LLMService {
+    private let chunks: [String]
+    private let delay: Duration
+
+    init(chunks: [String], delay: Duration) {
+        self.chunks = chunks
+        self.delay = delay
+    }
+
+    func streamRewrite(request _: LLMRewriteRequest) -> AsyncThrowingStream<String, Error> {
+        let chunks = chunks
+        let delay = delay
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    for chunk in chunks {
+                        continuation.yield(chunk)
+                        try await Task.sleep(for: delay)
+                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
