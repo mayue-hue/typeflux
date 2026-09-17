@@ -230,10 +230,14 @@ private extension VoiceHandleView {
         imageView.autoresizingMask = [.width, .height]
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.contentTintColor = .white
-        imageView.image = NSImage(
-            systemSymbolName: "mic.fill",
-            accessibilityDescription: L("mouseVoice.handle.start")
+        let symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: MouseVoiceHandleGeometry.iconSize,
+            weight: .semibold
         )
+        imageView.image = NSImage(
+            systemSymbolName: "infinity",
+            accessibilityDescription: L("mouseVoice.handle.start")
+        )?.withSymbolConfiguration(symbolConfiguration)
         visualContainer.addSubview(imageView)
     }
 
