@@ -69,9 +69,15 @@ final class MouseVoiceInputTests: XCTestCase {
         let store = SettingsStore(defaults: defaults)
 
         XCTAssertTrue(store.mouseVoiceInputEnabled)
+        XCTAssertEqual(store.mouseVoiceActivationStyle, .dragRelease)
 
         store.mouseVoiceInputEnabled = false
+        store.mouseVoiceActivationStyle = .hoverDwell
 
         XCTAssertFalse(store.mouseVoiceInputEnabled)
+        XCTAssertEqual(store.mouseVoiceActivationStyle, .hoverDwell)
+
+        store.mouseVoiceActivationStyle = .click
+        XCTAssertEqual(store.mouseVoiceActivationStyle, .click)
     }
 }

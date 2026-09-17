@@ -107,6 +107,7 @@ final class StudioViewModel: ObservableObject {
     @Published var preferredMicrophoneID: String
     @Published var instantVoiceInputEnabled: Bool
     @Published var mouseVoiceInputEnabled: Bool
+    @Published var mouseVoiceActivationStyle: MouseVoiceActivationStyle
     @Published var muteSystemOutputDuringRecording: Bool
     @Published var soundEffectsEnabled: Bool
     @Published var voiceProcessingTimeout: VoiceProcessingTimeout
@@ -337,6 +338,7 @@ final class StudioViewModel: ObservableObject {
         preferredMicrophoneID = settingsStore.preferredMicrophoneID
         instantVoiceInputEnabled = settingsStore.instantVoiceInputEnabled
         mouseVoiceInputEnabled = settingsStore.mouseVoiceInputEnabled
+        mouseVoiceActivationStyle = settingsStore.mouseVoiceActivationStyle
         muteSystemOutputDuringRecording = settingsStore.muteSystemOutputDuringRecording
         soundEffectsEnabled = settingsStore.soundEffectsEnabled
         voiceProcessingTimeout = settingsStore.voiceProcessingTimeout
@@ -1117,6 +1119,11 @@ final class StudioViewModel: ObservableObject {
     func setMouseVoiceInputEnabled(_ value: Bool) {
         mouseVoiceInputEnabled = value
         settingsStore.mouseVoiceInputEnabled = value
+    }
+
+    func setMouseVoiceActivationStyle(_ value: MouseVoiceActivationStyle) {
+        mouseVoiceActivationStyle = value
+        settingsStore.mouseVoiceActivationStyle = value
     }
 
     func setSoundEffectsEnabled(_ value: Bool) {

@@ -14,10 +14,12 @@ final class MouseVoiceInputController {
     private var workspaceObserver: NSObjectProtocol?
     private var pendingLongPress: DispatchWorkItem?
     private var pendingDismissal: DispatchWorkItem?
+    private var hoverTimer: Timer?
+    private var hoverStartedAt: TimeInterval?
     private var mouseDownLocation: CGPoint?
     private var candidateTarget: MouseVoiceTarget?
     private var handleTarget: MouseVoiceTarget?
-    private var selectionToRestoreOnMouseUp: MouseVoiceTarget?
+    private var clickPending = false
 
     init(
         settingsStore: SettingsStore,
@@ -26,6 +28,10 @@ final class MouseVoiceInputController {
         self.settingsStore = settingsStore
         self.targetResolver = targetResolver
         handleController = VoiceHandleWindowController()
+        handleController.onPointerEntered = { [weak self] in self?.handlePointerEntered() }
+        handleController.onPointerExited = { [weak self] in self?.handlePointerExited() }
+        handleController.onPressBegan = { [weak self] in self?.handleHandlePressBegan() }
+        handleController.onPressEnded = { [weak self] in self?.handleHandlePressEnded() }
     }
 
     deinit {
@@ -34,12 +40,13 @@ final class MouseVoiceInputController {
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
+        hoverTimer?.invalidate()
     }
 
     func start() {
         stopMonitoring()
         globalMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .mouseMoved]
+            matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged]
         ) { [weak self] event in
             Task { @MainActor [weak self] in self?.handle(event) }
         }
@@ -75,8 +82,11 @@ final class MouseVoiceInputController {
         workspaceObserver = nil
         cancelPendingLongPress()
         cancelPendingDismissal()
+        cancelHoverProgress()
     }
+}
 
+private extension MouseVoiceInputController {
     private func handle(_ event: NSEvent) {
         let location = NSEvent.mouseLocation
         switch event.type {
@@ -86,18 +96,12 @@ final class MouseVoiceInputController {
             handleMouseDragged(to: location)
         case .leftMouseUp:
             handleMouseUp(at: location)
-        case .mouseMoved:
-            activateHandleIfNeeded(at: location)
         default:
             break
         }
     }
 
     private func handleMouseDown(at location: CGPoint) {
-        if handleController.contains(location) {
-            activateHandleIfNeeded(at: location)
-            return
-        }
         resetInteraction()
         guard settingsStore.mouseVoiceInputEnabled,
               let target = targetResolver.target(at: location),
@@ -119,7 +123,8 @@ final class MouseVoiceInputController {
 
     private func handleMouseDragged(to location: CGPoint) {
         if handleController.isPresented {
-            activateHandleIfNeeded(at: location)
+            guard settingsStore.mouseVoiceActivationStyle == .dragRelease else { return }
+            handleController.setArmed(handleController.contains(location))
             return
         }
         guard let mouseDownLocation,
@@ -137,21 +142,33 @@ final class MouseVoiceInputController {
     private func handleMouseUp(at location: CGPoint) {
         cancelPendingLongPress()
         candidateTarget = nil
-        mouseDownLocation = nil
-
-        if let target = selectionToRestoreOnMouseUp {
-            selectionToRestoreOnMouseUp = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
-                self?.targetResolver.restoreSelection(for: target)
-            }
+        guard handleController.isPresented else {
+            mouseDownLocation = nil
+            return
         }
 
-        if handleController.isPresented {
-            if handleController.contains(location) {
-                activateHandleIfNeeded(at: location)
+        let style = settingsStore.mouseVoiceActivationStyle
+        let isInsideHandle = handleController.contains(location)
+        if let target = handleTarget {
+            targetResolver.restoreSelection(for: target)
+        }
+        mouseDownLocation = nil
+
+        switch style {
+        case .dragRelease:
+            if isInsideHandle {
+                triggerRecording()
             } else {
-                scheduleHandleDismissal()
+                resetInteraction()
             }
+        case .hoverDwell:
+            scheduleHandleDismissal()
+            if isInsideHandle {
+                handlePointerEntered()
+            }
+        case .click:
+            handleController.setArmed(isInsideHandle)
+            scheduleHandleDismissal()
         }
     }
 
@@ -170,29 +187,108 @@ final class MouseVoiceInputController {
         cancelPendingLongPress()
         candidateTarget = nil
         handleTarget = originalTarget
-        handleController.show(near: location)
+        handleController.show(
+            near: location,
+            activationStyle: settingsStore.mouseVoiceActivationStyle
+        )
     }
 
-    private func activateHandleIfNeeded(at location: CGPoint) {
-        guard handleController.contains(location), let target = handleTarget else { return }
-        cancelPendingDismissal()
-        handleController.hide()
-        handleTarget = nil
-
-        // Dragging from an editor can temporarily create a selection. Restore the insertion
-        // point before the workflow snapshots context, and once more after mouse-up.
-        targetResolver.restoreSelection(for: target)
-        if mouseDownLocation != nil {
-            selectionToRestoreOnMouseUp = target
+    private func handlePointerEntered() {
+        guard handleController.isPresented else { return }
+        switch settingsStore.mouseVoiceActivationStyle {
+        case .dragRelease:
+            guard mouseDownLocation != nil else { return }
+            handleController.setArmed(true)
+        case .hoverDwell:
+            guard mouseDownLocation == nil else { return }
+            cancelPendingDismissal()
+            handleController.setArmed(true)
+            startHoverProgress()
+        case .click:
+            guard mouseDownLocation == nil else { return }
+            cancelPendingDismissal()
+            handleController.setArmed(true)
         }
+    }
+
+    private func handlePointerExited() {
+        guard handleController.isPresented else { return }
+        clickPending = false
+        cancelHoverProgress()
+        handleController.setArmed(false)
+        if mouseDownLocation == nil,
+           settingsStore.mouseVoiceActivationStyle != .dragRelease {
+            scheduleHandleDismissal()
+        }
+    }
+
+    private func handleHandlePressBegan() {
+        guard handleController.isPresented,
+              mouseDownLocation == nil,
+              settingsStore.mouseVoiceActivationStyle == .click else {
+            return
+        }
+        cancelPendingDismissal()
+        clickPending = true
+        handleController.setPressed(true)
+    }
+
+    private func handleHandlePressEnded() {
+        handleController.setPressed(false)
+        guard clickPending,
+              settingsStore.mouseVoiceActivationStyle == .click else {
+            return
+        }
+        clickPending = false
+        triggerRecording()
+    }
+
+    private func startHoverProgress() {
+        cancelHoverProgress(resetVisuals: false)
+        hoverStartedAt = ProcessInfo.processInfo.systemUptime
+        handleController.setProgress(0)
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.advanceHoverProgress() }
+        }
+        hoverTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func advanceHoverProgress() {
+        guard settingsStore.mouseVoiceActivationStyle == .hoverDwell,
+              handleController.isPresented,
+              mouseDownLocation == nil,
+              let hoverStartedAt else {
+            cancelHoverProgress()
+            return
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - hoverStartedAt
+        let progress = min(elapsed / MouseVoiceLongPressPolicy.hoverActivationDelay, 1)
+        handleController.setProgress(progress)
+        if progress >= 1 {
+            triggerRecording()
+        }
+    }
+
+    private func triggerRecording() {
+        guard let target = handleTarget else { return }
+        cancelPendingLongPress()
+        cancelPendingDismissal()
+        cancelHoverProgress(resetVisuals: false)
+        targetResolver.restoreSelection(for: target)
+        handleTarget = nil
+        mouseDownLocation = nil
+        candidateTarget = nil
+        clickPending = false
+        handleController.showCommitted()
         onRecordingRequested?()
+        handleController.hide(after: MouseVoiceLongPressPolicy.commitFeedbackDuration)
     }
 
     private func scheduleHandleDismissal() {
         cancelPendingDismissal()
         let workItem = DispatchWorkItem { [weak self] in
-            self?.handleController.hide()
-            self?.handleTarget = nil
+            self?.resetInteraction()
         }
         pendingDismissal = workItem
         DispatchQueue.main.asyncAfter(
@@ -211,19 +307,27 @@ final class MouseVoiceInputController {
         pendingDismissal = nil
     }
 
+    private func cancelHoverProgress(resetVisuals: Bool = true) {
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+        hoverStartedAt = nil
+        if resetVisuals {
+            handleController.setProgress(0)
+        }
+    }
+
     private func resetInteraction() {
         cancelPendingLongPress()
         cancelPendingDismissal()
+        cancelHoverProgress(resetVisuals: false)
         mouseDownLocation = nil
         candidateTarget = nil
         handleTarget = nil
-        selectionToRestoreOnMouseUp = nil
+        clickPending = false
         handleController.hide()
     }
 
     private func settingsDidChange() {
-        if !settingsStore.mouseVoiceInputEnabled {
-            resetInteraction()
-        }
+        resetInteraction()
     }
 }

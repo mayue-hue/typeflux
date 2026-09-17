@@ -138,7 +138,12 @@
 "settings.instantVoiceInput.title" = "按键即说";
 "settings.instantVoiceInput.subtitle" = "缩短麦克风启动耗时，按下快捷键就能直接说话，不漏任何内容。使用后麦克风会保持启用 15 分钟。";
 "settings.mouseVoice.title" = "鼠标语音输入";
-"settings.mouseVoice.subtitle" = "在输入框内静止长按约 0.8 秒，麦克风会出现在鼠标附近；将鼠标移入按钮即可开始持续录音。选中文本或提前拖动时不会触发。";
+"settings.mouseVoice.subtitle" = "在输入框内静止长按约 0.8 秒，在鼠标附近显示麦克风。选中文本或提前拖动时不会触发。";
+"settings.mouseVoice.activation.title" = "触发方式";
+"settings.mouseVoice.activation.subtitle" = "选择鼠标进入麦克风按钮后如何确认开始录音。";
+"settings.mouseVoice.activation.dragRelease" = "拖入后松开";
+"settings.mouseVoice.activation.hoverDwell" = "悬停蓄力";
+"settings.mouseVoice.activation.click" = "点击确认";
 "mouseVoice.handle.start" = "开始语音输入";
 "mouseVoice.handle.stop" = "结束语音输入";
 "settings.mute.title" = "录音时静音";

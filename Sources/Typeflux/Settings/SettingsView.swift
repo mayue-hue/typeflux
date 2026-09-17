@@ -2394,6 +2394,26 @@ struct StudioView: View {
                         .toggleStyle(.switch)
                     }
 
+                    if viewModel.mouseVoiceInputEnabled {
+                        Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+
+                        StudioSettingRow(
+                            title: L("settings.mouseVoice.activation.title"),
+                            subtitle: L("settings.mouseVoice.activation.subtitle")
+                        ) {
+                            StudioMenuPicker(
+                                options: MouseVoiceActivationStyle.allCases.map {
+                                    (label: $0.displayName, value: $0)
+                                },
+                                selection: Binding(
+                                    get: { viewModel.mouseVoiceActivationStyle },
+                                    set: viewModel.setMouseVoiceActivationStyle
+                                ),
+                                width: 168
+                            )
+                        }
+                    }
+
                     Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
 
                     StudioSettingRow(

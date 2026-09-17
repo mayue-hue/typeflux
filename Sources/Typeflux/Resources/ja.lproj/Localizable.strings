@@ -146,7 +146,12 @@
 "settings.instantVoiceInput.title" = "すぐに話す";
 "settings.instantVoiceInput.subtitle" = "マイクの起動時間を短縮し、ショートカットを押したらすぐに話せます。話した内容を最初から漏らさず記録します。使用後はマイクが15分間オンになります。";
 "settings.mouseVoice.title" = "マウス音声入力";
-"settings.mouseVoice.subtitle" = "入力欄で約0.8秒動かさずに長押しし、近くに表示されたマイクへポインタを移動すると連続録音を開始します。文字選択や早いドラッグでは起動しません。";
+"settings.mouseVoice.subtitle" = "入力欄で約0.8秒動かさずに長押しすると、ポインタの近くにマイクが表示されます。文字選択や早いドラッグでは起動しません。";
+"settings.mouseVoice.activation.title" = "起動方法";
+"settings.mouseVoice.activation.subtitle" = "ポインタがマイクボタンに入った後、録音開始を確定する方法を選びます。";
+"settings.mouseVoice.activation.dragRelease" = "ドラッグして離す";
+"settings.mouseVoice.activation.hoverDwell" = "ホバーで充填";
+"settings.mouseVoice.activation.click" = "クリックで確定";
 "mouseVoice.handle.start" = "音声入力を開始";
 "mouseVoice.handle.stop" = "音声入力を終了";
 "settings.mute.title" = "録音中にミュートする";

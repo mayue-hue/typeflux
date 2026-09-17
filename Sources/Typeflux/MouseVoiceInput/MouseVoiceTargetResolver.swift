@@ -246,6 +246,8 @@ enum MouseVoiceLongPressPolicy {
     static let activationDelay: TimeInterval = 0.8
     static let movementTolerance: CGFloat = 6
     static let hoverTimeout: TimeInterval = 3
+    static let hoverActivationDelay: TimeInterval = 0.45
+    static let commitFeedbackDuration: TimeInterval = 0.16
 
     static func exceedsMovementTolerance(from start: CGPoint, to current: CGPoint) -> Bool {
         hypot(current.x - start.x, current.y - start.y) > movementTolerance

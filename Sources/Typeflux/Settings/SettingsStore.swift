@@ -91,6 +91,25 @@ enum VoiceProcessingTimeout: Int, CaseIterable, Identifiable {
     }
 }
 
+enum MouseVoiceActivationStyle: String, CaseIterable, Identifiable {
+    case dragRelease
+    case hoverDwell
+    case click
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .dragRelease:
+            L("settings.mouseVoice.activation.dragRelease")
+        case .hoverDwell:
+            L("settings.mouseVoice.activation.hoverDwell")
+        case .click:
+            L("settings.mouseVoice.activation.click")
+        }
+    }
+}
+
 final class SettingsStore {
     struct TextLLMConfiguration {
         let provider: LLMRemoteProvider
@@ -215,6 +234,20 @@ final class SettingsStore {
         set {
             guard mouseVoiceInputEnabled != newValue else { return }
             defaults.set(newValue, forKey: "mouseVoice.enabled")
+            NotificationCenter.default.post(name: .mouseVoiceInputDidChange, object: self)
+        }
+    }
+
+    var mouseVoiceActivationStyle: MouseVoiceActivationStyle {
+        get {
+            guard let rawValue = defaults.string(forKey: "mouseVoice.activationStyle") else {
+                return .dragRelease
+            }
+            return MouseVoiceActivationStyle(rawValue: rawValue) ?? .dragRelease
+        }
+        set {
+            guard mouseVoiceActivationStyle != newValue else { return }
+            defaults.set(newValue.rawValue, forKey: "mouseVoice.activationStyle")
             NotificationCenter.default.post(name: .mouseVoiceInputDidChange, object: self)
         }
     }
