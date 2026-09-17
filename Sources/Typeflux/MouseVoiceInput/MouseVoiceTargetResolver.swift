@@ -215,7 +215,7 @@ enum MouseVoiceHandlePlacement {
         visibleFrame: CGRect
     ) -> CGPoint {
         let edgeInset: CGFloat = 7
-        let pointerGap: CGFloat = 14
+        let pointerGap: CGFloat = 8
         let preferredOrigin = CGPoint(
             x: point.x - handleSize.width / 2,
             y: point.y - handleSize.height - pointerGap
@@ -242,12 +242,21 @@ enum MouseVoiceHandlePlacement {
     }
 }
 
+enum MouseVoiceHandleGeometry {
+    static let canvasSize = CGSize(width: 64, height: 64)
+    static let buttonSize: CGFloat = 40
+    static let ringDiameter: CGFloat = 48
+    static let interactionInset: CGFloat = 7
+    static let maximumMagneticOffset: CGFloat = 3.5
+    static let maximumVisualScale: CGFloat = 1.12
+}
+
 enum MouseVoiceLongPressPolicy {
     static let activationDelay: TimeInterval = 0.8
     static let movementTolerance: CGFloat = 6
     static let hoverTimeout: TimeInterval = 3
-    static let hoverActivationDelay: TimeInterval = 0.45
-    static let commitFeedbackDuration: TimeInterval = 0.16
+    static let hoverActivationDelay: TimeInterval = 0.58
+    static let commitFeedbackDuration: TimeInterval = 0.28
 
     static func exceedsMovementTolerance(from start: CGPoint, to current: CGPoint) -> Bool {
         hypot(current.x - start.x, current.y - start.y) > movementTolerance

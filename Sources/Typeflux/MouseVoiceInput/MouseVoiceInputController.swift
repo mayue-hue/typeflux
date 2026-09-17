@@ -20,6 +20,7 @@ final class MouseVoiceInputController {
     private var candidateTarget: MouseVoiceTarget?
     private var handleTarget: MouseVoiceTarget?
     private var clickPending = false
+    private var pointerInsideHandle = false
 
     init(
         settingsStore: SettingsStore,
@@ -46,7 +47,7 @@ final class MouseVoiceInputController {
     func start() {
         stopMonitoring()
         globalMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged]
+            matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .mouseMoved]
         ) { [weak self] event in
             Task { @MainActor [weak self] in self?.handle(event) }
         }
@@ -96,6 +97,8 @@ private extension MouseVoiceInputController {
             handleMouseDragged(to: location)
         case .leftMouseUp:
             handleMouseUp(at: location)
+        case .mouseMoved:
+            updatePointerPosition(location)
         default:
             break
         }
@@ -123,8 +126,7 @@ private extension MouseVoiceInputController {
 
     private func handleMouseDragged(to location: CGPoint) {
         if handleController.isPresented {
-            guard settingsStore.mouseVoiceActivationStyle == .dragRelease else { return }
-            handleController.setArmed(handleController.contains(location))
+            updatePointerPosition(location)
             return
         }
         guard let mouseDownLocation,
@@ -164,6 +166,7 @@ private extension MouseVoiceInputController {
         case .hoverDwell:
             scheduleHandleDismissal()
             if isInsideHandle {
+                pointerInsideHandle = false
                 handlePointerEntered()
             }
         case .click:
@@ -194,7 +197,8 @@ private extension MouseVoiceInputController {
     }
 
     private func handlePointerEntered() {
-        guard handleController.isPresented else { return }
+        guard handleController.isPresented, !pointerInsideHandle else { return }
+        pointerInsideHandle = true
         switch settingsStore.mouseVoiceActivationStyle {
         case .dragRelease:
             guard mouseDownLocation != nil else { return }
@@ -212,7 +216,8 @@ private extension MouseVoiceInputController {
     }
 
     private func handlePointerExited() {
-        guard handleController.isPresented else { return }
+        guard handleController.isPresented, pointerInsideHandle else { return }
+        pointerInsideHandle = false
         clickPending = false
         cancelHoverProgress()
         handleController.setArmed(false)
@@ -241,6 +246,16 @@ private extension MouseVoiceInputController {
         }
         clickPending = false
         triggerRecording()
+    }
+
+    private func updatePointerPosition(_ location: CGPoint) {
+        guard handleController.isPresented else { return }
+        handleController.updatePointer(at: location)
+        if handleController.contains(location) {
+            handlePointerEntered()
+        } else {
+            handlePointerExited()
+        }
     }
 
     private func startHoverProgress() {
@@ -312,7 +327,7 @@ private extension MouseVoiceInputController {
         hoverTimer = nil
         hoverStartedAt = nil
         if resetVisuals {
-            handleController.setProgress(0)
+            handleController.resetProgress(animated: true)
         }
     }
 
@@ -324,6 +339,7 @@ private extension MouseVoiceInputController {
         candidateTarget = nil
         handleTarget = nil
         clickPending = false
+        pointerInsideHandle = false
         handleController.hide()
     }
 

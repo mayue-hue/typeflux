@@ -28,7 +28,7 @@ final class MouseVoiceInputTests: XCTestCase {
             visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        XCTAssertEqual(origin, CGPoint(x: 381, y: 248))
+        XCTAssertEqual(origin, CGPoint(x: 381, y: 254))
     }
 
     func testHandleStaysInsideScreenNearBottomEdge() {
@@ -45,6 +45,21 @@ final class MouseVoiceInputTests: XCTestCase {
         let frame = CGRect(x: 100, y: 100, width: 38, height: 38)
         XCTAssertTrue(MouseVoiceHandlePlacement.contains(CGPoint(x: 96, y: 119), handleFrame: frame))
         XCTAssertFalse(MouseVoiceHandlePlacement.contains(CGPoint(x: 90, y: 119), handleFrame: frame))
+    }
+
+    func testHandleCanvasContainsLargestAnimatedRing() {
+        let animatedRingDiameter = MouseVoiceHandleGeometry.ringDiameter
+            * MouseVoiceHandleGeometry.maximumVisualScale
+            + MouseVoiceHandleGeometry.maximumMagneticOffset * 2
+
+        XCTAssertLessThanOrEqual(
+            animatedRingDiameter,
+            MouseVoiceHandleGeometry.canvasSize.width
+        )
+        XCTAssertLessThanOrEqual(
+            animatedRingDiameter,
+            MouseVoiceHandleGeometry.canvasSize.height
+        )
     }
 
     func testLongPressMovementToleranceRejectsDrag() {
