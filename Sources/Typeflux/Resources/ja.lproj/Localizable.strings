@@ -1051,11 +1051,11 @@
 "onboarding.shortcuts.replacement.appliedAlert.title" = "ショートカットを更新しました";
 "onboarding.shortcuts.replacement.appliedAlert.message" = "Typeflux は音声入力に %@、「何でも聞く」に %@×2 を使うようになりました。";
 "onboarding.shortcuts.replacement.restoredAlert.message" = "Typeflux はデフォルトの FN / 🌐 ショートカットに戻りました。";
-"onboarding.shortcuts.activation.hint" = "押し続けて話す、タップして録音をロックする";
-"onboarding.shortcuts.ask.hint" = "Fn を 2 回押して質問、または選択したテキストを書き換え";
-"onboarding.shortcuts.persona.hint" = "書き込みペルソナを切り替えるか適用する";
+"onboarding.shortcuts.activation.hint" = "話した内容を文字に変換";
+"onboarding.shortcuts.ask.hint" = "声で質問や選択文の編集";
+"onboarding.shortcuts.persona.hint" = "ペルソナ切替や選択文の書き換え";
 "onboarding.shortcuts.changeInSettings" = "「設定」→「音声ショートカット」でいつでもショートカットをカスタマイズできます。";
-"onboarding.shortcuts.history.hint" = "最近の履歴を開き、選択した結果を貼り付け";
+"onboarding.shortcuts.history.hint" = "履歴を確認して貼り付け";
 
 "onboarding.action.back" = "前へ";
 "onboarding.action.continue" = "次へ";
@@ -1372,7 +1372,7 @@
 "settings.shortcuts.auxiliaryUpdated" = "補助ショートカットを更新しました";
 "settings.shortcuts.auxiliaryUnset" = "補助ショートカットを解除しました";
 "settings.shortcuts.recordingAuxiliary" = "補助ショートカットを押すか、単一キーをダブルタップしてください。";
-"onboarding.shortcuts.auxiliary.hint" = "専用のペルソナで音声入力";
+"onboarding.shortcuts.auxiliary.hint" = "別のペルソナで音声入力";
 "onboarding.shortcuts.auxiliary.unset" = "ショートカット未設定。設定画面で登録してください。";
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "補助ショートカットは選択したキー + 左 Shift に切り替わります。独自の補助キー設定は保持されます。";
 "onboarding.shortcuts.auxiliary.active" = "補助ショートカット：%@";

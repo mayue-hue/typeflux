@@ -1062,10 +1062,10 @@
 "onboarding.shortcuts.replacement.appliedAlert.title" = "Shortcuts updated";
 "onboarding.shortcuts.replacement.appliedAlert.message" = "Typeflux now uses %@ for Voice Input and %@×2 for Ask Anything.";
 "onboarding.shortcuts.replacement.restoredAlert.message" = "Typeflux has restored the default FN / 🌐 shortcuts.";
-"onboarding.shortcuts.activation.hint" = "Hold to talk, tap to lock recording";
-"onboarding.shortcuts.ask.hint" = "Double-tap Fn to ask or rewrite selected text";
-"onboarding.shortcuts.persona.hint" = "Switch or apply a writing persona";
-"onboarding.shortcuts.history.hint" = "Open recent history and paste a selected result";
+"onboarding.shortcuts.activation.hint" = "Turn speech into text";
+"onboarding.shortcuts.ask.hint" = "Ask aloud or edit selected text";
+"onboarding.shortcuts.persona.hint" = "Switch personas or rewrite selected text";
+"onboarding.shortcuts.history.hint" = "Browse and paste past entries";
 "onboarding.shortcuts.changeInSettings" = "You can customize shortcuts anytime in Settings → Voice Shortcuts.";
 
 "onboarding.action.back" = "Previous";
@@ -1387,7 +1387,7 @@
 "settings.shortcuts.auxiliaryUpdated" = "Auxiliary shortcut updated";
 "settings.shortcuts.auxiliaryUnset" = "Auxiliary shortcut removed";
 "settings.shortcuts.recordingAuxiliary" = "Press your auxiliary shortcut, or double-tap a single key.";
-"onboarding.shortcuts.auxiliary.hint" = "Dictate with a separate persona";
+"onboarding.shortcuts.auxiliary.hint" = "Dictate with another persona";
 "onboarding.shortcuts.auxiliary.unset" = "No shortcut assigned. Configure one in Settings.";
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "The auxiliary shortcut follows the selected key + Left Shift. Custom auxiliary bindings are preserved.";
 "onboarding.shortcuts.auxiliary.active" = "Auxiliary shortcut: %@";

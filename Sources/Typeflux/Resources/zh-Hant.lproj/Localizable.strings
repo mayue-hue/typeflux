@@ -1058,10 +1058,10 @@
 "onboarding.shortcuts.replacement.appliedAlert.title" = "快捷鍵已更新";
 "onboarding.shortcuts.replacement.appliedAlert.message" = "Typeflux 現在使用 %@ 作為語音輸入快捷鍵，使用 %@×2 開啟「隨便問」。";
 "onboarding.shortcuts.replacement.restoredAlert.message" = "Typeflux 已恢復預設的 FN / 🌐 快捷鍵。";
-"onboarding.shortcuts.activation.hint" = "按住錄音，輕點鎖定錄製";
-"onboarding.shortcuts.ask.hint" = "連按兩次 Fn 提問，可選取文字改寫";
-"onboarding.shortcuts.persona.hint" = "切換或套用寫作人設";
-"onboarding.shortcuts.history.hint" = "打開最近歷史並貼上選取結果";
+"onboarding.shortcuts.activation.hint" = "把說的話輸入為文字";
+"onboarding.shortcuts.ask.hint" = "語音提問或修改選取文字";
+"onboarding.shortcuts.persona.hint" = "切換人設或改寫選取文字";
+"onboarding.shortcuts.history.hint" = "查看並貼上歷史內容";
 "onboarding.shortcuts.changeInSettings" = "隨時可在 設定 → 語音快捷鍵 中自訂快捷鍵。";
 
 "onboarding.action.back" = "上一步";
@@ -1383,7 +1383,7 @@
 "settings.shortcuts.auxiliaryUpdated" = "輔助快捷鍵已更新";
 "settings.shortcuts.auxiliaryUnset" = "輔助快捷鍵已取消綁定";
 "settings.shortcuts.recordingAuxiliary" = "按下輔助快捷鍵，或按兩下同一按鍵。";
-"onboarding.shortcuts.auxiliary.hint" = "使用獨立人設進行語音輸入";
+"onboarding.shortcuts.auxiliary.hint" = "用另一套人設輸入";
 "onboarding.shortcuts.auxiliary.unset" = "未綁定快捷鍵，請前往設定配置。";
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "輔助快捷鍵會同步使用所選按鍵 + 左 Shift，現有的自訂輔助綁定會保留。";
 "onboarding.shortcuts.auxiliary.active" = "輔助快捷鍵：%@";
