@@ -65,7 +65,8 @@ final class MouseVoiceTargetResolver {
 
         guard let element = adapted ?? genericWritableElement(
             hitElement: hitElement,
-            focusedElement: focusedElement
+            focusedElement: focusedElement,
+            cocoaPoint: cocoaPoint
         ) else {
             return nil
         }
@@ -96,13 +97,24 @@ final class MouseVoiceTargetResolver {
 
     private func genericWritableElement(
         hitElement: AXUIElement?,
-        focusedElement: AXUIElement?
+        focusedElement: AXUIElement?,
+        cocoaPoint: CGPoint?
     ) -> AXUIElement? {
         if let hitElement, injector.isLikelyEditable(element: hitElement) {
             return hitElement
         }
+        if let hitElement,
+           let cocoaPoint,
+           let pointedDescendant = writableDescendant(at: cocoaPoint, in: hitElement) {
+            return pointedDescendant
+        }
         if let focusedElement, injector.isLikelyEditable(element: focusedElement) {
             return focusedElement
+        }
+        if let focusedElement,
+           let cocoaPoint,
+           let pointedDescendant = writableDescendant(at: cocoaPoint, in: focusedElement) {
+            return pointedDescendant
         }
         for root in [focusedElement, hitElement].compactMap(\.self) {
             if let descendant = uniqueWritableDescendant(in: root) {
@@ -140,6 +152,43 @@ final class MouseVoiceTargetResolver {
             )
         }
         return writable
+    }
+
+    /// Custom canvases such as Keynote can contain several text boxes while exposing the
+    /// canvas itself as the hit-tested element. The pointer position disambiguates those
+    /// descendants without treating the entire canvas as editable.
+    private func writableDescendant(at point: CGPoint, in root: AXUIElement) -> AXUIElement? {
+        var pending = Array(injector.copyElementArrayAttribute(kAXChildrenAttribute as String, from: root).prefix(24))
+        var index = 0
+        var visited = 0
+        var candidates: [(element: AXUIElement, frame: CGRect)] = []
+
+        while index < pending.count, visited < 64 {
+            let element = pending[index]
+            index += 1
+            visited += 1
+
+            if injector.isLikelyEditable(element: element),
+               let frame = cocoaFrame(of: element),
+               frame.contains(point) {
+                candidates.append((element, frame))
+            }
+
+            pending.append(
+                contentsOf: injector.copyElementArrayAttribute(
+                    kAXChildrenAttribute as String,
+                    from: element
+                ).prefix(24)
+            )
+        }
+
+        guard let candidateIndex = MouseVoicePointedTargetPolicy.bestCandidateIndex(
+            point: point,
+            frames: candidates.map(\.frame)
+        ) else {
+            return nil
+        }
+        return candidates[candidateIndex].element
     }
 
     private func elementsAtCocoaPoint(_ point: CGPoint) -> [AXUIElement] {
@@ -208,6 +257,17 @@ enum MouseVoiceCoordinateConverter {
             width: size.width,
             height: size.height
         )
+    }
+}
+
+enum MouseVoicePointedTargetPolicy {
+    static func bestCandidateIndex(point: CGPoint, frames: [CGRect]) -> Int? {
+        frames.enumerated()
+            .filter { $0.element.width > 0 && $0.element.height > 0 && $0.element.contains(point) }
+            .min { lhs, rhs in
+                lhs.element.width * lhs.element.height < rhs.element.width * rhs.element.height
+            }?
+            .offset
     }
 }
 

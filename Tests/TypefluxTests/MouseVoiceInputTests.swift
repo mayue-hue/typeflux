@@ -21,6 +21,31 @@ final class MouseVoiceInputTests: XCTestCase {
         )
     }
 
+    func testPointedTargetChoosesSmallestContainingEditableFrame() {
+        let frames = [
+            CGRect(x: 0, y: 0, width: 600, height: 400),
+            CGRect(x: 100, y: 80, width: 300, height: 100),
+            CGRect(x: 120, y: 90, width: 120, height: 40)
+        ]
+
+        XCTAssertEqual(
+            MouseVoicePointedTargetPolicy.bestCandidateIndex(
+                point: CGPoint(x: 150, y: 100),
+                frames: frames
+            ),
+            2
+        )
+    }
+
+    func testPointedTargetRejectsBlankCanvasArea() {
+        XCTAssertNil(
+            MouseVoicePointedTargetPolicy.bestCandidateIndex(
+                point: CGPoint(x: 500, y: 300),
+                frames: [CGRect(x: 100, y: 80, width: 300, height: 100)]
+            )
+        )
+    }
+
     func testHandleAppearsCenteredBelowLongPressPoint() {
         let origin = MouseVoiceHandlePlacement.origin(
             near: CGPoint(x: 400, y: 300),
