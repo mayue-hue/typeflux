@@ -1560,7 +1560,7 @@ struct OnboardingView: View {
                         if let binding = viewModel.auxiliaryHotkey {
                             shortcutCard(
                                 title: L("settings.shortcuts.auxiliary.title"),
-                                subtitle: L("onboarding.shortcuts.auxiliary.hint", viewModel.auxiliaryPersonaName),
+                                subtitle: L("onboarding.shortcuts.auxiliary.hint"),
                                 binding: binding,
                                 expanded: true
                             )

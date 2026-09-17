@@ -1380,14 +1380,15 @@
 
 // Auxiliary dictation shortcut
 "settings.shortcuts.auxiliary.title" = "辅助快捷键";
-"settings.shortcuts.auxiliary.subtitle" = "使用独立人设进行语音输入，不改变主输入的人设。";
-"settings.shortcuts.auxiliary.footnote" = "支持单键、组合键和单键双击。默认 Fn + 左 Shift。始终使用所选人设。";
+"settings.shortcuts.auxiliary.subtitle" = "使用独立人设进行语音输入。";
+"settings.shortcuts.auxiliary.footnote" = "";
 "settings.shortcuts.auxiliary.persona" = "辅助输入人设";
 "settings.shortcuts.auxiliaryConflict" = "快捷键与已有绑定冲突，请在设置中选择其他按键。";
 "settings.shortcuts.auxiliaryUpdated" = "辅助快捷键已更新";
 "settings.shortcuts.auxiliaryUnset" = "辅助快捷键已取消绑定";
 "settings.shortcuts.recordingAuxiliary" = "按下辅助快捷键，或双击一个按键。";
-"onboarding.shortcuts.auxiliary.hint" = "使用「%@」进行语音输入，默认整理并输出英文。可在设置中更换人设。";
+"onboarding.shortcuts.auxiliary.hint" = "使用独立人设进行语音输入";
 "onboarding.shortcuts.auxiliary.unset" = "未绑定快捷键，请前往设置配置。";
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "辅助快捷键会同步使用所选按键 + 左 Shift，已有的自定义辅助绑定会保留。";
 "onboarding.shortcuts.auxiliary.active" = "辅助快捷键：%@";
+"settings.personaAuxiliary.subtitle" = "选择辅助快捷键使用的写作身份。";

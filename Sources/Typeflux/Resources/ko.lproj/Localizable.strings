@@ -1365,14 +1365,15 @@
 
 // Auxiliary dictation shortcut
 "settings.shortcuts.auxiliary.title" = "보조 단축키";
-"settings.shortcuts.auxiliary.subtitle" = "기본 입력 페르소나를 변경하지 않고 별도의 페르소나로 음성을 입력합니다.";
-"settings.shortcuts.auxiliary.footnote" = "단일 키, 키 조합, 단일 키 두 번 누르기를 지원합니다. 기본값: Fn + 왼쪽 Shift. 선택한 페르소나를 항상 적용합니다.";
+"settings.shortcuts.auxiliary.subtitle" = "별도의 페르소나로 음성을 입력합니다.";
+"settings.shortcuts.auxiliary.footnote" = "";
 "settings.shortcuts.auxiliary.persona" = "보조 입력 페르소나";
 "settings.shortcuts.auxiliaryConflict" = "기존 단축키와 충돌합니다. 설정에서 다른 키를 선택하세요.";
 "settings.shortcuts.auxiliaryUpdated" = "보조 단축키가 업데이트되었습니다";
 "settings.shortcuts.auxiliaryUnset" = "보조 단축키가 해제되었습니다";
 "settings.shortcuts.recordingAuxiliary" = "보조 단축키를 누르거나 단일 키를 두 번 누르세요.";
-"onboarding.shortcuts.auxiliary.hint" = "%@ 페르소나로 음성을 입력합니다. 기본 페르소나는 내용을 정리하여 영어로 출력합니다. 설정에서 변경할 수 있습니다.";
+"onboarding.shortcuts.auxiliary.hint" = "별도의 페르소나로 음성 입력";
 "onboarding.shortcuts.auxiliary.unset" = "지정된 단축키가 없습니다. 설정에서 지정하세요.";
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "보조 단축키는 선택한 키 + 왼쪽 Shift로 변경됩니다. 사용자 지정 보조 단축키는 유지됩니다.";
 "onboarding.shortcuts.auxiliary.active" = "보조 단축키: %@";
+"settings.personaAuxiliary.subtitle" = "보조 단축키에 사용할 페르소나를 선택하세요.";

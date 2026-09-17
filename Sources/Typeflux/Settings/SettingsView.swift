@@ -2165,38 +2165,27 @@ struct StudioView: View {
                         showsQuickInputSetting: true
                     )
 
-                    VStack(alignment: .leading, spacing: StudioTheme.Spacing.small) {
-                        shortcutConfigurationRow(
-                            configuration: ShortcutConfiguration(
-                                title: L("settings.shortcuts.auxiliary.title"),
-                                subtitle: L("settings.shortcuts.auxiliary.subtitle"),
-                                footnote: L("settings.shortcuts.auxiliary.footnote"),
-                                icon: "mic.fill",
-                                badgeSymbol: "person.crop.circle",
-                                binding: viewModel.auxiliaryHotkey,
-                                isDefault: viewModel.auxiliaryHotkey?.signature == HotkeyBinding.defaultAuxiliary.signature,
-                                isThisRecording: recordingTarget == .auxiliary
-                            ),
-                            onStartRecording: {
-                                recordingTarget = .auxiliary
-                                recorder.start(supportsAuxiliaryBindings: true) { binding in
-                                    viewModel.setAuxiliaryHotkey(binding)
-                                    recordingTarget = nil
-                                }
-                            },
-                            onReset: { viewModel.resetAuxiliaryHotkey() },
-                            onUnset: { viewModel.unsetAuxiliaryHotkey() }
-                        )
-                        Picker(L("settings.shortcuts.auxiliary.persona"), selection: Binding(
-                            get: { viewModel.auxiliaryPersonaID },
-                            set: { viewModel.setAuxiliaryPersona($0) }
-                        )) {
-                            ForEach(viewModel.personas) { persona in
-                                Text(persona.name).tag(persona.id.uuidString)
+                    shortcutConfigurationRow(
+                        configuration: ShortcutConfiguration(
+                            title: L("settings.shortcuts.auxiliary.title"),
+                            subtitle: L("settings.shortcuts.auxiliary.subtitle"),
+                            footnote: L("settings.shortcuts.auxiliary.footnote"),
+                            icon: "mic.fill",
+                            badgeSymbol: "person.crop.circle",
+                            binding: viewModel.auxiliaryHotkey,
+                            isDefault: viewModel.auxiliaryHotkey?.signature == HotkeyBinding.defaultAuxiliary.signature,
+                            isThisRecording: recordingTarget == .auxiliary
+                        ),
+                        onStartRecording: {
+                            recordingTarget = .auxiliary
+                            recorder.start(supportsAuxiliaryBindings: true) { binding in
+                                viewModel.setAuxiliaryHotkey(binding)
+                                recordingTarget = nil
                             }
-                        }
-                        .padding(.horizontal, StudioTheme.Spacing.large)
-                    }
+                        },
+                        onReset: { viewModel.resetAuxiliaryHotkey() },
+                        onUnset: { viewModel.unsetAuxiliaryHotkey() }
+                    )
 
                     shortcutConfigurationRow(
                         configuration: ShortcutConfiguration(
@@ -2306,6 +2295,24 @@ struct StudioView: View {
                                 selection: Binding(
                                     get: { viewModel.defaultPersonaSelectionID },
                                     set: { viewModel.setDefaultPersonaSelection($0) }
+                                ),
+                                width: 200
+                            )
+                        }
+
+                        Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+
+                        StudioSettingRow(
+                            title: L("settings.shortcuts.auxiliary.persona"),
+                            subtitle: L("settings.personaAuxiliary.subtitle")
+                        ) {
+                            StudioMenuPicker(
+                                options: viewModel.personas.map { persona in
+                                    (label: persona.name, value: persona.id.uuidString)
+                                },
+                                selection: Binding(
+                                    get: { viewModel.auxiliaryPersonaID },
+                                    set: { viewModel.setAuxiliaryPersona($0) }
                                 ),
                                 width: 200
                             )
