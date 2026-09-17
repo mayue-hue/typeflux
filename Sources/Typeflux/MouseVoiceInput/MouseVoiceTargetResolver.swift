@@ -215,7 +215,7 @@ enum MouseVoiceHandlePlacement {
         visibleFrame: CGRect
     ) -> CGPoint {
         let edgeInset: CGFloat = 7
-        let pointerGap: CGFloat = 8
+        let pointerGap: CGFloat = 4
         let preferredOrigin = CGPoint(
             x: point.x - handleSize.width / 2,
             y: point.y - handleSize.height - pointerGap
@@ -243,11 +243,12 @@ enum MouseVoiceHandlePlacement {
 }
 
 enum MouseVoiceHandleGeometry {
-    static let canvasSize = CGSize(width: 64, height: 64)
+    static let canvasSize = CGSize(width: 72, height: 72)
     static let buttonSize: CGFloat = 40
     static let ringDiameter: CGFloat = 48
     static let interactionInset: CGFloat = 7
     static let maximumMagneticOffset: CGFloat = 3.5
+    static let maximumRingLineWidth: CGFloat = 3.7
     static let maximumVisualScale: CGFloat = 1.12
 }
 

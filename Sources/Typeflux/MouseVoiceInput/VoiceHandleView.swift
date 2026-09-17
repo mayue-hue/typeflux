@@ -21,6 +21,7 @@ final class VoiceHandleView: NSView {
     private let imageView = NSImageView()
     private let glowLayer = CAShapeLayer()
     private let progressLayer = CAShapeLayer()
+    private let completedRingLayer = CAShapeLayer()
     private let rippleLayer = CAShapeLayer()
     private var trackingAreaReference: NSTrackingArea?
     private var activationStyle: MouseVoiceActivationStyle = .dragRelease
@@ -42,6 +43,7 @@ final class VoiceHandleView: NSView {
         configureButton()
         configureIcon()
         configureProgressRing()
+        configureCompletedRing()
         configureRipple()
         updateLayerPaths()
         updateVisuals(animateTransform: false)
@@ -145,6 +147,8 @@ final class VoiceHandleView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         progressLayer.strokeEnd = self.progress
+        progressLayer.opacity = self.progress < 1 ? 1 : 0
+        completedRingLayer.opacity = self.progress < 1 ? 0 : 1
         CATransaction.commit()
         updateBackground(committed: false)
         updateEnergy()
@@ -157,6 +161,8 @@ final class VoiceHandleView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         progressLayer.strokeEnd = 0
+        progressLayer.opacity = 1
+        completedRingLayer.opacity = 0
         CATransaction.commit()
         if animated, visibleProgress > 0 {
             let animation = CABasicAnimation(keyPath: "strokeEnd")
@@ -239,6 +245,14 @@ private extension VoiceHandleView {
         visualContainer.layer?.addSublayer(progressLayer)
     }
 
+    func configureCompletedRing() {
+        completedRingLayer.fillColor = NSColor.clear.cgColor
+        completedRingLayer.strokeColor = NSColor.white.withAlphaComponent(0.96).cgColor
+        completedRingLayer.lineWidth = 2.5
+        completedRingLayer.opacity = 0
+        visualContainer.layer?.addSublayer(completedRingLayer)
+    }
+
     func configureRipple() {
         rippleLayer.fillColor = NSColor.clear.cgColor
         rippleLayer.strokeColor = NSColor.systemRed.withAlphaComponent(0.8).cgColor
@@ -251,6 +265,8 @@ private extension VoiceHandleView {
         let ringBounds = bounds.insetBy(dx: Metrics.ringInset, dy: Metrics.ringInset)
         progressLayer.frame = bounds
         progressLayer.path = CGPath(ellipseIn: ringBounds, transform: nil)
+        completedRingLayer.frame = bounds
+        completedRingLayer.path = CGPath(ellipseIn: ringBounds, transform: nil)
         glowLayer.frame = bounds
         glowLayer.path = CGPath(
             ellipseIn: bounds.insetBy(dx: Metrics.buttonInset, dy: Metrics.buttonInset),
@@ -316,6 +332,7 @@ private extension VoiceHandleView {
             self.glowLayer.shadowOpacity = Float(0.18 + energy * 0.42)
             self.glowLayer.shadowRadius = 8 + energy * 6
             self.progressLayer.lineWidth = 2.5 + self.progress * 1.2
+            self.completedRingLayer.lineWidth = 2.5 + self.progress * 1.2
             self.imageView.layer?.setAffineTransform(
                 CGAffineTransform(scaleX: 1 + self.progress * 0.08, y: 1 + self.progress * 0.08)
             )
