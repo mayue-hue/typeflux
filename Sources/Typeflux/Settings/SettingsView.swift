@@ -2379,6 +2379,42 @@ struct StudioView: View {
                     Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
 
                     StudioSettingRow(
+                        title: L("settings.mouseVoice.smartHandle.title"),
+                        subtitle: L("settings.mouseVoice.smartHandle.subtitle"),
+                        badge: "Beta"
+                    ) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { viewModel.smartVoiceHandleEnabled },
+                                set: viewModel.setSmartVoiceHandleEnabled
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+
+                    StudioSettingRow(
+                        title: L("settings.mouseVoice.longPress.title"),
+                        subtitle: L("settings.mouseVoice.longPress.subtitle"),
+                        badge: L("settings.mouseVoice.experimental")
+                    ) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { viewModel.mouseLongPressVoiceInputEnabled },
+                                set: viewModel.setMouseLongPressVoiceInputEnabled
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+
+                    Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+
+                    StudioSettingRow(
                         title: L("settings.mute.title"),
                         subtitle: L("settings.mute.subtitle")
                     ) {
@@ -2435,25 +2471,25 @@ struct StudioView: View {
             StudioCard {
                 VStack(alignment: .leading, spacing: StudioTheme.Spacing.cardGroup) {
                     /*
-                     Sound effects are temporarily disabled until there is time to optimize them.
-                     Keep this setting UI for a future reintroduction.
-                    StudioSettingRow(
-                        title: L("settings.advanced.soundEffects.title"),
-                        subtitle: L("settings.advanced.soundEffects.subtitle")
-                    ) {
-                        Toggle(
-                            "",
-                            isOn: Binding(
-                                get: { viewModel.soundEffectsEnabled },
-                                set: viewModel.setSoundEffectsEnabled
-                            )
-                        )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                    }
+                      Sound effects are temporarily disabled until there is time to optimize them.
+                      Keep this setting UI for a future reintroduction.
+                     StudioSettingRow(
+                         title: L("settings.advanced.soundEffects.title"),
+                         subtitle: L("settings.advanced.soundEffects.subtitle")
+                     ) {
+                         Toggle(
+                             "",
+                             isOn: Binding(
+                                 get: { viewModel.soundEffectsEnabled },
+                                 set: viewModel.setSoundEffectsEnabled
+                             )
+                         )
+                         .labelsHidden()
+                         .toggleStyle(.switch)
+                     }
 
-                    Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
-                    */
+                     Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+                     */
 
                     StudioSettingRow(
                         title: L("settings.advanced.autoVocabulary.title"),
@@ -2525,26 +2561,26 @@ struct StudioView: View {
                     StudioCard {
                         VStack(alignment: .leading, spacing: StudioTheme.Spacing.cardGroup) {
                             /*
-                             Local optimization is hidden because SenseVoice availability and the
-                             cloud-local race are system-managed fallback policies, not user choices.
-                             Keep this setting UI until the model lifecycle is fully unified.
-                            StudioSettingRow(
-                                title: L("settings.advanced.localOptimization.title"),
-                                subtitle: L("settings.advanced.localOptimization.subtitle")
-                            ) {
-                                Toggle(
-                                    "",
-                                    isOn: Binding(
-                                        get: { viewModel.localOptimizationEnabled },
-                                        set: viewModel.setLocalOptimizationEnabled
-                                    )
-                                )
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                            }
+                              Local optimization is hidden because SenseVoice availability and the
+                              cloud-local race are system-managed fallback policies, not user choices.
+                              Keep this setting UI until the model lifecycle is fully unified.
+                             StudioSettingRow(
+                                 title: L("settings.advanced.localOptimization.title"),
+                                 subtitle: L("settings.advanced.localOptimization.subtitle")
+                             ) {
+                                 Toggle(
+                                     "",
+                                     isOn: Binding(
+                                         get: { viewModel.localOptimizationEnabled },
+                                         set: viewModel.setLocalOptimizationEnabled
+                                     )
+                                 )
+                                 .labelsHidden()
+                                 .toggleStyle(.switch)
+                             }
 
-                            Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
-                            */
+                             Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+                             */
 
                             StudioSettingRow(
                                 title: L("settings.advanced.voiceProcessingTimeout.title"),
@@ -2565,70 +2601,70 @@ struct StudioView: View {
                             Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
 
                             /*
-                             Memory optimization is temporarily hidden and forced off until it can be
-                             improved.
-                             Keep this setting UI for a future reintroduction.
-                            StudioSettingRow(
-                                title: L("settings.advanced.localSTTMemoryOptimization.title"),
-                                subtitle: L("settings.advanced.localSTTMemoryOptimization.subtitle")
-                            ) {
-                                Toggle(
-                                    "",
-                                    isOn: Binding(
-                                        get: { viewModel.localSTTMemoryOptimizationEnabled },
-                                        set: viewModel.setLocalSTTMemoryOptimizationEnabled
-                                    )
-                                )
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                            }
+                              Memory optimization is temporarily hidden and forced off until it can be
+                              improved.
+                              Keep this setting UI for a future reintroduction.
+                             StudioSettingRow(
+                                 title: L("settings.advanced.localSTTMemoryOptimization.title"),
+                                 subtitle: L("settings.advanced.localSTTMemoryOptimization.subtitle")
+                             ) {
+                                 Toggle(
+                                     "",
+                                     isOn: Binding(
+                                         get: { viewModel.localSTTMemoryOptimizationEnabled },
+                                         set: viewModel.setLocalSTTMemoryOptimizationEnabled
+                                     )
+                                 )
+                                 .labelsHidden()
+                                 .toggleStyle(.switch)
+                             }
 
-                            Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
-                            */
-
-                            /*
-                             Applying personas to selected text now remains enabled without a user setting.
-                             Keep this beta setting UI in case configurability returns later.
-                            StudioSettingRow(
-                                title: L("settings.advanced.personaHotkeyApply.title"),
-                                subtitle: L("settings.advanced.personaHotkeyApply.subtitle"),
-                                badge: "Beta"
-                            ) {
-                                Toggle(
-                                    "",
-                                    isOn: Binding(
-                                        get: { viewModel.personaHotkeyAppliesToSelection },
-                                        set: viewModel.setPersonaHotkeyAppliesToSelection
-                                    )
-                                )
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                            }
-
-                            Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
-                            */
+                             Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+                             */
 
                             /*
-                             Input-context optimization now remains enabled without a user setting.
-                             Keep this beta setting UI in case configurability returns later.
-                            StudioSettingRow(
-                                title: L("settings.advanced.inputContextOptimization.title"),
-                                subtitle: L("settings.advanced.inputContextOptimization.subtitle"),
-                                badge: "Beta"
-                            ) {
-                                Toggle(
-                                    "",
-                                    isOn: Binding(
-                                        get: { viewModel.inputContextOptimizationEnabled },
-                                        set: viewModel.setInputContextOptimizationEnabled
-                                    )
-                                )
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                            }
+                              Applying personas to selected text now remains enabled without a user setting.
+                              Keep this beta setting UI in case configurability returns later.
+                             StudioSettingRow(
+                                 title: L("settings.advanced.personaHotkeyApply.title"),
+                                 subtitle: L("settings.advanced.personaHotkeyApply.subtitle"),
+                                 badge: "Beta"
+                             ) {
+                                 Toggle(
+                                     "",
+                                     isOn: Binding(
+                                         get: { viewModel.personaHotkeyAppliesToSelection },
+                                         set: viewModel.setPersonaHotkeyAppliesToSelection
+                                     )
+                                 )
+                                 .labelsHidden()
+                                 .toggleStyle(.switch)
+                             }
 
-                            Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
-                            */
+                             Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+                             */
+
+                            /*
+                              Input-context optimization now remains enabled without a user setting.
+                              Keep this beta setting UI in case configurability returns later.
+                             StudioSettingRow(
+                                 title: L("settings.advanced.inputContextOptimization.title"),
+                                 subtitle: L("settings.advanced.inputContextOptimization.subtitle"),
+                                 badge: "Beta"
+                             ) {
+                                 Toggle(
+                                     "",
+                                     isOn: Binding(
+                                         get: { viewModel.inputContextOptimizationEnabled },
+                                         set: viewModel.setInputContextOptimizationEnabled
+                                     )
+                                 )
+                                 .labelsHidden()
+                                 .toggleStyle(.switch)
+                             }
+
+                             Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+                             */
 
                             StudioSettingRow(
                                 title: L("settings.advanced.agentFramework.title"),
@@ -2647,25 +2683,25 @@ struct StudioView: View {
                             }
 
                             /*
-                             Apple Speech fallback is intentionally hidden from settings and should no longer
-                             be presented to users. Keep the entry code because the underlying fallback remains.
-                            Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+                              Apple Speech fallback is intentionally hidden from settings and should no longer
+                              be presented to users. Keep the entry code because the underlying fallback remains.
+                             Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
 
-                            StudioSettingRow(
-                                title: L("settings.models.appleFallback"),
-                                subtitle: L("settings.models.appleFallback.detail")
-                            ) {
-                                Toggle(
-                                    "",
-                                    isOn: Binding(
-                                        get: { viewModel.appleSpeechFallback },
-                                        set: viewModel.setAppleSpeechFallback
-                                    )
-                                )
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                            }
-                            */
+                             StudioSettingRow(
+                                 title: L("settings.models.appleFallback"),
+                                 subtitle: L("settings.models.appleFallback.detail")
+                             ) {
+                                 Toggle(
+                                     "",
+                                     isOn: Binding(
+                                         get: { viewModel.appleSpeechFallback },
+                                         set: viewModel.setAppleSpeechFallback
+                                     )
+                                 )
+                                 .labelsHidden()
+                                 .toggleStyle(.switch)
+                             }
+                             */
                         }
                     }
 

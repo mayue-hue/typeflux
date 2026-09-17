@@ -15,7 +15,7 @@ final class DIContainer {
     let agentClarificationWindowController: AgentClarificationWindowController
     let soundEffectPlayer: SoundEffectPlayer
     let clipboard: ClipboardService
-    let textInjector: TextInjector
+    let textInjector: AXTextInjector
     let historyStore: HistoryStore
     let llmService: LLMService
     let llmAgentService: LLMAgentService

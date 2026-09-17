@@ -11,6 +11,7 @@ extension Notification.Name {
     static let overlayStyleDidChange = Notification.Name("SettingsStore.overlayStyleDidChange")
     static let preferredMicrophoneDidChange = Notification.Name("SettingsStore.preferredMicrophoneDidChange")
     static let instantVoiceInputDidChange = Notification.Name("SettingsStore.instantVoiceInputDidChange")
+    static let mouseVoiceInputDidChange = Notification.Name("SettingsStore.mouseVoiceInputDidChange")
     static let agentConfigurationDidChange = Notification.Name("SettingsStore.agentConfigurationDidChange")
     static let localOptimizationDidEnable = Notification.Name("SettingsStore.localOptimizationDidEnable")
     static let analyticsSharingDidChange = Notification.Name("SettingsStore.analyticsSharingDidChange")
@@ -200,6 +201,24 @@ final class SettingsStore {
             guard instantVoiceInputEnabled != newValue else { return }
             defaults.set(newValue, forKey: "audio.recording.instantVoiceInput")
             NotificationCenter.default.post(name: .instantVoiceInputDidChange, object: self)
+        }
+    }
+
+    var smartVoiceHandleEnabled: Bool {
+        get { defaults.object(forKey: "mouseVoice.smartHandle.enabled") as? Bool ?? true }
+        set {
+            guard smartVoiceHandleEnabled != newValue else { return }
+            defaults.set(newValue, forKey: "mouseVoice.smartHandle.enabled")
+            NotificationCenter.default.post(name: .mouseVoiceInputDidChange, object: self)
+        }
+    }
+
+    var mouseLongPressVoiceInputEnabled: Bool {
+        get { defaults.object(forKey: "mouseVoice.longPress.enabled") as? Bool ?? false }
+        set {
+            guard mouseLongPressVoiceInputEnabled != newValue else { return }
+            defaults.set(newValue, forKey: "mouseVoice.longPress.enabled")
+            NotificationCenter.default.post(name: .mouseVoiceInputDidChange, object: self)
         }
     }
 

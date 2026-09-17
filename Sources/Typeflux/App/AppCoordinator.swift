@@ -6,6 +6,7 @@ final class AppCoordinator {
 
     private var statusBarController: StatusBarController?
     private var workflowController: WorkflowController?
+    private var mouseVoiceInputController: MouseVoiceInputController?
     private var onboardingWindowController: OnboardingWindowController?
     private let cloudEndpointProbeScheduler = CloudEndpointProbeScheduler()
     private let asrPublicConfigRefreshScheduler = TypefluxASRPublicConfigRefreshScheduler()
@@ -116,6 +117,25 @@ final class AppCoordinator {
         )
         self.workflowController = workflowController
 
+        let mouseVoiceInputController = MouseVoiceInputController(
+            settingsStore: settingsStore,
+            appState: di.appState,
+            targetResolver: MouseVoiceTargetResolver(injector: di.textInjector)
+        )
+        mouseVoiceInputController.onPressBegan = { [weak workflowController] in
+            workflowController?.handlePressBegan(intent: .dictation, startLocked: false)
+        }
+        mouseVoiceInputController.onPressEnded = { [weak workflowController] in
+            workflowController?.handlePressEnded()
+        }
+        mouseVoiceInputController.onLockRequested = { [weak workflowController] in
+            workflowController?.handleActivationTap()
+        }
+        mouseVoiceInputController.onCancelRequested = { [weak workflowController] in
+            workflowController?.cancelRecording()
+        }
+        self.mouseVoiceInputController = mouseVoiceInputController
+
         statusBarController = StatusBarController(
             appState: di.appState,
             settingsStore: di.settingsStore,
@@ -139,6 +159,7 @@ final class AppCoordinator {
         )
         statusBarController?.start()
         self.workflowController?.start()
+        self.mouseVoiceInputController?.start()
         // Link the bundled SenseVoice copy before triggering the auto-model
         // download service: triggerIfNeeded() reads preparedModelInfo to decide
         // whether the local-first fallback route is available, so the record
@@ -181,6 +202,7 @@ final class AppCoordinator {
         asrPublicConfigRefreshScheduler.stop()
         Task { await TypefluxOfficialASRRouteCache.shared.invalidate() }
         workflowController?.stop()
+        mouseVoiceInputController?.stop()
         statusBarController?.stop()
     }
 

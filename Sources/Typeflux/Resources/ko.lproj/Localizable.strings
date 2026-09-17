@@ -145,6 +145,13 @@
 "settings.microphone.automatic" = "자동";
 "settings.instantVoiceInput.title" = "바로 말하기";
 "settings.instantVoiceInput.subtitle" = "마이크 시작 시간을 줄여 단축키를 누르자마자 말해도 모든 내용을 빠짐없이 녹음합니다. 사용 후 마이크는 15분 동안 켜진 상태를 유지합니다.";
+"settings.mouseVoice.smartHandle.title" = "입력창 음성 핸들";
+"settings.mouseVoice.smartHandle.subtitle" = "편집 가능한 영역을 클릭하면 마이크가 표시됩니다. 클릭하면 연속 녹음, 누른 채 말하고 놓으면 종료됩니다.";
+"settings.mouseVoice.longPress.title" = "길게 눌러 녹음";
+"settings.mouseVoice.longPress.subtitle" = "편집 가능한 영역에서 약 0.8초간 누르면 녹음이 시작되고 놓으면 종료됩니다. 마우스를 움직이면 취소됩니다.";
+"settings.mouseVoice.experimental" = "실험적";
+"mouseVoice.handle.start" = "음성 입력 시작";
+"mouseVoice.handle.stop" = "음성 입력 종료";
 "settings.mute.title" = "녹음 중 음소거";
 "settings.mute.subtitle" = "녹음하는 동안 일시적으로 시스템 출력을 음소거하여 피드백이나 시스템 사운드가 마이크에 새는 것을 줄입니다.";
 "settings.permissions" = "권한";
