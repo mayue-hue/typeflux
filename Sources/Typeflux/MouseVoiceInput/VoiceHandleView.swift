@@ -206,7 +206,7 @@ private extension VoiceHandleView {
     func configureGlow() {
         glowLayer.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.16).cgColor
         glowLayer.shadowColor = NSColor.controlAccentColor.cgColor
-        glowLayer.shadowRadius = 5
+        glowLayer.shadowRadius = 7.5
         glowLayer.shadowOpacity = 0.2
         glowLayer.shadowOffset = .zero
         visualContainer.layer?.addSublayer(glowLayer)
@@ -240,7 +240,7 @@ private extension VoiceHandleView {
     func configureProgressRing() {
         progressLayer.fillColor = NSColor.clear.cgColor
         progressLayer.strokeColor = NSColor.white.withAlphaComponent(0.96).cgColor
-        progressLayer.lineWidth = 1.5
+        progressLayer.lineWidth = 2.25
         progressLayer.lineCap = .round
         progressLayer.strokeStart = 0
         progressLayer.strokeEnd = 0
@@ -251,7 +251,7 @@ private extension VoiceHandleView {
     func configureCompletedRing() {
         completedRingLayer.fillColor = NSColor.clear.cgColor
         completedRingLayer.strokeColor = NSColor.white.withAlphaComponent(0.96).cgColor
-        completedRingLayer.lineWidth = 1.5
+        completedRingLayer.lineWidth = 2.25
         completedRingLayer.opacity = 0
         visualContainer.layer?.addSublayer(completedRingLayer)
     }
@@ -259,7 +259,7 @@ private extension VoiceHandleView {
     func configureRipple() {
         rippleLayer.fillColor = NSColor.clear.cgColor
         rippleLayer.strokeColor = NSColor.systemRed.withAlphaComponent(0.8).cgColor
-        rippleLayer.lineWidth = 1
+        rippleLayer.lineWidth = 1.5
         rippleLayer.opacity = 0
         layer?.addSublayer(rippleLayer)
     }
@@ -333,9 +333,9 @@ private extension VoiceHandleView {
             let energy = max(self.proximity * 0.45, self.progress)
             self.glowLayer.opacity = Float(0.18 + energy * 0.5)
             self.glowLayer.shadowOpacity = Float(0.18 + energy * 0.42)
-            self.glowLayer.shadowRadius = 4 + energy * 4
-            self.progressLayer.lineWidth = 1.5 + self.progress * 0.6
-            self.completedRingLayer.lineWidth = 1.5 + self.progress * 0.6
+            self.glowLayer.shadowRadius = 6 + energy * 6
+            self.progressLayer.lineWidth = 2.25 + self.progress * 0.9
+            self.completedRingLayer.lineWidth = 2.25 + self.progress * 0.9
             self.imageView.layer?.setAffineTransform(
                 CGAffineTransform(scaleX: 1 + self.progress * 0.08, y: 1 + self.progress * 0.08)
             )
