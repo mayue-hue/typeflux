@@ -29,7 +29,10 @@ final class MouseVoiceTargetResolver {
     private let injector: AXTextInjector
     private let adapters: [MouseVoiceTargetAdapting]
 
-    init(injector: AXTextInjector, adapters: [MouseVoiceTargetAdapting] = []) {
+    init(
+        injector: AXTextInjector,
+        adapters: [MouseVoiceTargetAdapting] = [KnownOpaqueMouseVoiceTargetAdapter()]
+    ) {
         self.injector = injector
         self.adapters = adapters
     }

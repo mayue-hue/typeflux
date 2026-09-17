@@ -79,6 +79,68 @@ final class MouseVoiceInputTests: XCTestCase {
         )
     }
 
+    func testKnownDocumentEditorsAllowOpaqueFocusedWindow() {
+        for bundleIdentifier in [
+            "com.sublimetext.4",
+            "dev.zed.Zed",
+            "com.apple.iWork.Pages"
+        ] {
+            XCTAssertTrue(
+                MouseVoiceOpaqueTargetPolicy.allowsOpaqueFocusedFallback(
+                    role: "AXWindow",
+                    bundleIdentifier: bundleIdentifier
+                ),
+                bundleIdentifier
+            )
+        }
+    }
+
+    func testKnownDocumentEditorsAllowOpaqueWindowAtPointer() {
+        XCTAssertTrue(
+            MouseVoiceOpaqueTargetPolicy.allowsOpaqueHit(
+                role: "AXWindow",
+                bundleIdentifier: "com.sublimetext.4"
+            )
+        )
+    }
+
+    func testWeChatRequiresPointerHitOnOpaqueEditorContainer() {
+        let bundleIdentifier = "com.tencent.xinWeChat"
+        XCTAssertTrue(
+            MouseVoiceOpaqueTargetPolicy.allowsOpaqueHit(
+                role: "AXGroup",
+                bundleIdentifier: bundleIdentifier
+            )
+        )
+        XCTAssertFalse(
+            MouseVoiceOpaqueTargetPolicy.allowsOpaqueFocusedFallback(
+                role: "AXWindow",
+                bundleIdentifier: bundleIdentifier
+            )
+        )
+        XCTAssertFalse(
+            MouseVoiceOpaqueTargetPolicy.allowsOpaqueHit(
+                role: "AXWindow",
+                bundleIdentifier: bundleIdentifier
+            )
+        )
+    }
+
+    func testOpaqueCompatibilityRejectsButtonsAndUnknownApps() {
+        XCTAssertFalse(
+            MouseVoiceOpaqueTargetPolicy.allowsOpaqueHit(
+                role: "AXButton",
+                bundleIdentifier: "dev.zed.Zed"
+            )
+        )
+        XCTAssertFalse(
+            MouseVoiceOpaqueTargetPolicy.allowsOpaqueFocusedFallback(
+                role: "AXWindow",
+                bundleIdentifier: "com.example.UnknownEditor"
+            )
+        )
+    }
+
     func testMouseVoiceSettingsDefaultsAndPersistence() throws {
         let suiteName = "MouseVoiceInputTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
