@@ -440,6 +440,9 @@ final class WorkflowControllerProcessingTests: XCTestCase {
         XCTAssertTrue(controller.shouldUseQuickInput(recordingMode: .holdToTalk, recordingIntent: .dictation))
         XCTAssertFalse(controller.shouldUseQuickInput(recordingMode: .locked, recordingIntent: .dictation))
         XCTAssertFalse(controller.shouldUseQuickInput(recordingMode: .holdToTalk, recordingIntent: .askSelection))
+
+        controller.recordingAllowsQuickInput = false
+        XCTAssertFalse(controller.shouldUseQuickInput(recordingMode: .holdToTalk, recordingIntent: .dictation))
     }
 
     func testQuickInputIsDisabledByDefault() {

@@ -161,6 +161,7 @@ final class WorkflowController {
     var pendingRecordingStartID: UUID?
     var suppressActivationTapUntil: Date?
     var recordingUsesAuxiliary = false
+    var recordingAllowsQuickInput = true
     var recordingPersonaSnapshot: DictationPersonaSnapshot?
     var recordingGestureDecision: RecordingGestureDecision?
     var recordingMode: RecordingMode = .holdToTalk
@@ -650,7 +651,8 @@ final class WorkflowController {
         startLocked: Bool,
         hotkeyDetectedAt: Date = Date(),
         hotkeyUptime: TimeInterval? = nil,
-        auxiliary: Bool = false
+        auxiliary: Bool = false,
+        allowsQuickInput: Bool = true
     ) {
         RecordingStartupLatencyTrace.shared.mark("workflow.press_began.\(intent.traceName)")
         if isPersonaPickerPresented {
@@ -705,6 +707,7 @@ final class WorkflowController {
         }
 
         recordingUsesAuxiliary = auxiliary
+        recordingAllowsQuickInput = allowsQuickInput
         recordingPersonaSnapshot = nil
         let activation = auxiliary ? settingsStore.auxiliaryHotkey : settingsStore.activationHotkey
         let auxiliaryBinding = settingsStore.auxiliaryHotkey
@@ -1393,7 +1396,7 @@ final class WorkflowController {
     }
 
     func shouldUseQuickInput(recordingMode: RecordingMode, recordingIntent: RecordingIntent) -> Bool {
-        !recordingUsesAuxiliary && settingsStore.quickInputEnabled
+        recordingAllowsQuickInput && !recordingUsesAuxiliary && settingsStore.quickInputEnabled
             && recordingIntent == .dictation
             && recordingMode == .holdToTalk
     }

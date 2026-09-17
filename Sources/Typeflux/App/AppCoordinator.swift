@@ -122,9 +122,20 @@ final class AppCoordinator {
             targetResolver: MouseVoiceTargetResolver(injector: di.textInjector)
         )
         mouseVoiceInputController.onRecordingRequested = { [weak workflowController] in
-            // Mouse voice input always starts the normal, locked recording flow. It must not
-            // inherit the keyboard hold-to-talk path or its quick-input optimization.
-            workflowController?.handlePressBegan(intent: .dictation, startLocked: true)
+            workflowController?.handlePressBegan(
+                intent: .dictation,
+                startLocked: false,
+                allowsQuickInput: false
+            )
+        }
+        mouseVoiceInputController.onRecordingReleaseRequested = { [weak workflowController] in
+            workflowController?.handlePressEnded()
+        }
+        mouseVoiceInputController.onRecordingStopRequested = { [weak workflowController] in
+            workflowController?.finishRecordingFromCurrentMode()
+        }
+        mouseVoiceInputController.recordingStateProvider = { [weak workflowController] in
+            workflowController?.isRecording ?? false
         }
         self.mouseVoiceInputController = mouseVoiceInputController
 

@@ -4,6 +4,9 @@ import Foundation
 @MainActor
 final class MouseVoiceInputController {
     var onRecordingRequested: (() -> Void)?
+    var onRecordingReleaseRequested: (() -> Void)?
+    var onRecordingStopRequested: (() -> Void)?
+    var recordingStateProvider: (() -> Bool)?
 
     private let settingsStore: SettingsStore
     private let targetResolver: MouseVoiceTargetResolver
@@ -15,11 +18,14 @@ final class MouseVoiceInputController {
     private var pendingLongPress: DispatchWorkItem?
     private var pendingDismissal: DispatchWorkItem?
     private var hoverTimer: Timer?
+    private var recordingStateTimer: Timer?
     private var hoverStartedAt: TimeInterval?
     private var mouseDownLocation: CGPoint?
     private var candidateTarget: MouseVoiceTarget?
     private var handleTarget: MouseVoiceTarget?
     private var clickPending = false
+    private var clickRecordingActive = false
+    private var clickPressStopsActiveRecording = false
     private var pointerInsideHandle = false
 
     init(
@@ -42,6 +48,7 @@ final class MouseVoiceInputController {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
         hoverTimer?.invalidate()
+        recordingStateTimer?.invalidate()
     }
 
     func start() {
@@ -56,14 +63,17 @@ final class MouseVoiceInputController {
             object: settingsStore,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.settingsDidChange() }
+            Task { @MainActor [weak self] in self?.resetInteraction() }
         }
         workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.resetInteraction() }
+            Task { @MainActor [weak self] in
+                guard self?.clickRecordingActive == false else { return }
+                self?.resetInteraction()
+            }
         }
     }
 
@@ -84,6 +94,7 @@ final class MouseVoiceInputController {
         cancelPendingLongPress()
         cancelPendingDismissal()
         cancelHoverProgress()
+        cancelRecordingStateMonitoring()
     }
 }
 
@@ -105,6 +116,7 @@ private extension MouseVoiceInputController {
     }
 
     private func handleMouseDown(at location: CGPoint) {
+        guard !clickRecordingActive else { return }
         resetInteraction()
         guard settingsStore.mouseVoiceInputEnabled,
               let target = targetResolver.target(at: location),
@@ -142,6 +154,9 @@ private extension MouseVoiceInputController {
     }
 
     private func handleMouseUp(at location: CGPoint) {
+        if clickRecordingActive, !clickPending {
+            return
+        }
         cancelPendingLongPress()
         candidateTarget = nil
         guard handleController.isPresented else {
@@ -218,6 +233,10 @@ private extension MouseVoiceInputController {
     private func handlePointerExited() {
         guard handleController.isPresented, pointerInsideHandle else { return }
         pointerInsideHandle = false
+        if settingsStore.mouseVoiceActivationStyle == .click,
+           clickRecordingActive || clickPending {
+            return
+        }
         clickPending = false
         cancelHoverProgress()
         handleController.setArmed(false)
@@ -235,7 +254,11 @@ private extension MouseVoiceInputController {
         }
         cancelPendingDismissal()
         clickPending = true
+        clickPressStopsActiveRecording = clickRecordingActive
         handleController.setPressed(true)
+        if !clickRecordingActive {
+            beginClickRecording()
+        }
     }
 
     private func handleHandlePressEnded() {
@@ -244,8 +267,15 @@ private extension MouseVoiceInputController {
               settingsStore.mouseVoiceActivationStyle == .click else {
             return
         }
+        let shouldStop = clickPressStopsActiveRecording
         clickPending = false
-        triggerRecording()
+        clickPressStopsActiveRecording = false
+        if shouldStop {
+            finishClickRecording()
+        } else {
+            onRecordingReleaseRequested?()
+            handleController.setArmed(true)
+        }
     }
 
     private func updatePointerPosition(_ location: CGPoint) {
@@ -300,6 +330,55 @@ private extension MouseVoiceInputController {
         handleController.hide(after: MouseVoiceLongPressPolicy.commitFeedbackDuration)
     }
 
+    private func beginClickRecording() {
+        guard let target = handleTarget else { return }
+        cancelPendingLongPress()
+        cancelPendingDismissal()
+        cancelHoverProgress(resetVisuals: false)
+        targetResolver.restoreSelection(for: target)
+        handleTarget = nil
+        mouseDownLocation = nil
+        candidateTarget = nil
+        clickRecordingActive = true
+        handleController.showCommitted()
+        onRecordingRequested?()
+        startRecordingStateMonitoring()
+    }
+
+    private func finishClickRecording() {
+        guard clickRecordingActive else { return }
+        clickRecordingActive = false
+        cancelRecordingStateMonitoring()
+        onRecordingStopRequested?()
+        handleController.showCommitted()
+        handleController.hide(after: MouseVoiceLongPressPolicy.commitFeedbackDuration)
+    }
+
+    private func startRecordingStateMonitoring() {
+        cancelRecordingStateMonitoring()
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshClickRecordingState() }
+        }
+        recordingStateTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func refreshClickRecordingState() {
+        guard clickRecordingActive else {
+            cancelRecordingStateMonitoring()
+            return
+        }
+        guard recordingStateProvider?() != false else {
+            resetInteraction()
+            return
+        }
+    }
+
+    private func cancelRecordingStateMonitoring() {
+        recordingStateTimer?.invalidate()
+        recordingStateTimer = nil
+    }
+
     private func scheduleHandleDismissal() {
         cancelPendingDismissal()
         let workItem = DispatchWorkItem { [weak self] in
@@ -339,11 +418,10 @@ private extension MouseVoiceInputController {
         candidateTarget = nil
         handleTarget = nil
         clickPending = false
+        clickRecordingActive = false
+        clickPressStopsActiveRecording = false
         pointerInsideHandle = false
+        cancelRecordingStateMonitoring()
         handleController.hide()
-    }
-
-    private func settingsDidChange() {
-        resetInteraction()
     }
 }
