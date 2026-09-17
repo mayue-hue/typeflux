@@ -83,7 +83,8 @@ final class MouseVoiceInputTests: XCTestCase {
         for bundleIdentifier in [
             "com.sublimetext.4",
             "dev.zed.Zed",
-            "com.apple.iWork.Pages"
+            "com.apple.iWork.Pages",
+            "com.apple.Pages"
         ] {
             XCTAssertTrue(
                 MouseVoiceOpaqueTargetPolicy.allowsOpaqueFocusedFallback(

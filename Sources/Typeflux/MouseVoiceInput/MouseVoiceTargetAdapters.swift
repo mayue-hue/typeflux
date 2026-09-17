@@ -78,7 +78,8 @@ enum MouseVoiceOpaqueTargetPolicy {
         guard let identifier = bundleIdentifier?.lowercased() else { return nil }
         if identifier.hasPrefix("com.sublimetext.")
             || identifier.hasPrefix("dev.zed.")
-            || identifier == "com.apple.iwork.pages" {
+            || identifier == "com.apple.iwork.pages"
+            || identifier == "com.apple.pages" {
             return .documentEditor
         }
         if identifier.hasPrefix("com.tencent.xinwechat") {
