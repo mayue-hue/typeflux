@@ -243,12 +243,13 @@ enum MouseVoiceHandlePlacement {
 }
 
 enum MouseVoiceHandleGeometry {
-    static let canvasSize = CGSize(width: 72, height: 72)
-    static let buttonSize: CGFloat = 40
-    static let ringDiameter: CGFloat = 48
-    static let interactionInset: CGFloat = 7
-    static let maximumMagneticOffset: CGFloat = 3.5
-    static let maximumRingLineWidth: CGFloat = 3.7
+    static let canvasSize = CGSize(width: 40, height: 40)
+    static let buttonSize: CGFloat = 20
+    static let iconSize: CGFloat = 12
+    static let ringDiameter: CGFloat = 24
+    static let interactionInset: CGFloat = 4
+    static let maximumMagneticOffset: CGFloat = 2
+    static let maximumRingLineWidth: CGFloat = 2.1
     static let maximumVisualScale: CGFloat = 1.12
 }
 

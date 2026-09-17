@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class VoiceHandleWindowController {
-    private static let proximityRadius: CGFloat = 58
+    private static let proximityRadius: CGFloat = 36
 
     var onPointerEntered: (() -> Void)?
     var onPointerExited: (() -> Void)?
