@@ -1,9 +1,14 @@
 import AppKit
 import Foundation
 
+enum MouseVoiceRecordingStartMode {
+    case holdToTalk
+    case locked
+}
+
 @MainActor
 final class MouseVoiceInputController {
-    var onRecordingRequested: (() -> Void)?
+    var onRecordingRequested: ((MouseVoiceRecordingStartMode) -> Void)?
     var onRecordingReleaseRequested: (() -> Void)?
     var onRecordingStopRequested: (() -> Void)?
     var recordingStateProvider: (() -> Bool)?
@@ -326,7 +331,7 @@ private extension MouseVoiceInputController {
         candidateTarget = nil
         clickPending = false
         handleController.showCommitted()
-        onRecordingRequested?()
+        onRecordingRequested?(.locked)
         handleController.hide(after: MouseVoiceLongPressPolicy.commitFeedbackDuration)
     }
 
@@ -341,7 +346,7 @@ private extension MouseVoiceInputController {
         candidateTarget = nil
         clickRecordingActive = true
         handleController.showCommitted()
-        onRecordingRequested?()
+        onRecordingRequested?(.holdToTalk)
         startRecordingStateMonitoring()
     }
 
