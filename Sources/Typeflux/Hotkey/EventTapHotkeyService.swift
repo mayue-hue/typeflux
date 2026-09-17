@@ -140,6 +140,10 @@ final class EventTapHotkeyService: HotkeyService {
     private static let modifierShortcutArbitrationDelay: TimeInterval = 0.22
     private static let duplicateHistoryRequestSuppression: TimeInterval = 0.18
 
+    var recordingStopEnabled: (() -> Bool)?
+    var onRecordingStop: (() -> Void)?
+    private var recordingStopGesture = RecordingStopGesture()
+
     var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)?
     var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)?
     var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)?
@@ -239,6 +243,7 @@ final class EventTapHotkeyService: HotkeyService {
         hotkeySettingsObserver = nil
         historySystemHotkey.unregister()
         arbiter = HotkeyGestureArbiter()
+        recordingStopGesture = RecordingStopGesture()
     }
 
     private func registerHistorySystemHotkey() {
@@ -379,6 +384,25 @@ final class EventTapHotkeyService: HotkeyService {
             historyHotkey: historyHotkey,
             auxiliaryHotkey: auxiliaryBinding
         )
+
+        let stopEnabled = recordingStopEnabled?() == true
+        let stopRequested = recordingStopGesture.handle(
+            type: eventType, keyCode: keyCode, flags: modifierFlags, isRepeat: isRepeat,
+            bindings: [activationHotkey, auxiliaryBinding, askHotkey].compactMap { $0 },
+            enabled: stopEnabled, timestamp: timestamp
+        )
+        if stopRequested {
+            // Discard the old gesture so neither shortcut's release can submit or restart it.
+            arbiter = HotkeyGestureArbiter()
+            syncPendingModifierActivationTimer()
+            DispatchQueue.main.async { [weak self] in self?.onRecordingStop?() }
+            return canConsume
+        }
+        if recordingStopGesture.suppressesActivation { return canConsume }
+        if stopEnabled, recordingStopGesture.isPress || isRepeat {
+            // New presses are stop candidates; releases retain hold-to-talk behavior.
+            return shouldConsume
+        }
 
         switch eventType {
         case .keyDown:

@@ -20,6 +20,8 @@ struct HotkeyEventContext: Sendable, Equatable {
 }
 
 protocol HotkeyService: AnyObject {
+    var recordingStopEnabled: (() -> Bool)? { get set }
+    var onRecordingStop: (() -> Void)? { get set }
     var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)? { get set }
     var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)? { get set }
     var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)? { get set }
@@ -39,6 +41,8 @@ protocol HotkeyService: AnyObject {
 }
 
 extension HotkeyService {
+    var recordingStopEnabled: (() -> Bool)? { get { nil } set {} }
+    var onRecordingStop: (() -> Void)? { get { nil } set {} }
     var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)? { get { nil } set {} }
     var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)? { get { nil } set {} }
     var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)? { get { nil } set {} }

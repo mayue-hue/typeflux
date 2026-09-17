@@ -347,6 +347,13 @@ final class WorkflowController {
     }
 
     func start() {
+        hotkeyService.recordingStopEnabled = { [weak self] in
+            guard let self else { return false }
+            return isRecording && recordingGestureDecision == nil
+        }
+        hotkeyService.onRecordingStop = { [weak self] in
+            self?.finishRecordingFromCurrentMode()
+        }
         hotkeyService.onAuxiliaryPressBegan = { [weak self] context in
             guard let self else { return }
             handlePressBegan(
@@ -627,6 +634,10 @@ final class WorkflowController {
             return
         }
         suppressActivationTapUntil = nil
+        if isRecording, recordingMode == .holdToTalk {
+            lockActiveRecording()
+            return
+        }
         handlePressBegan(
             intent: .dictation,
             startLocked: true,
@@ -655,25 +666,15 @@ final class WorkflowController {
         }
 
         if isRecording {
-            if intent == .askSelection, recordingIntent == .dictation {
+            if intent == .askSelection, recordingIntent == .dictation, recordingGestureDecision != nil {
                 promoteActiveRecordingToAskSelection()
-                return
-            }
-
-            if startLocked, recordingMode == .holdToTalk {
-                lockActiveRecording()
-                return
-            }
-
-            guard recordingMode == .locked else {
-                NSLog("[Workflow] Already recording, ignoring press")
                 return
             }
 
             if !startLocked {
                 suppressActivationTapUntil = Date().addingTimeInterval(Self.tapToLockThreshold + 0.2)
             }
-            confirmLockedRecording()
+            finishRecordingFromCurrentMode()
             return
         }
 
@@ -823,49 +824,13 @@ final class WorkflowController {
     }
 
     private func promoteActiveRecordingToAskSelection() {
-        if let decision = recordingGestureDecision {
-            recordingIntent = .askSelection
-            recordingMode = .locked
-            hotkeyPressedAt = nil
-            decision.resolve()
-            Task { @MainActor in
-                guard self.isRecording, self.recordingIntent == .askSelection else { return }
-                self.presentReadyRecording()
-            }
-            return
-        }
-        RecordingStartupLatencyTrace.shared.mark("workflow.promote_to_ask")
+        guard let decision = recordingGestureDecision else { return }
         recordingIntent = .askSelection
         recordingMode = .locked
         hotkeyPressedAt = nil
-        let prePromotionSelectionTask = selectionTask
-        let prePromotionInputContextTask = inputContextTask
-        selectionTask = Task {
-            if let snapshot = await prePromotionSelectionTask?.value,
-               snapshot.hasAskSelectionContext {
-                NetworkDebugLogger.logMessage(
-                    "[Ask Flow] preserved pre-promotion selection capture for Ask Anything recording"
-                )
-                return snapshot
-            }
-            return TextSelectionSnapshot(
-                processName: Self.isTypefluxFrontmostApplication() ? "Typeflux" : nil,
-                bundleIdentifier: Self.isTypefluxFrontmostApplication() ? Bundle.main.bundleIdentifier : nil,
-                source: "ask-promoted-isolated",
-                isEditable: false,
-                isFocusedTarget: false
-            )
-        }
-        inputContextTask = prePromotionInputContextTask
-        activeRealtimeAudioBufferPump?.cancel()
-        activeRealtimeAudioBufferPump = nil
-        Task {
-            await self.liveTranscriptionPreviewer?.cancel()
-            await self.activeRealtimeTranscriptionSession?.cancel()
-            self.activeRealtimeTranscriptionSession = nil
-        }
+        decision.resolve()
         Task { @MainActor in
-            guard self.isRecording else { return }
+            guard self.isRecording, self.recordingIntent == .askSelection else { return }
             self.presentReadyRecording()
         }
     }

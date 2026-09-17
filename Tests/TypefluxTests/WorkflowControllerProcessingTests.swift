@@ -2029,55 +2029,44 @@ final class WorkflowControllerProcessingTests: XCTestCase {
         await waitForMainActorWork()
     }
 
-    func testAskPressDuringActiveDictationPromotesExistingRecording() async {
+    func testRecordingStopCallbackPreservesAskAndDisablesAfterFinish() async {
+        let hotkeys = MockProcessingHotkeyService()
         let audioRecorder = MockProcessingAudioRecorder()
-        let selectionSnapshot = TextSelectionSnapshot(
-            processID: 1,
-            processName: "Arc",
-            bundleIdentifier: "company.thebrowser.Browser",
-            selectedRange: nil,
-            selectedText: "Selected browser text",
-            source: "clipboard-copy",
-            isEditable: true,
-            role: "AXGroup",
-            windowTitle: "Chat",
-            isFocusedTarget: true
-        )
-        let inputSnapshot = CurrentInputTextSnapshot(
-            processID: 1,
-            processName: "Arc",
-            bundleIdentifier: "company.thebrowser.Browser",
-            role: "AXGroup",
-            text: "Before Selected browser text After",
-            selectedRange: CFRange(location: 7, length: 21),
-            isEditable: true,
-            isFocusedTarget: true,
-            textSource: "visible-text"
-        )
-        let controller = makeWorkflowController(
-            textInjector: MockProcessingTextInjector(
-                selectionSnapshot: selectionSnapshot,
-                inputSnapshot: inputSnapshot
-            ),
-            audioRecorder: audioRecorder,
-            sleep: { _ in }
-        )
-
-        await controller.beginRecording(intent: .dictation, startLocked: false)
-
-        controller.handlePressBegan(intent: .askSelection, startLocked: true)
-
+        let controller = makeWorkflowController(hotkeyService: hotkeys, audioRecorder: audioRecorder)
+        controller.start()
+        XCTAssertEqual(hotkeys.recordingStopEnabled?(), false)
+        await controller.beginRecording(intent: .askSelection, startLocked: true)
+        XCTAssertEqual(hotkeys.recordingStopEnabled?(), true)
+        hotkeys.onRecordingStop?()
+        hotkeys.onRecordingStop?()
         XCTAssertEqual(controller.recordingIntent, .askSelection)
-        XCTAssertEqual(controller.recordingMode, .locked)
-        XCTAssertEqual(audioRecorder.startCallCount, 1)
-        let promotedSelectionSnapshot = await controller.selectionTask?.value
-        XCTAssertEqual(promotedSelectionSnapshot?.selectedText, "Selected browser text")
-        XCTAssertEqual(promotedSelectionSnapshot?.source, "clipboard-copy")
-        let promotedInputContext = await controller.inputContextTask?.value
-        XCTAssertEqual(promotedInputContext?.selectedText, "Selected browser text")
-
-        controller.cancelRecording()
+        await audioRecorder.waitUntilStopCount(isAtLeast: 1)
+        XCTAssertEqual(audioRecorder.stopCallCount, 1)
+        XCTAssertEqual(hotkeys.recordingStopEnabled?(), false)
         await waitForMainActorWork()
+    }
+
+    func testCompleteInputShortcutsStopWithoutChangingRecordingIntentOrPersona() async {
+        for source in [WorkflowController.RecordingIntent.dictation, .askSelection] {
+            for target in [WorkflowController.RecordingIntent.dictation, .askSelection] {
+                for auxiliary in [false, true] {
+                    let audioRecorder = MockProcessingAudioRecorder()
+                    let controller = makeWorkflowController(audioRecorder: audioRecorder, sleep: { _ in })
+                    await controller.beginRecording(intent: source, startLocked: source == .askSelection)
+                    controller.recordingUsesAuxiliary = auxiliary
+                    controller.handlePressBegan(intent: target, startLocked: target == .askSelection, auxiliary: !auxiliary)
+                    XCTAssertEqual(controller.recordingIntent, source)
+                    XCTAssertEqual(controller.recordingUsesAuxiliary, auxiliary)
+                    await audioRecorder.waitUntilStopCount(isAtLeast: 1)
+                    XCTAssertEqual(audioRecorder.startCallCount, 1)
+                    XCTAssertEqual(audioRecorder.stopCallCount, 1)
+                    controller.handlePressEnded()
+                    controller.handleAskPressEnded()
+                    XCTAssertEqual(audioRecorder.stopCallCount, 1)
+                    await waitForMainActorWork()
+                }
+            }
+        }
     }
 
     func testAskContextTextFallsBackToInputContextSelection() {
@@ -2854,6 +2843,7 @@ final class WorkflowControllerProcessingTests: XCTestCase {
 
     private func makeWorkflowController(
         textInjector: TextInjector = MockProcessingTextInjector(),
+        hotkeyService: HotkeyService = MockProcessingHotkeyService(),
         audioRecorder: AudioRecorder = MockProcessingAudioRecorder(),
         sttTranscriber: Transcriber = MockProcessingTranscriber(),
         localFallbackTranscriber: Transcriber? = nil,
@@ -2883,7 +2873,7 @@ final class WorkflowControllerProcessingTests: XCTestCase {
         return WorkflowController(
             appState: appState,
             settingsStore: settingsStore,
-            hotkeyService: MockProcessingHotkeyService(),
+            hotkeyService: hotkeyService,
             audioRecorder: audioRecorder,
             sttRouter: STTRouter(
                 settingsStore: settingsStore,
@@ -3324,6 +3314,8 @@ private final class MockProcessingLLMAgentService: LLMAgentService {
 }
 
 private final class MockProcessingHotkeyService: HotkeyService {
+    var recordingStopEnabled: (() -> Bool)?
+    var onRecordingStop: (() -> Void)?
     var onActivationTap: ((HotkeyEventContext) -> Void)?
     var onActivationPressBegan: ((HotkeyEventContext) -> Void)?
     var onActivationPressEnded: ((HotkeyEventContext) -> Void)?
