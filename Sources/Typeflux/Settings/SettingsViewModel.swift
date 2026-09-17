@@ -284,7 +284,7 @@ final class StudioViewModel: ObservableObject {
         localModelManager: LocalSTTModelManaging = LocalModelManager(),
         audioDeviceManager: AudioDeviceManager = AudioDeviceManager(),
         notificationService: LocalNotificationSending = NoopLocalNotificationService(),
-        audioPreviewPlayer: HistoryAudioPreviewPlaying = AVFoundationHistoryAudioPreviewPlayer()
+        audioPreviewPlayer: HistoryAudioPreviewPlaying? = nil
     ) {
         self.settingsStore = settingsStore
         self.historyStore = historyStore
@@ -295,7 +295,7 @@ final class StudioViewModel: ObservableObject {
         self.notificationService = notificationService
         self.audioDeviceManager = audioDeviceManager
         self.onRetryHistory = onRetryHistory
-        self.audioPreviewPlayer = audioPreviewPlayer
+        self.audioPreviewPlayer = audioPreviewPlayer ?? AVFoundationHistoryAudioPreviewPlayer()
 
         let currentPersonas = settingsStore.personas
 
@@ -520,7 +520,7 @@ final class StudioViewModel: ObservableObject {
         }
         syncLocalModelDownloadProgress()
         refreshCloudServerStatuses()
-        audioPreviewPlayer.onPlaybackFinished = { [weak self] in
+        self.audioPreviewPlayer.onPlaybackFinished = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.playingAudioRecordID = nil
             }
