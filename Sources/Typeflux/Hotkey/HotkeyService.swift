@@ -1,6 +1,7 @@
 import Foundation
 
 enum HotkeyAction {
+    case auxiliary
     case activation
     case ask
     case personaPicker
@@ -19,6 +20,9 @@ struct HotkeyEventContext: Sendable, Equatable {
 }
 
 protocol HotkeyService: AnyObject {
+    var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)? { get set }
+    var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)? { get set }
+    var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)? { get set }
     var onActivationTap: ((HotkeyEventContext) -> Void)? { get set }
     var onActivationPressBegan: ((HotkeyEventContext) -> Void)? { get set }
     var onActivationPressEnded: ((HotkeyEventContext) -> Void)? { get set }
@@ -35,5 +39,8 @@ protocol HotkeyService: AnyObject {
 }
 
 extension HotkeyService {
+    var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)? { get { nil } set {} }
+    var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)? { get { nil } set {} }
+    var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)? { get { nil } set {} }
     func settleActivationGesture() {}
 }

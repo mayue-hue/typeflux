@@ -17,6 +17,8 @@ final class HotkeyRecorder: ObservableObject {
 
     @Published var isRecording: Bool = false
 
+    private var supportsAuxiliaryBindings = false
+    private var auxiliaryCapture = AuxiliaryHotkeyCapture()
     private var localMonitor: Any?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -30,8 +32,10 @@ final class HotkeyRecorder: ObservableObject {
         let timestamp: TimeInterval
     }
 
-    func start(onRecorded: @escaping (HotkeyBinding) -> Void) {
+    func start(supportsAuxiliaryBindings: Bool = false, onRecorded: @escaping (HotkeyBinding) -> Void) {
         stop()
+        self.supportsAuxiliaryBindings = supportsAuxiliaryBindings
+        auxiliaryCapture = AuxiliaryHotkeyCapture()
         isRecording = true
         self.onRecorded = onRecorded
 
@@ -39,7 +43,7 @@ final class HotkeyRecorder: ObservableObject {
             return
         }
 
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
 
             let shouldConsume = processRecordedEvent(
@@ -77,6 +81,7 @@ final class HotkeyRecorder: ObservableObject {
     private func installEventTapIfPossible() -> Bool {
         let mask =
             (1 << CGEventType.keyDown.rawValue)
+                | (1 << CGEventType.keyUp.rawValue)
                 | (1 << CGEventType.flagsChanged.rawValue)
         let selfPointer = Unmanaged.passUnretained(self).toOpaque()
 
@@ -126,6 +131,21 @@ final class HotkeyRecorder: ObservableObject {
         modifierFlags: UInt,
         isRepeat: Bool
     ) -> Bool {
+        if supportsAuxiliaryBindings {
+            guard let binding = auxiliaryCapture.handle(
+                type: eventType, keyCode: keyCode, flags: modifierFlags,
+                isRepeat: isRepeat, timestamp: ProcessInfo.processInfo.systemUptime
+            ) else { return true }
+            pendingModifierOnlyWorkItem?.cancel()
+            if binding.pressCount == 2 || binding.modifierKeyCodes != nil || modifierFlags != 0 && binding.physicalModifierKeys.isEmpty {
+                completeRecording(binding)
+            } else {
+                let workItem = DispatchWorkItem { [weak self] in self?.completeRecording(binding) }
+                pendingModifierOnlyWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.doubleTapMaximumInterval, execute: workItem)
+            }
+            return true
+        }
         if eventType == .flagsChanged {
             return processModifierOnlyRecordingEvent(
                 keyCode: keyCode,
@@ -151,6 +171,8 @@ final class HotkeyRecorder: ObservableObject {
         switch type {
         case .keyDown:
             .keyDown
+        case .keyUp:
+            .keyUp
         case .flagsChanged:
             .flagsChanged
         default:

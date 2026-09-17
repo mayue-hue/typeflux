@@ -434,7 +434,8 @@ extension WorkflowController {
     func finishRecordingAndProcess(
         recordingStoppedAt: Date,
         startupContext: RecordingStartupContext? = nil,
-        bypassPersonaRewrite: Bool = false
+        bypassPersonaRewrite: Bool = false,
+        personaSnapshot: DictationPersonaSnapshot? = nil
     ) async {
         do {
             let finishStartedAt = Date()
@@ -574,9 +575,10 @@ extension WorkflowController {
             }
             let activePersonaProfile = recordingIntent == .askSelection || bypassPersonaRewrite
                 ? nil
-                : activePersona(selectionSnapshot: selectionSnapshot, inputContext: inputContext)
-            let personaPrompt = activePersonaProfile.map {
-                settingsStore.resolvedPersonaPrompt(for: $0)
+                : (personaSnapshot.map { $0.persona }
+                    ?? activePersona(selectionSnapshot: selectionSnapshot, inputContext: inputContext))
+            let personaPrompt = activePersonaProfile.flatMap { persona in
+                personaSnapshot?.prompt ?? settingsStore.resolvedPersonaPrompt(for: persona)
             }
             let fallbackWaitSeconds = settingsStore.voiceProcessingTimeout.seconds
 

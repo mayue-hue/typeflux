@@ -1373,3 +1373,17 @@
 "history.stats.hotkeyToFirstSignal" = "按鍵到麥克風有聲音";
 "history.stats.inputZeroPrefix" = "開頭全零音訊";
 "workflow.typefluxCloud.localFallbackRequired" = "雲端語音辨識僅對付費方案開放，您的請求將由本機模型處理。";
+
+// Auxiliary dictation shortcut
+"settings.shortcuts.auxiliary.title" = "輔助快捷鍵";
+"settings.shortcuts.auxiliary.subtitle" = "使用獨立人設進行語音輸入，不改變主要輸入的人設。";
+"settings.shortcuts.auxiliary.footnote" = "支援單鍵、組合鍵及單鍵按兩下。預設 Fn + 左 Shift。始終使用所選人設。";
+"settings.shortcuts.auxiliary.persona" = "輔助輸入人設";
+"settings.shortcuts.auxiliaryConflict" = "快捷鍵與現有綁定衝突，請在設定中選擇其他按鍵。";
+"settings.shortcuts.auxiliaryUpdated" = "輔助快捷鍵已更新";
+"settings.shortcuts.auxiliaryUnset" = "輔助快捷鍵已取消綁定";
+"settings.shortcuts.recordingAuxiliary" = "按下輔助快捷鍵，或按兩下同一按鍵。";
+"onboarding.shortcuts.auxiliary.hint" = "使用「%@」進行語音輸入，預設整理並輸出英文。可在設定中更換人設。";
+"onboarding.shortcuts.auxiliary.unset" = "未綁定快捷鍵，請前往設定配置。";
+"onboarding.shortcuts.auxiliary.externalKeyboard" = "輔助快捷鍵會同步使用所選按鍵 + 左 Shift，現有的自訂輔助綁定會保留。";
+"onboarding.shortcuts.auxiliary.active" = "輔助快捷鍵：%@";

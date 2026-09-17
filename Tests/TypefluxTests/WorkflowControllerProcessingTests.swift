@@ -2867,7 +2867,10 @@ final class WorkflowControllerProcessingTests: XCTestCase {
         analyticsReporter: AnalyticsEventReporting = NoopAnalyticsEventReporter.shared,
         sleep: @escaping @Sendable (Duration) async -> Void = { _ in },
         monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        configureSettings: ((SettingsStore) -> Void)? = nil
+        configureSettings: ((SettingsStore) -> Void)? = nil,
+        hasPaidCloudSubscription: @escaping @Sendable () async -> Bool = {
+            await MainActor.run { AuthState.shared.canUseCloudASR }
+        }
     ) -> WorkflowController {
         let suiteName = "WorkflowControllerProcessingTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -2895,7 +2898,8 @@ final class WorkflowControllerProcessingTests: XCTestCase {
                 groq: sttTranscriber,
                 soniox: sttTranscriber,
                 typefluxOfficial: sttTranscriber,
-                typefluxCloudLoginFallbackLocalModel: localFallbackTranscriber
+                typefluxCloudLoginFallbackLocalModel: localFallbackTranscriber,
+                hasPaidTypefluxCloudSubscription: hasPaidCloudSubscription
             ),
             llmService: llmService,
             llmAgentService: MockProcessingLLMAgentService(),
@@ -3942,5 +3946,84 @@ private final class MockProcessingAgentJobStore: AgentJobStore, @unchecked Senda
     func clear() async throws {}
     func count() async throws -> Int {
         0
+    }
+}
+
+
+extension WorkflowControllerProcessingTests {
+    func testAuxiliaryPromotionKeepsMicrophoneRunningAndSnapshotsPersona() async {
+        let audioRecorder = MockProcessingAudioRecorder()
+        let controller = makeWorkflowController(audioRecorder: audioRecorder)
+        controller.settingsStore.quickInputEnabled = true
+        controller.settingsStore.applyPersonaSelection(SettingsStore.defaultPersonaID)
+        controller.settingsStore.savePersonaAppBinding(appIdentifier: "com.test", personaID: SettingsStore.defaultPersonaID)
+        let decision = RecordingGestureDecision()
+        controller.recordingGestureDecision = decision
+        let startup = Task { await controller.beginRecording(intent: .dictation, startLocked: false) }
+        for _ in 0..<100 {
+            if controller.isAudioRecorderStarted { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(controller.isAudioRecorderStarted, "Microphone must start before shortcut settlement")
+        XCTAssertEqual(audioRecorder.startCallCount, 1)
+        controller.promoteRecordingToAuxiliary(context: HotkeyEventContext())
+        await startup.value
+        XCTAssertTrue(controller.recordingUsesAuxiliary)
+        XCTAssertEqual(audioRecorder.startCallCount, 1)
+        XCTAssertEqual(audioRecorder.stopCallCount, 0)
+        XCTAssertFalse(controller.shouldUseQuickInput(recordingMode: .holdToTalk, recordingIntent: .dictation))
+        XCTAssertEqual(controller.recordingPersonaSnapshot?.persona?.id, SettingsStore.englishPersonaID)
+        let prompt = controller.recordingPersonaSnapshot?.prompt
+        controller.settingsStore.auxiliaryPersonaID = SettingsStore.defaultPersonaID.uuidString
+        XCTAssertEqual(controller.recordingPersona(appName: nil, bundleIdentifier: "com.test")?.id, SettingsStore.englishPersonaID)
+        XCTAssertEqual(controller.recordingPersonaSnapshot?.prompt, prompt)
+        XCTAssertEqual(controller.settingsStore.activePersonaID, SettingsStore.defaultPersonaID.uuidString)
+        controller.cancelRecording()
+        await waitForMainActorWork()
+    }
+
+    func testAuxiliaryDoesNotRequireMainPersonaToBeEnabled() async {
+        let controller = makeWorkflowController()
+        controller.settingsStore.personaRewriteEnabled = false
+        controller.recordingUsesAuxiliary = true
+        await controller.beginRecording(intent: .dictation, startLocked: true)
+        XCTAssertEqual(controller.recordingPersonaSnapshot?.persona?.id, SettingsStore.englishPersonaID)
+        XCTAssertFalse(controller.settingsStore.personaRewriteEnabled)
+        controller.cancelRecording()
+        await waitForMainActorWork()
+    }
+}
+
+
+extension WorkflowControllerProcessingTests {
+    func testAuxiliaryPromotionPreservesAudioCapturedBeforeGestureAndRealtimeSetup() async throws {
+        let events = ThreadSafeEventRecorder()
+        let factory = DelayedRealtimeSessionFactory(eventRecorder: events)
+        let recorder = MockProcessingAudioRecorder()
+        let controller = makeWorkflowController(
+            audioRecorder: recorder,
+            sttTranscriber: factory,
+            configureSettings: { $0.sttProvider = .aliCloud },
+            hasPaidCloudSubscription: { true }
+        )
+        controller.recordingGestureDecision = RecordingGestureDecision()
+        let startup = Task { await controller.beginRecording(intent: .dictation, startLocked: false) }
+        await waitUntil { controller.isAudioRecorderStarted }
+        XCTAssertFalse(events.snapshot().contains("realtime-setup"))
+        try recorder.emitAudio(frameCount: 320, value: 0.1)
+        controller.promoteRecordingToAuxiliary(context: HotkeyEventContext())
+        await waitUntil { events.snapshot().contains("realtime-setup") }
+        try recorder.emitAudio(frameCount: 320, value: 0.2)
+        factory.releaseSetup()
+        await startup.value
+        try recorder.emitAudio(frameCount: 320, value: 0.3)
+        await controller.activeRealtimeAudioBufferPump?.finishInput()
+        let samples = await factory.session.receivedFirstSamples
+        XCTAssertEqual(samples, [0.1, 0.2, 0.3])
+        XCTAssertEqual(recorder.startCallCount, 1)
+        XCTAssertEqual(recorder.stopCallCount, 0)
+        XCTAssertEqual(controller.recordingPersonaSnapshot?.persona?.id, SettingsStore.englishPersonaID)
+        controller.cancelRecording()
+        await waitForMainActorWork()
     }
 }

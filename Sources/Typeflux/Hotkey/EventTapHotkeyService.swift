@@ -140,6 +140,9 @@ final class EventTapHotkeyService: HotkeyService {
     private static let modifierShortcutArbitrationDelay: TimeInterval = 0.22
     private static let duplicateHistoryRequestSuppression: TimeInterval = 0.18
 
+    var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)?
+    var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)?
+    var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)?
     var onActivationTap: ((HotkeyEventContext) -> Void)?
     var onActivationPressBegan: ((HotkeyEventContext) -> Void)?
     var onActivationPressEnded: ((HotkeyEventContext) -> Void)?
@@ -151,6 +154,20 @@ final class EventTapHotkeyService: HotkeyService {
     var onError: ((String) -> Void)?
 
     private let settingsStore: SettingsStore
+
+    private var activationBinding: HotkeyBinding?
+    private var auxiliaryBinding: HotkeyBinding?
+    private var askBinding: HotkeyBinding?
+    private var personaBinding: HotkeyBinding?
+    private var historyBinding: HotkeyBinding?
+
+    private func refreshBindings() {
+        activationBinding = settingsStore.activationHotkey
+        auxiliaryBinding = settingsStore.auxiliaryHotkey
+        askBinding = settingsStore.askHotkey
+        personaBinding = settingsStore.personaHotkey
+        historyBinding = settingsStore.historyHotkey
+    }
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -177,12 +194,14 @@ final class EventTapHotkeyService: HotkeyService {
         NSLog("[Hotkey] Starting event tap service...")
         ErrorLogStore.shared.log("Hotkey: starting")
 
+        refreshBindings()
         registerHistorySystemHotkey()
         hotkeySettingsObserver = NotificationCenter.default.addObserver(
             forName: .hotkeySettingsDidChange,
             object: settingsStore,
             queue: .main
         ) { [weak self] _ in
+            self?.refreshBindings()
             self?.registerHistorySystemHotkey()
         }
         installEventTapIfPossible()
@@ -346,10 +365,10 @@ final class EventTapHotkeyService: HotkeyService {
     ) -> Bool {
         guard let eventType else { return false }
 
-        let activationHotkey = settingsStore.activationHotkey
-        let askHotkey = settingsStore.askHotkey
-        let personaHotkey = settingsStore.personaHotkey
-        let historyHotkey = settingsStore.historyHotkey
+        let activationHotkey = activationBinding
+        let askHotkey = askBinding
+        let personaHotkey = personaBinding
+        let historyHotkey = historyBinding
         let shouldConsume = canConsume && arbiter.shouldConsume(
             eventType: eventType,
             keyCode: keyCode,
@@ -357,7 +376,8 @@ final class EventTapHotkeyService: HotkeyService {
             activationHotkey: activationHotkey,
             askHotkey: askHotkey,
             personaHotkey: personaHotkey,
-            historyHotkey: historyHotkey
+            historyHotkey: historyHotkey,
+            auxiliaryHotkey: auxiliaryBinding
         )
 
         switch eventType {
@@ -370,7 +390,9 @@ final class EventTapHotkeyService: HotkeyService {
                     activationHotkey: activationHotkey,
                     askHotkey: askHotkey,
                     personaHotkey: personaHotkey,
-                    historyHotkey: historyHotkey
+                    historyHotkey: historyHotkey,
+                    auxiliaryHotkey: auxiliaryBinding,
+                    timestamp: timestamp
                 ),
                 context: HotkeyEventContext(uptime: timestamp)
             )
@@ -379,7 +401,9 @@ final class EventTapHotkeyService: HotkeyService {
                 arbiter.handleKeyUp(
                     keyCode: keyCode,
                     activationHotkey: activationHotkey,
-                    askHotkey: askHotkey
+                    askHotkey: askHotkey,
+                    auxiliaryHotkey: auxiliaryBinding,
+                    timestamp: timestamp
                 ),
                 context: HotkeyEventContext(uptime: timestamp)
             )
@@ -392,6 +416,7 @@ final class EventTapHotkeyService: HotkeyService {
                     askHotkey: askHotkey,
                     personaHotkey: personaHotkey,
                     historyHotkey: historyHotkey,
+                    auxiliaryHotkey: auxiliaryBinding,
                     timestamp: timestamp
                 ),
                 context: HotkeyEventContext(uptime: timestamp)
@@ -439,6 +464,16 @@ final class EventTapHotkeyService: HotkeyService {
 
         for event in events {
             switch event {
+            case .auxiliaryPromoted:
+                RecordingStartupLatencyTrace.shared.mark("hotkey.auxiliary_promoted")
+                DispatchQueue.main.async { [weak self] in self?.onAuxiliaryPromoted?(context) }
+            case .begin(.auxiliary):
+                RecordingStartupLatencyTrace.shared.begin("hotkey.auxiliary_begin", physicalUptime: context.uptime)
+                DispatchQueue.main.async { [weak self] in self?.onAuxiliaryPressBegan?(context) }
+            case .end(.auxiliary):
+                DispatchQueue.main.async { [weak self] in self?.onAuxiliaryPressEnded?(context) }
+            case .cancel(.auxiliary):
+                break
             case .activationTapped:
                 ErrorLogStore.shared.log("Hotkey(NSEvent): activation tap")
                 RecordingStartupLatencyTrace.shared.mark("hotkey.activation_tap")

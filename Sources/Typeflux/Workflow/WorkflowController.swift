@@ -160,6 +160,8 @@ final class WorkflowController {
     var shouldFinishRecordingAfterAudioStart = false
     var pendingRecordingStartID: UUID?
     var suppressActivationTapUntil: Date?
+    var recordingUsesAuxiliary = false
+    var recordingPersonaSnapshot: DictationPersonaSnapshot?
     var recordingGestureDecision: RecordingGestureDecision?
     var recordingMode: RecordingMode = .holdToTalk
     var recordingIntent: RecordingIntent = .dictation
@@ -345,6 +347,24 @@ final class WorkflowController {
     }
 
     func start() {
+        hotkeyService.onAuxiliaryPressBegan = { [weak self] context in
+            guard let self else { return }
+            handlePressBegan(
+                intent: .dictation,
+                startLocked: settingsStore.auxiliaryHotkey?.pressCount == 2,
+                hotkeyDetectedAt: context.detectedAt,
+                hotkeyUptime: context.uptime,
+                auxiliary: true
+            )
+        }
+        hotkeyService.onAuxiliaryPromoted = { [weak self] context in
+            self?.promoteRecordingToAuxiliary(context: context)
+        }
+        hotkeyService.onAuxiliaryPressEnded = { [weak self] context in
+            guard let self, recordingUsesAuxiliary,
+                  settingsStore.auxiliaryHotkey?.pressCount != 2 else { return }
+            handlePressEnded(hotkeyUptime: context.uptime)
+        }
         hotkeyService.onActivationTap = { [weak self] context in
             self?.handleActivationTap(hotkeyDetectedAt: context.detectedAt, hotkeyUptime: context.uptime)
         }
@@ -618,7 +638,8 @@ final class WorkflowController {
         intent: RecordingIntent,
         startLocked: Bool,
         hotkeyDetectedAt: Date = Date(),
-        hotkeyUptime: TimeInterval? = nil
+        hotkeyUptime: TimeInterval? = nil,
+        auxiliary: Bool = false
     ) {
         RecordingStartupLatencyTrace.shared.mark("workflow.press_began.\(intent.traceName)")
         if isPersonaPickerPresented {
@@ -682,12 +703,18 @@ final class WorkflowController {
             dismissClarification()
         }
 
-        let activation = settingsStore.activationHotkey
+        recordingUsesAuxiliary = auxiliary
+        recordingPersonaSnapshot = nil
+        let activation = auxiliary ? settingsStore.auxiliaryHotkey : settingsStore.activationHotkey
+        let auxiliaryBinding = settingsStore.auxiliaryHotkey
         let ask = settingsStore.askHotkey
         if !startLocked, intent == .dictation,
-           let activation, let ask,
-           activation.isModifierOnlyTrigger, ask.isModifierDoubleTapTrigger,
-           activation.keyCode == ask.keyCode, activation.modifierFlags == ask.modifierFlags {
+           let activation, activation.isModifierOnlyTrigger,
+           (ask.map { $0.isModifierDoubleTapTrigger && activation.keyCode == $0.keyCode
+               && activation.modifierFlags == $0.modifierFlags } == true
+               || (!auxiliary && auxiliaryBinding.map {
+                   $0.modifierFlags & activation.modifierFlags == activation.modifierFlags
+               } == true)) {
             let decision = RecordingGestureDecision()
             recordingGestureDecision = decision
             decision.schedule(after: Self.tapToLockThreshold)
@@ -1029,7 +1056,7 @@ final class WorkflowController {
             )
         }
 
-        guard let persona = settingsStore.effectivePersona(
+        guard let persona = recordingPersona(
             appName: appName,
             bundleIdentifier: bundleIdentifier
         ) else {
@@ -1052,7 +1079,7 @@ final class WorkflowController {
         if shouldUseQuickInput(recordingMode: recordingMode, recordingIntent: intent) {
             return true
         }
-        guard let persona = settingsStore.effectivePersona(
+        guard let persona = recordingPersona(
             appName: appName,
             bundleIdentifier: bundleIdentifier
         ) else {
@@ -1175,6 +1202,10 @@ final class WorkflowController {
                 recordingGestureDecision = nil
                 effectiveIntent = recordingIntent
             }
+            snapshotRecordingPersona(
+                appName: frontmostApplicationContext.appName,
+                bundleIdentifier: frontmostApplicationContext.bundleIdentifier
+            )
             let canUseRealtimeTranscription = effectiveIntent != .askSelection
             let usesLivePreview = canUseRealtimeTranscription && shouldUseLiveTranscriptionPreview()
             let optimizeASR = shouldOptimizeTypefluxASR(
@@ -1397,7 +1428,7 @@ final class WorkflowController {
     }
 
     func shouldUseQuickInput(recordingMode: RecordingMode, recordingIntent: RecordingIntent) -> Bool {
-        settingsStore.quickInputEnabled
+        !recordingUsesAuxiliary && settingsStore.quickInputEnabled
             && recordingIntent == .dictation
             && recordingMode == .holdToTalk
     }
@@ -1421,6 +1452,11 @@ final class WorkflowController {
             recordingMode: recordingMode,
             recordingIntent: recordingIntent
         )
+        if recordingPersonaSnapshot == nil {
+            let context = Self.frontmostApplicationContext(includeIcon: false)
+            snapshotRecordingPersona(appName: context.appName, bundleIdentifier: context.bundleIdentifier)
+        }
+        let personaSnapshot = recordingPersonaSnapshot
         let startupContext = recordingStartupContext
         recordingStartupContext = nil
         recordingGestureDecision?.resolve()
@@ -1456,7 +1492,8 @@ final class WorkflowController {
             await finishRecordingAndProcess(
                 recordingStoppedAt: recordingStoppedAt,
                 startupContext: startupContext,
-                bypassPersonaRewrite: useQuickInput
+                bypassPersonaRewrite: useQuickInput,
+                personaSnapshot: personaSnapshot
             )
         }
     }

@@ -102,6 +102,8 @@ final class SettingsStore {
     /// persona for new users whose LLM is already configured.
     static let defaultPersonaID = UUID(uuidString: "2A7A4A74-A8AC-4F3C-9FB1-5A433EDFA001")!
 
+    static let englishPersonaID = UUID(uuidString: "2A7A4A74-A8AC-4F3C-9FB1-5A433EDFA002")!
+
     let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -897,6 +899,41 @@ final class SettingsStore {
     var outputOpenCCConfig: String {
         get { defaults.string(forKey: "output.opencc.config") ?? "s2twp" }
         set { defaults.set(newValue, forKey: "output.opencc.config") }
+    }
+
+    var auxiliaryPersonaID: String {
+        get { defaults.string(forKey: "persona.auxiliaryID") ?? Self.englishPersonaID.uuidString }
+        set {
+            defaults.set(newValue, forKey: "persona.auxiliaryID")
+            NotificationCenter.default.post(name: .personaSelectionDidChange, object: self)
+        }
+    }
+
+    var auxiliaryPersona: PersonaProfile {
+        let items = personas
+        return items.first { $0.id.uuidString == auxiliaryPersonaID }
+            ?? items.first { $0.id == Self.englishPersonaID }!
+    }
+
+    /// An unconfigured auxiliary shortcut never steals an existing user binding.
+    var auxiliaryHotkey: HotkeyBinding? {
+        get {
+            let value = defaults.string(forKey: "hotkey.auxiliary.json") ?? ""
+            if value == "__unset__" { return nil }
+            if let data = value.data(using: .utf8),
+               let binding = try? JSONDecoder().decode(HotkeyBinding.self, from: data) {
+                return binding
+            }
+            let fallback = HotkeyBinding.defaultAuxiliary
+            return [activationHotkey, askHotkey, personaHotkey, historyHotkey]
+                .compactMap { $0 }.contains { $0.conflicts(with: fallback) } ? nil : fallback
+        }
+        set {
+            let value = newValue.flatMap { try? JSONEncoder().encode($0) }
+                .map { String(decoding: $0, as: UTF8.self) } ?? "__unset__"
+            defaults.set(value, forKey: "hotkey.auxiliary.json")
+            NotificationCenter.default.post(name: .hotkeySettingsDidChange, object: self)
+        }
     }
 
     var activationHotkeyJSON: String {

@@ -111,6 +111,9 @@ final class OnboardingViewModel: ObservableObject {
 
     // Globe key (🌐) macOS keyboard setting
     @Published var isGlobeKeyReady: Bool = true
+    @Published private(set) var auxiliaryHotkey: HotkeyBinding?
+    @Published private(set) var auxiliaryPersonaName: String
+    @Published var shortcutReplacementConflict = false
     @Published private(set) var activationHotkey: HotkeyBinding
     @Published private(set) var askHotkey: HotkeyBinding?
     @Published private(set) var historyHotkey: HotkeyBinding
@@ -210,6 +213,8 @@ final class OnboardingViewModel: ObservableObject {
         let storedActivationHotkey = settingsStore.activationHotkey ?? .defaultActivation
         let storedAskHotkey = settingsStore.askHotkey
         let storedHistoryHotkey = settingsStore.historyHotkey ?? .defaultHistory
+        auxiliaryHotkey = settingsStore.auxiliaryHotkey
+        auxiliaryPersonaName = settingsStore.auxiliaryPersona.name
         activationHotkey = storedActivationHotkey
         askHotkey = storedAskHotkey
         historyHotkey = storedHistoryHotkey
@@ -597,10 +602,15 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func refreshGlobeKeyState() {
+        auxiliaryHotkey = settingsStore.auxiliaryHotkey
+        auxiliaryPersonaName = settingsStore.auxiliaryPersona.name
         isGlobeKeyReady = globeKeyReader.isReadyForHotkey
     }
 
     func useExternalKeyboardShortcutReplacement(_ replacement: ExternalKeyboardShortcutReplacement) {
+        guard updateAuxiliaryForReplacement(
+            activation: replacement.activationHotkey, ask: replacement.askHotkey
+        ) else { return }
         activationHotkey = replacement.activationHotkey
         askHotkey = replacement.askHotkey
         externalKeyboardShortcutReplacement = replacement
@@ -609,7 +619,27 @@ final class OnboardingViewModel: ObservableObject {
         showShortcutReplacementAppliedAlert = true
     }
 
+    private func updateAuxiliaryForReplacement(activation: HotkeyBinding, ask: HotkeyBinding) -> Bool {
+        let previous = settingsStore.auxiliaryHotkey
+        let standardBindings = [63, 54, 61].map { HotkeyBinding.auxiliaryChord(baseKeyCode: $0) }
+        let followsPreset = previous.map { value in standardBindings.contains { $0.conflicts(with: value) } } ?? false
+        let next = followsPreset ? HotkeyBinding.auxiliaryChord(baseKeyCode: activation.keyCode) : previous
+        let existing = [settingsStore.personaHotkey, settingsStore.historyHotkey].compactMap { $0 }
+        let conflicts = existing.contains { $0.conflicts(with: activation) || $0.conflicts(with: ask) }
+            || next.map { candidate in
+                ([activation, ask] + existing).contains { $0.conflicts(with: candidate) }
+            } == true
+        guard !conflicts else {
+            shortcutReplacementConflict = true
+            return false
+        }
+        settingsStore.auxiliaryHotkey = next
+        auxiliaryHotkey = next
+        return true
+    }
+
     func restoreDefaultFNShortcuts() {
+        guard updateAuxiliaryForReplacement(activation: .defaultActivation, ask: .defaultAsk) else { return }
         activationHotkey = .defaultActivation
         askHotkey = .defaultAsk
         externalKeyboardShortcutReplacement = nil

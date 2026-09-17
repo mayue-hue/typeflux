@@ -350,6 +350,7 @@ struct StudioView: View {
     }
 
     private enum ShortcutRecordingTarget {
+        case auxiliary
         case activation
         case ask
         case persona
@@ -2164,6 +2165,39 @@ struct StudioView: View {
                         showsQuickInputSetting: true
                     )
 
+                    VStack(alignment: .leading, spacing: StudioTheme.Spacing.small) {
+                        shortcutConfigurationRow(
+                            configuration: ShortcutConfiguration(
+                                title: L("settings.shortcuts.auxiliary.title"),
+                                subtitle: L("settings.shortcuts.auxiliary.subtitle"),
+                                footnote: L("settings.shortcuts.auxiliary.footnote"),
+                                icon: "mic.fill",
+                                badgeSymbol: "person.crop.circle",
+                                binding: viewModel.auxiliaryHotkey,
+                                isDefault: viewModel.auxiliaryHotkey?.signature == HotkeyBinding.defaultAuxiliary.signature,
+                                isThisRecording: recordingTarget == .auxiliary
+                            ),
+                            onStartRecording: {
+                                recordingTarget = .auxiliary
+                                recorder.start(supportsAuxiliaryBindings: true) { binding in
+                                    viewModel.setAuxiliaryHotkey(binding)
+                                    recordingTarget = nil
+                                }
+                            },
+                            onReset: { viewModel.resetAuxiliaryHotkey() },
+                            onUnset: { viewModel.unsetAuxiliaryHotkey() }
+                        )
+                        Picker(L("settings.shortcuts.auxiliary.persona"), selection: Binding(
+                            get: { viewModel.auxiliaryPersonaID },
+                            set: { viewModel.setAuxiliaryPersona($0) }
+                        )) {
+                            ForEach(viewModel.personas) { persona in
+                                Text(persona.name).tag(persona.id.uuidString)
+                            }
+                        }
+                        .padding(.horizontal, StudioTheme.Spacing.large)
+                    }
+
                     shortcutConfigurationRow(
                         configuration: ShortcutConfiguration(
                             title: L("settings.shortcuts.ask.title"),
@@ -3267,6 +3301,8 @@ struct StudioView: View {
 
     private var recordingBannerDescription: String {
         switch recordingTarget {
+        case .auxiliary:
+            L("settings.shortcuts.recordingAuxiliary")
         case .activation:
             L("settings.shortcuts.recordingActivation")
         case .ask:

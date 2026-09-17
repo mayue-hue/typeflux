@@ -1362,3 +1362,17 @@
 "history.stats.hotkeyToFirstSignal" = "キー操作からマイク信号まで";
 "history.stats.inputZeroPrefix" = "先頭のデジタル無音";
 "workflow.typefluxCloud.localFallbackRequired" = "クラウド音声認識は有料プランでご利用いただけます。リクエストはローカルモデルで処理されます。";
+
+// Auxiliary dictation shortcut
+"settings.shortcuts.auxiliary.title" = "補助ショートカット";
+"settings.shortcuts.auxiliary.subtitle" = "メイン入力のペルソナを変えずに、別のペルソナで音声入力します。";
+"settings.shortcuts.auxiliary.footnote" = "単一キー、キーの組み合わせ、単一キーのダブルタップに対応。初期設定は Fn + 左 Shift。選択したペルソナを常に使用します。";
+"settings.shortcuts.auxiliary.persona" = "補助入力のペルソナ";
+"settings.shortcuts.auxiliaryConflict" = "既存のショートカットと重複しています。設定で別のキーを選択してください。";
+"settings.shortcuts.auxiliaryUpdated" = "補助ショートカットを更新しました";
+"settings.shortcuts.auxiliaryUnset" = "補助ショートカットを解除しました";
+"settings.shortcuts.recordingAuxiliary" = "補助ショートカットを押すか、単一キーをダブルタップしてください。";
+"onboarding.shortcuts.auxiliary.hint" = "%@ で音声入力します。初期設定では内容を整理して英語で出力します。ペルソナは設定で変更できます。";
+"onboarding.shortcuts.auxiliary.unset" = "ショートカット未設定。設定画面で登録してください。";
+"onboarding.shortcuts.auxiliary.externalKeyboard" = "補助ショートカットは選択したキー + 左 Shift に切り替わります。独自の補助キー設定は保持されます。";
+"onboarding.shortcuts.auxiliary.active" = "補助ショートカット：%@";

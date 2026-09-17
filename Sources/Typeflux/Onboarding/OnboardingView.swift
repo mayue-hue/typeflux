@@ -405,6 +405,9 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
+        .alert(L("settings.shortcuts.auxiliaryConflict"), isPresented: $viewModel.shortcutReplacementConflict) {
+            Button(L("common.ok"), role: .cancel) {}
+        }
         .frame(maxWidth: 920, alignment: .leading)
         .frame(maxWidth: .infinity)
     }
@@ -1553,12 +1556,20 @@ struct OnboardingView: View {
                         expanded: true
                     )
 
-                    shortcutCard(
-                        title: L("settings.shortcuts.ask.title"),
-                        subtitle: L("onboarding.shortcuts.ask.hint"),
-                        binding: viewModel.askHotkey ?? .defaultAsk,
-                        expanded: true
-                    )
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let binding = viewModel.auxiliaryHotkey {
+                            shortcutCard(
+                                title: L("settings.shortcuts.auxiliary.title"),
+                                subtitle: L("onboarding.shortcuts.auxiliary.hint", viewModel.auxiliaryPersonaName),
+                                binding: binding,
+                                expanded: true
+                            )
+                        } else {
+                            Text(L("settings.shortcuts.auxiliary.title"))
+                            Text(L("onboarding.shortcuts.auxiliary.unset"))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 HStack(alignment: .top, spacing: shortcutsSectionSpacing) {
@@ -1577,6 +1588,13 @@ struct OnboardingView: View {
                     )
                 }
             }
+
+            shortcutCard(
+                title: L("settings.shortcuts.ask.title"),
+                subtitle: L("onboarding.shortcuts.ask.hint"),
+                binding: viewModel.askHotkey ?? .defaultAsk,
+                expanded: true
+            )
 
             if viewModel.externalKeyboardShortcutReplacement == nil {
                 externalKeyboardShortcutNotice
@@ -1710,7 +1728,7 @@ struct OnboardingView: View {
                     .foregroundStyle(onboardingPrimaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(L("onboarding.shortcuts.externalKeyboard.message"))
+                Text(L("onboarding.shortcuts.externalKeyboard.message") + "\n" + L("onboarding.shortcuts.auxiliary.externalKeyboard"))
                     .font(.studioBody(13))
                     .foregroundStyle(onboardingSecondaryText)
                     .lineSpacing(3)
@@ -1833,14 +1851,17 @@ struct OnboardingView: View {
     }
 
     private var shortcutReplacementAppliedAlertMessage: String {
+        let auxiliaryMessage = viewModel.auxiliaryHotkey.map {
+            L("onboarding.shortcuts.auxiliary.active", HotkeyFormat.display($0))
+        } ?? L("onboarding.shortcuts.auxiliary.unset")
         if let replacement = viewModel.externalKeyboardShortcutReplacement {
             return String(
                 format: L("onboarding.shortcuts.replacement.appliedAlert.message"),
                 shortcutReplacementName(replacement),
                 shortcutReplacementName(replacement)
-            )
+            ) + "\n\n" + auxiliaryMessage
         }
-        return L("onboarding.shortcuts.replacement.restoredAlert.message")
+        return L("onboarding.shortcuts.replacement.restoredAlert.message") + "\n\n" + auxiliaryMessage
     }
 
     private func shortcutReplacementName(

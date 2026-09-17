@@ -7,6 +7,7 @@ enum HotkeyPhysicalEventType: Equatable {
 }
 
 enum HotkeyGestureEvent: Equatable {
+    case auxiliaryPromoted
     case activationTapped
     case begin(HotkeyAction)
     case end(HotkeyAction)
@@ -25,11 +26,19 @@ struct HotkeyGestureArbiter {
     }
 
     private(set) var phase: Phase = .idle
+    private var pressedModifierKeys = Set<Int>()
+    private var auxiliaryIsDown = false
+    private var auxiliaryLastTap: TimeInterval?
+    private var auxiliaryReleaseKeys = Set<Int>()
+    private var auxiliaryConsumedModifierKeys = Set<Int>()
+    private var activationSettled = false
     private var lastModifierTap: ModifierTap?
     private var suppressCurrentModifierTap = false
 
     mutating func settleActivationGesture() {
         lastModifierTap = nil
+        auxiliaryLastTap = nil
+        activationSettled = true
         suppressCurrentModifierTap = phase != .idle
     }
 
@@ -50,8 +59,23 @@ struct HotkeyGestureArbiter {
         activationHotkey: HotkeyBinding?,
         askHotkey: HotkeyBinding?,
         personaHotkey: HotkeyBinding?,
-        historyHotkey: HotkeyBinding? = nil
+        historyHotkey: HotkeyBinding? = nil,
+        auxiliaryHotkey: HotkeyBinding? = nil
     ) -> Bool {
+        if let auxiliaryHotkey {
+            if eventType == .flagsChanged,
+               auxiliaryHotkey.physicalModifierKeys.contains(keyCode) {
+                let keys = Set(auxiliaryHotkey.physicalModifierKeys)
+                let completesChord = modifierFlags == auxiliaryHotkey.modifierFlags
+                    && !pressedModifierKeys.contains(keyCode)
+                    && keys.subtracting([keyCode]).isSubset(of: pressedModifierKeys)
+                // If Shift went through before Fn, its release must go through too.
+                if completesChord || auxiliaryConsumedModifierKeys.contains(keyCode) { return true }
+            }
+            if eventType != .flagsChanged, auxiliaryHotkey.keyCode == keyCode,
+               auxiliaryHotkey.physicalModifierKeys.isEmpty,
+               (modifierFlags == auxiliaryHotkey.modifierFlags || auxiliaryIsDown) { return true }
+        }
         switch eventType {
         case .flagsChanged:
             if let activationHotkey,
@@ -126,9 +150,15 @@ struct HotkeyGestureArbiter {
         activationHotkey: HotkeyBinding?,
         askHotkey: HotkeyBinding?,
         personaHotkey: HotkeyBinding?,
-        historyHotkey: HotkeyBinding? = nil
+        historyHotkey: HotkeyBinding? = nil,
+        auxiliaryHotkey: HotkeyBinding? = nil,
+        timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime
     ) -> [HotkeyGestureEvent] {
         guard !isRepeat else { return [] }
+        if let events = handleAuxiliaryEvent(
+            type: .keyDown, keyCode: keyCode, flags: modifierFlags,
+            binding: auxiliaryHotkey, activation: activationHotkey, ask: askHotkey, timestamp: timestamp
+        ) { return events }
 
         if let askHotkey, askHotkey.matches(keyCode: keyCode, modifierFlags: modifierFlags) {
             guard phase == .idle || phase == .pendingModifierActivation else { return [] }
@@ -168,8 +198,14 @@ struct HotkeyGestureArbiter {
     mutating func handleKeyUp(
         keyCode: Int,
         activationHotkey: HotkeyBinding?,
-        askHotkey: HotkeyBinding?
+        askHotkey: HotkeyBinding?,
+        auxiliaryHotkey: HotkeyBinding? = nil,
+        timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime
     ) -> [HotkeyGestureEvent] {
+        if let events = handleAuxiliaryEvent(
+            type: .keyUp, keyCode: keyCode, flags: 0,
+            binding: auxiliaryHotkey, activation: activationHotkey, ask: askHotkey, timestamp: timestamp
+        ) { return events }
         switch phase {
         case .active(.activation):
             guard let activationHotkey else { return [] }
@@ -193,6 +229,7 @@ struct HotkeyGestureArbiter {
         askHotkey: HotkeyBinding?,
         personaHotkey: HotkeyBinding? = nil,
         historyHotkey: HotkeyBinding? = nil,
+        auxiliaryHotkey: HotkeyBinding? = nil,
         timestamp: TimeInterval = Date().timeIntervalSinceReferenceDate
     ) -> [HotkeyGestureEvent] {
         if isSecondTapForDoubleTapAsk(
@@ -210,16 +247,23 @@ struct HotkeyGestureArbiter {
                 : [.begin(.ask)]
         }
 
+        if let events = handleAuxiliaryEvent(
+            type: .flagsChanged, keyCode: keyCode, flags: modifierFlags,
+            binding: auxiliaryHotkey, activation: activationHotkey, ask: askHotkey, timestamp: timestamp
+        ) { return events }
+
         if let activationHotkey,
            activationHotkey.isModifierOnlyTrigger,
            activationHotkey.matches(keyCode: keyCode, modifierFlags: modifierFlags),
            phase == .idle {
+            activationSettled = false
             suppressCurrentModifierTap = false
             if shouldDeferModifierActivation(
                 activationHotkey: activationHotkey,
                 askHotkey: askHotkey,
                 personaHotkey: personaHotkey,
-                historyHotkey: historyHotkey
+                historyHotkey: historyHotkey,
+                auxiliaryHotkey: auxiliaryHotkey
             ) {
                 phase = .pendingModifierActivation
                 return [.begin(.activation)]
@@ -319,9 +363,14 @@ struct HotkeyGestureArbiter {
         activationHotkey: HotkeyBinding,
         askHotkey: HotkeyBinding?,
         personaHotkey: HotkeyBinding?,
-        historyHotkey: HotkeyBinding?
+        historyHotkey: HotkeyBinding?,
+        auxiliaryHotkey: HotkeyBinding?
     ) -> Bool {
         guard activationHotkey.isModifierOnlyTrigger else { return false }
+        if let auxiliaryHotkey,
+           auxiliaryHotkey.modifierFlags & activationHotkey.modifierFlags == activationHotkey.modifierFlags {
+            return true
+        }
         let competingHotkeys = [askHotkey, personaHotkey, historyHotkey].compactMap(\.self)
         return competingHotkeys.contains { hotkey in
             hotkey.modifierFlags == activationHotkey.modifierFlags
@@ -362,5 +411,84 @@ struct HotkeyGestureArbiter {
             return
         }
         lastModifierTap = ModifierTap(keyCode: keyCode, modifierFlags: modifierFlags, timestamp: timestamp)
+    }
+
+    /// Returns nil when the existing shortcuts should handle this event.
+    private mutating func handleAuxiliaryEvent(
+        type: HotkeyPhysicalEventType,
+        keyCode: Int,
+        flags: UInt,
+        binding: HotkeyBinding?,
+        activation: HotkeyBinding?,
+        ask: HotkeyBinding?,
+        timestamp: TimeInterval
+    ) -> [HotkeyGestureEvent]? {
+        if type == .flagsChanged {
+            let mask = HotkeyBinding.modifierFlag(for: keyCode)
+            if mask != 0 {
+                if flags & mask == 0 || pressedModifierKeys.contains(keyCode) {
+                    pressedModifierKeys.remove(keyCode)
+                } else {
+                    pressedModifierKeys.insert(keyCode)
+                }
+            }
+            pressedModifierKeys = pressedModifierKeys.filter {
+                flags & HotkeyBinding.modifierFlag(for: $0) != 0
+            }
+            auxiliaryConsumedModifierKeys.formIntersection(pressedModifierKeys)
+        }
+        guard let binding else { return nil }
+        let keys = Set(binding.physicalModifierKeys)
+        let isModifier = !keys.isEmpty
+        let down: Bool
+        if isModifier {
+            guard type == .flagsChanged else { return nil }
+            down = keys.isSubset(of: pressedModifierKeys) && flags == binding.modifierFlags
+        } else {
+            guard keyCode == binding.keyCode, type != .flagsChanged else { return nil }
+            down = type == .keyDown && flags == binding.modifierFlags
+        }
+
+        // A chord's remaining key releases must never become a main-key tap.
+        if !auxiliaryReleaseKeys.isEmpty {
+            auxiliaryReleaseKeys.formIntersection(pressedModifierKeys)
+            return []
+        }
+        if auxiliaryIsDown, !down {
+            auxiliaryIsDown = false
+            if phase == .active(.auxiliary) {
+                phase = .idle
+                auxiliaryLastTap = nil
+                rememberModifierTap(keyCode: keyCode, modifierFlags: binding.modifierFlags, askHotkey: ask, timestamp: timestamp)
+                auxiliaryReleaseKeys = keys.intersection(pressedModifierKeys)
+                return [.end(.auxiliary)]
+            }
+            auxiliaryLastTap = timestamp
+            return nil
+        }
+        guard down, !auxiliaryIsDown else { return nil }
+        auxiliaryIsDown = true
+        if isModifier { auxiliaryConsumedModifierKeys.insert(keyCode) }
+        let sharesActivation = activation.map {
+            $0.keyCode == binding.keyCode && $0.modifierFlags == binding.modifierFlags
+                && ($0.pressCount ?? 1) == 1
+        } ?? false
+        if binding.pressCount == 2 {
+            guard let last = auxiliaryLastTap,
+                  timestamp - last <= Self.doubleTapMaximumInterval else {
+                auxiliaryLastTap = nil
+                return sharesActivation ? nil : []
+            }
+        }
+        let promotes = !activationSettled && (
+            phase == .pendingModifierActivation || phase == .active(.activation)
+                || (sharesActivation && binding.pressCount == 2)
+        )
+        guard phase == .idle || promotes else { return [] }
+        auxiliaryLastTap = nil
+        lastModifierTap = nil
+        activationSettled = false
+        phase = .active(.auxiliary)
+        return [promotes ? .auxiliaryPromoted : .begin(.auxiliary)]
     }
 }

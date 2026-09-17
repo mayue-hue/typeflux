@@ -1377,3 +1377,17 @@
 "history.stats.hotkeyToFirstSignal" = "Hotkey to microphone signal";
 "history.stats.inputZeroPrefix" = "Initial digital silence";
 "workflow.typefluxCloud.localFallbackRequired" = "Cloud speech recognition is available on paid plans. Your request will be processed by the local model.";
+
+// Auxiliary dictation shortcut
+"settings.shortcuts.auxiliary.title" = "Auxiliary Shortcut";
+"settings.shortcuts.auxiliary.subtitle" = "Dictate with a separate persona without changing your main input persona.";
+"settings.shortcuts.auxiliary.footnote" = "Supports single keys, combinations, and double taps. Default: Fn + Left Shift. Always applies the selected persona.";
+"settings.shortcuts.auxiliary.persona" = "Auxiliary persona";
+"settings.shortcuts.auxiliaryConflict" = "This shortcut conflicts with an existing binding. Choose another shortcut in Settings.";
+"settings.shortcuts.auxiliaryUpdated" = "Auxiliary shortcut updated";
+"settings.shortcuts.auxiliaryUnset" = "Auxiliary shortcut removed";
+"settings.shortcuts.recordingAuxiliary" = "Press your auxiliary shortcut, or double-tap a single key.";
+"onboarding.shortcuts.auxiliary.hint" = "Dictate with %@. The default persona organizes your speech into English. Change the persona in Settings.";
+"onboarding.shortcuts.auxiliary.unset" = "No shortcut assigned. Configure one in Settings.";
+"onboarding.shortcuts.auxiliary.externalKeyboard" = "The auxiliary shortcut follows the selected key + Left Shift. Custom auxiliary bindings are preserved.";
+"onboarding.shortcuts.auxiliary.active" = "Auxiliary shortcut: %@";

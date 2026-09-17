@@ -11,16 +11,19 @@ struct HotkeyBinding: Codable, Equatable, Identifiable {
     var keyCode: Int
     var modifierFlags: UInt
     var pressCount: Int?
+    /// Physical keys for modifier chords; nil preserves legacy bindings.
+    var modifierKeyCodes: [Int]?
 
-    init(id: UUID = UUID(), keyCode: Int, modifierFlags: UInt, pressCount: Int? = nil) {
+    init(id: UUID = UUID(), keyCode: Int, modifierFlags: UInt, pressCount: Int? = nil, modifierKeyCodes: [Int]? = nil) {
         self.id = id
         self.keyCode = keyCode
         self.modifierFlags = modifierFlags
         self.pressCount = pressCount
+        self.modifierKeyCodes = modifierKeyCodes?.sorted()
     }
 
     var signature: String {
-        "\(keyCode):\(modifierFlags):\(pressCount ?? 1)"
+        "\(keyCode):\(modifierFlags):\(pressCount ?? 1)" + (modifierKeyCodes.map { ":" + $0.sorted().map(String.init).joined(separator: ",") } ?? "")
     }
 
     var isRightCommandTrigger: Bool {
@@ -67,6 +70,42 @@ struct HotkeyBinding: Codable, Equatable, Identifiable {
         keyCode: functionKeyCode,
         modifierFlags: UInt(NSEvent.ModifierFlags.function.rawValue)
     )
+    static let defaultAuxiliary = auxiliaryChord(baseKeyCode: functionKeyCode)
+
+    static func auxiliaryChord(baseKeyCode: Int) -> HotkeyBinding {
+        HotkeyBinding(
+            keyCode: 56,
+            modifierFlags: modifierFlag(for: baseKeyCode) | modifierFlag(for: 56),
+            modifierKeyCodes: [baseKeyCode, 56]
+        )
+    }
+
+    static func modifierFlag(for keyCode: Int) -> UInt {
+        switch keyCode {
+        case 54, 55: UInt(NSEvent.ModifierFlags.command.rawValue)
+        case 56, 60: UInt(NSEvent.ModifierFlags.shift.rawValue)
+        case 58, 61: UInt(NSEvent.ModifierFlags.option.rawValue)
+        case 59, 62: UInt(NSEvent.ModifierFlags.control.rawValue)
+        case 63: UInt(NSEvent.ModifierFlags.function.rawValue)
+        default: 0
+        }
+    }
+
+    var physicalModifierKeys: [Int] {
+        modifierKeyCodes ?? (Self.modifierFlag(for: keyCode) != 0 ? [keyCode] : [])
+    }
+
+    func conflicts(with other: HotkeyBinding) -> Bool {
+        guard (pressCount ?? 1) == (other.pressCount ?? 1), modifierFlags == other.modifierFlags else {
+            return false
+        }
+        if keyCode == other.keyCode, modifierKeyCodes == nil || other.modifierKeyCodes == nil { return true }
+        if !physicalModifierKeys.isEmpty, !other.physicalModifierKeys.isEmpty {
+            return physicalModifierKeys.sorted() == other.physicalModifierKeys.sorted()
+        }
+        return keyCode == other.keyCode
+    }
+
     static let defaultAsk = HotkeyBinding(
         keyCode: functionKeyCode,
         modifierFlags: UInt(NSEvent.ModifierFlags.function.rawValue),

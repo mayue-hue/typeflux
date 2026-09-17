@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 @testable import Typeflux
 import XCTest
 
@@ -84,5 +86,54 @@ private final class HotkeyTestHistoryStore: HistoryStore {
     func clear() {}
     func exportMarkdown() throws -> URL {
         URL(fileURLWithPath: "/tmp/typeflux-history.md")
+    }
+}
+
+
+extension SettingsViewModelHotkeyTests {
+    func testAuxiliaryConflictsAreCheckedInBothDirectionsAndPersonaIsIndependent() throws {
+        let name = "SettingsViewModelHotkeyTests.auxiliary.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = SettingsStore(defaults: defaults)
+        let model = StudioViewModel(settingsStore: store, historyStore: HotkeyTestHistoryStore(), initialSection: .settings)
+        model.setAuxiliaryHotkey(.defaultAsk)
+        XCTAssertEqual(store.auxiliaryHotkey?.signature, HotkeyBinding.defaultAuxiliary.signature)
+        model.setAuxiliaryHotkey(.rightOptionActivation)
+        let before = [store.activationHotkey, store.askHotkey, store.personaHotkey, store.historyHotkey].map { $0?.signature }
+        model.setActivationHotkey(.rightOptionActivation)
+        model.setAskHotkey(.rightOptionActivation)
+        model.setPersonaHotkey(.rightOptionActivation)
+        model.setHistoryHotkey(.rightOptionActivation)
+        XCTAssertEqual([store.activationHotkey, store.askHotkey, store.personaHotkey, store.historyHotkey].map { $0?.signature }, before)
+        let mainID = store.activePersonaID
+        model.setAuxiliaryPersona(SettingsStore.defaultPersonaID.uuidString)
+        XCTAssertEqual(store.auxiliaryPersona.id, SettingsStore.defaultPersonaID)
+        XCTAssertEqual(store.activePersonaID, mainID)
+        model.unsetAuxiliaryHotkey()
+        XCTAssertNil(store.auxiliaryHotkey)
+        model.resetAuxiliaryHotkey()
+        XCTAssertEqual(store.auxiliaryHotkey?.signature, HotkeyBinding.defaultAuxiliary.signature)
+    }
+
+    func testAuxiliarySettingsRenderBesideVoiceInput() throws {
+        let name = "SettingsViewModelHotkeyTests.render.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = StudioViewModel(settingsStore: SettingsStore(defaults: defaults), historyStore: HotkeyTestHistoryStore(), initialSection: .settings)
+        let size = CGSize(width: 1100, height: 2100)
+        let view = StudioView(viewModel: model).frame(width: size.width, height: size.height).preferredColorScheme(.light)
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        host.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: "/tmp/typeflux-aux-settings.png"))
+        XCTAssertEqual(host.frame.size, size)
     }
 }
