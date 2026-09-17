@@ -21,26 +21,30 @@ final class MouseVoiceInputTests: XCTestCase {
         )
     }
 
-    func testHandleUsesOutsideRightEdgeWhenSpaceIsAvailable() {
+    func testHandleAppearsCenteredBelowLongPressPoint() {
         let origin = MouseVoiceHandlePlacement.origin(
-            targetFrame: CGRect(x: 100, y: 200, width: 300, height: 80),
-            fallbackPoint: .zero,
+            near: CGPoint(x: 400, y: 300),
             handleSize: CGSize(width: 38, height: 38),
             visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        XCTAssertEqual(origin, CGPoint(x: 407, y: 207))
+        XCTAssertEqual(origin, CGPoint(x: 381, y: 248))
     }
 
-    func testHandleMovesInsideTargetNearRightScreenEdge() {
+    func testHandleStaysInsideScreenNearBottomEdge() {
         let origin = MouseVoiceHandlePlacement.origin(
-            targetFrame: CGRect(x: 850, y: 200, width: 140, height: 80),
-            fallbackPoint: .zero,
+            near: CGPoint(x: 990, y: 20),
             handleSize: CGSize(width: 38, height: 38),
             visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 800)
         )
 
-        XCTAssertEqual(origin, CGPoint(x: 945, y: 207))
+        XCTAssertEqual(origin, CGPoint(x: 955, y: 7))
+    }
+
+    func testHandleHitTargetIncludesSmallTolerance() {
+        let frame = CGRect(x: 100, y: 100, width: 38, height: 38)
+        XCTAssertTrue(MouseVoiceHandlePlacement.contains(CGPoint(x: 96, y: 119), handleFrame: frame))
+        XCTAssertFalse(MouseVoiceHandlePlacement.contains(CGPoint(x: 90, y: 119), handleFrame: frame))
     }
 
     func testLongPressMovementToleranceRejectsDrag() {
@@ -64,13 +68,10 @@ final class MouseVoiceInputTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = SettingsStore(defaults: defaults)
 
-        XCTAssertTrue(store.smartVoiceHandleEnabled)
-        XCTAssertFalse(store.mouseLongPressVoiceInputEnabled)
+        XCTAssertTrue(store.mouseVoiceInputEnabled)
 
-        store.smartVoiceHandleEnabled = false
-        store.mouseLongPressVoiceInputEnabled = true
+        store.mouseVoiceInputEnabled = false
 
-        XCTAssertFalse(store.smartVoiceHandleEnabled)
-        XCTAssertTrue(store.mouseLongPressVoiceInputEnabled)
+        XCTAssertFalse(store.mouseVoiceInputEnabled)
     }
 }

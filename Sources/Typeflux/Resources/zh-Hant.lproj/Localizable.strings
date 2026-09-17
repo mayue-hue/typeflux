@@ -137,11 +137,8 @@
 "settings.microphone.automatic" = "自動";
 "settings.instantVoiceInput.title" = "按鍵即說";
 "settings.instantVoiceInput.subtitle" = "縮短麥克風啟動時間，按下快速鍵就能直接說話，不漏掉任何內容。使用後麥克風會保持啟用 15 分鐘。";
-"settings.mouseVoice.smartHandle.title" = "輸入框語音浮標";
-"settings.mouseVoice.smartHandle.subtitle" = "點擊可輸入文字的區域後顯示麥克風。短按持續錄音，按住說話、放開結束。";
-"settings.mouseVoice.longPress.title" = "輸入框長按錄音";
-"settings.mouseVoice.longPress.subtitle" = "在可輸入區域按住滑鼠約 0.8 秒開始錄音，放開後結束。移動滑鼠會取消觸發。";
-"settings.mouseVoice.experimental" = "實驗性";
+"settings.mouseVoice.title" = "滑鼠語音輸入";
+"settings.mouseVoice.subtitle" = "在輸入框內靜止長按約 0.8 秒，麥克風會出現在滑鼠附近；將滑鼠移入按鈕即可開始持續錄音。選取文字或提前拖動時不會觸發。";
 "mouseVoice.handle.start" = "開始語音輸入";
 "mouseVoice.handle.stop" = "結束語音輸入";
 "settings.mute.title" = "錄音時靜音";

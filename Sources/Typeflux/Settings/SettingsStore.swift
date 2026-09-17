@@ -204,20 +204,17 @@ final class SettingsStore {
         }
     }
 
-    var smartVoiceHandleEnabled: Bool {
-        get { defaults.object(forKey: "mouseVoice.smartHandle.enabled") as? Bool ?? true }
-        set {
-            guard smartVoiceHandleEnabled != newValue else { return }
-            defaults.set(newValue, forKey: "mouseVoice.smartHandle.enabled")
-            NotificationCenter.default.post(name: .mouseVoiceInputDidChange, object: self)
+    var mouseVoiceInputEnabled: Bool {
+        get {
+            if let value = defaults.object(forKey: "mouseVoice.enabled") as? Bool {
+                return value
+            }
+            // Keep the prototype preference when upgrading from the first implementation.
+            return defaults.object(forKey: "mouseVoice.smartHandle.enabled") as? Bool ?? true
         }
-    }
-
-    var mouseLongPressVoiceInputEnabled: Bool {
-        get { defaults.object(forKey: "mouseVoice.longPress.enabled") as? Bool ?? false }
         set {
-            guard mouseLongPressVoiceInputEnabled != newValue else { return }
-            defaults.set(newValue, forKey: "mouseVoice.longPress.enabled")
+            guard mouseVoiceInputEnabled != newValue else { return }
+            defaults.set(newValue, forKey: "mouseVoice.enabled")
             NotificationCenter.default.post(name: .mouseVoiceInputDidChange, object: self)
         }
     }

@@ -145,11 +145,8 @@
 "settings.microphone.automatic" = "Automatic";
 "settings.instantVoiceInput.title" = "Speak Immediately";
 "settings.instantVoiceInput.subtitle" = "Shortens microphone startup time, so you can speak as soon as you press the shortcut without missing anything. The microphone stays on for 15 minutes after use.";
-"settings.mouseVoice.smartHandle.title" = "Voice Handle in Text Fields";
-"settings.mouseVoice.smartHandle.subtitle" = "Shows a microphone after you click an editable area. Click for locked recording, or hold to talk and release to finish.";
-"settings.mouseVoice.longPress.title" = "Long-press to Record";
-"settings.mouseVoice.longPress.subtitle" = "Hold the mouse in an editable area for about 0.8 seconds to record, then release to finish. Moving cancels the trigger.";
-"settings.mouseVoice.experimental" = "Experimental";
+"settings.mouseVoice.title" = "Mouse Voice Input";
+"settings.mouseVoice.subtitle" = "Hold still in a text field for about 0.8 seconds, then move the pointer onto the nearby microphone to start continuous recording. Text selection and early dragging do not trigger it.";
 "mouseVoice.handle.start" = "Start voice input";
 "mouseVoice.handle.stop" = "Stop voice input";
 "settings.mute.title" = "Mute During Recording";

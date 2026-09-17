@@ -106,8 +106,7 @@ final class StudioViewModel: ObservableObject {
     @Published var availableMicrophones: [AudioInputDevice] = []
     @Published var preferredMicrophoneID: String
     @Published var instantVoiceInputEnabled: Bool
-    @Published var smartVoiceHandleEnabled: Bool
-    @Published var mouseLongPressVoiceInputEnabled: Bool
+    @Published var mouseVoiceInputEnabled: Bool
     @Published var muteSystemOutputDuringRecording: Bool
     @Published var soundEffectsEnabled: Bool
     @Published var voiceProcessingTimeout: VoiceProcessingTimeout
@@ -337,8 +336,7 @@ final class StudioViewModel: ObservableObject {
         appLanguage = settingsStore.appLanguage
         preferredMicrophoneID = settingsStore.preferredMicrophoneID
         instantVoiceInputEnabled = settingsStore.instantVoiceInputEnabled
-        smartVoiceHandleEnabled = settingsStore.smartVoiceHandleEnabled
-        mouseLongPressVoiceInputEnabled = settingsStore.mouseLongPressVoiceInputEnabled
+        mouseVoiceInputEnabled = settingsStore.mouseVoiceInputEnabled
         muteSystemOutputDuringRecording = settingsStore.muteSystemOutputDuringRecording
         soundEffectsEnabled = settingsStore.soundEffectsEnabled
         voiceProcessingTimeout = settingsStore.voiceProcessingTimeout
@@ -1116,14 +1114,9 @@ final class StudioViewModel: ObservableObject {
         settingsStore.instantVoiceInputEnabled = value
     }
 
-    func setSmartVoiceHandleEnabled(_ value: Bool) {
-        smartVoiceHandleEnabled = value
-        settingsStore.smartVoiceHandleEnabled = value
-    }
-
-    func setMouseLongPressVoiceInputEnabled(_ value: Bool) {
-        mouseLongPressVoiceInputEnabled = value
-        settingsStore.mouseLongPressVoiceInputEnabled = value
+    func setMouseVoiceInputEnabled(_ value: Bool) {
+        mouseVoiceInputEnabled = value
+        settingsStore.mouseVoiceInputEnabled = value
     }
 
     func setSoundEffectsEnabled(_ value: Bool) {

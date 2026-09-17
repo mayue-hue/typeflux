@@ -7,6 +7,11 @@ struct MouseVoiceTarget {
     let processID: pid_t
     let bundleIdentifier: String?
     let frame: CGRect?
+    let selectedRange: CFRange?
+
+    var hasSelectedText: Bool {
+        (selectedRange?.length ?? 0) > 0
+    }
 }
 
 protocol MouseVoiceTargetAdapting {
@@ -66,7 +71,23 @@ final class MouseVoiceTargetResolver {
             element: element,
             processID: processID,
             bundleIdentifier: bundleIdentifier,
-            frame: cocoaFrame(of: element)
+            frame: cocoaFrame(of: element),
+            selectedRange: injector.copySelectedTextRange(from: element)
+        )
+    }
+
+    func restoreSelection(for target: MouseVoiceTarget) {
+        guard var range = target.selectedRange,
+              range.location >= 0,
+              range.length == 0,
+              let value = AXValueCreate(.cfRange, &range) else {
+            return
+        }
+        AXUIElementSetMessagingTimeout(target.element, 0.15)
+        AXUIElementSetAttributeValue(
+            target.element,
+            kAXSelectedTextRangeAttribute as CFString,
+            value
         )
     }
 
@@ -189,34 +210,42 @@ enum MouseVoiceCoordinateConverter {
 
 enum MouseVoiceHandlePlacement {
     static func origin(
-        targetFrame: CGRect?,
-        fallbackPoint: CGPoint,
+        near point: CGPoint,
         handleSize: CGSize,
         visibleFrame: CGRect
     ) -> CGPoint {
-        let spacing: CGFloat = 7
-        var origin: CGPoint
-        if let targetFrame {
-            let outsideX = targetFrame.maxX + spacing
-            let insideX = targetFrame.maxX - handleSize.width - spacing
-            origin = CGPoint(
-                x: outsideX + handleSize.width <= visibleFrame.maxX ? outsideX : insideX,
-                y: targetFrame.minY + spacing
-            )
-        } else {
-            origin = CGPoint(x: fallbackPoint.x + 12, y: fallbackPoint.y - handleSize.height - 12)
-        }
+        let edgeInset: CGFloat = 7
+        let pointerGap: CGFloat = 14
+        let preferredOrigin = CGPoint(
+            x: point.x - handleSize.width / 2,
+            y: point.y - handleSize.height - pointerGap
+        )
 
         return CGPoint(
-            x: min(max(origin.x, visibleFrame.minX + spacing), visibleFrame.maxX - handleSize.width - spacing),
-            y: min(max(origin.y, visibleFrame.minY + spacing), visibleFrame.maxY - handleSize.height - spacing)
+            x: min(
+                max(preferredOrigin.x, visibleFrame.minX + edgeInset),
+                visibleFrame.maxX - handleSize.width - edgeInset
+            ),
+            y: min(
+                max(preferredOrigin.y, visibleFrame.minY + edgeInset),
+                visibleFrame.maxY - handleSize.height - edgeInset
+            )
         )
+    }
+
+    static func contains(
+        _ point: CGPoint,
+        handleFrame: CGRect,
+        hitSlop: CGFloat = 5
+    ) -> Bool {
+        handleFrame.insetBy(dx: -hitSlop, dy: -hitSlop).contains(point)
     }
 }
 
 enum MouseVoiceLongPressPolicy {
     static let activationDelay: TimeInterval = 0.8
     static let movementTolerance: CGFloat = 6
+    static let hoverTimeout: TimeInterval = 3
 
     static func exceedsMovementTolerance(from start: CGPoint, to current: CGPoint) -> Bool {
         hypot(current.x - start.x, current.y - start.y) > movementTolerance

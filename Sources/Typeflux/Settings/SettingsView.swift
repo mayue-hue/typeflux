@@ -2379,33 +2379,15 @@ struct StudioView: View {
                     Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
 
                     StudioSettingRow(
-                        title: L("settings.mouseVoice.smartHandle.title"),
-                        subtitle: L("settings.mouseVoice.smartHandle.subtitle"),
+                        title: L("settings.mouseVoice.title"),
+                        subtitle: L("settings.mouseVoice.subtitle"),
                         badge: "Beta"
                     ) {
                         Toggle(
                             "",
                             isOn: Binding(
-                                get: { viewModel.smartVoiceHandleEnabled },
-                                set: viewModel.setSmartVoiceHandleEnabled
-                            )
-                        )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                    }
-
-                    Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
-
-                    StudioSettingRow(
-                        title: L("settings.mouseVoice.longPress.title"),
-                        subtitle: L("settings.mouseVoice.longPress.subtitle"),
-                        badge: L("settings.mouseVoice.experimental")
-                    ) {
-                        Toggle(
-                            "",
-                            isOn: Binding(
-                                get: { viewModel.mouseLongPressVoiceInputEnabled },
-                                set: viewModel.setMouseLongPressVoiceInputEnabled
+                                get: { viewModel.mouseVoiceInputEnabled },
+                                set: viewModel.setMouseVoiceInputEnabled
                             )
                         )
                         .labelsHidden()
