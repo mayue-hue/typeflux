@@ -49,7 +49,7 @@ final class AgentOutcomeTests: XCTestCase {
             currentStep: 3,
             lastToolCall: nil,
             accumulatedText: "thinking...",
-            toolCallsSoFar: [],
+            toolCallsSoFar: []
         )
         XCTAssertEqual(state.currentStep, 3)
         XCTAssertNil(state.lastToolCall)
@@ -117,11 +117,11 @@ final class AgentOutcomeTests: XCTestCase {
         XCTAssertNotEqual(AgentError.maxStepsExceeded, AgentError.toolNotFound(name: "x"))
         XCTAssertEqual(
             AgentError.toolNotFound(name: "a"),
-            AgentError.toolNotFound(name: "a"),
+            AgentError.toolNotFound(name: "a")
         )
         XCTAssertNotEqual(
             AgentError.toolNotFound(name: "a"),
-            AgentError.toolNotFound(name: "b"),
+            AgentError.toolNotFound(name: "b")
         )
     }
 
@@ -132,7 +132,7 @@ final class AgentOutcomeTests: XCTestCase {
             mode: .editSelection,
             sourceText: "original",
             spokenInstruction: "make it better",
-            personaPrompt: "formal",
+            personaPrompt: "formal"
         )
         if case .editSelection = request.mode {} else { XCTFail("Expected editSelection") }
         XCTAssertEqual(request.sourceText, "original")
@@ -145,7 +145,7 @@ final class AgentOutcomeTests: XCTestCase {
             mode: .rewriteTranscript,
             sourceText: "raw text",
             spokenInstruction: nil,
-            personaPrompt: nil,
+            personaPrompt: nil
         )
         if case .rewriteTranscript = request.mode {} else { XCTFail("Expected rewriteTranscript") }
         XCTAssertNil(request.spokenInstruction)
@@ -269,7 +269,7 @@ extension AgentOutcomeTests {
             stepIndex: 0,
             assistantMessage: assistantMsg,
             toolResults: [],
-            durationMs: 50,
+            durationMs: 50
         )
         let result = AgentResult(outcome: .text("done"), steps: [step], totalDurationMs: 100)
         XCTAssertEqual(result.steps.count, 1)

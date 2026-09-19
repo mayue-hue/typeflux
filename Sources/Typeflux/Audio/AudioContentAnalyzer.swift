@@ -1,9 +1,16 @@
 import AVFoundation
 import Foundation
 
+enum AudioSignalClassification: String, Sendable {
+    case hardSilence = "hard_silence"
+    case lowEnergy = "low_energy"
+    case audible
+}
+
 struct AudioContentAnalysis: Sendable {
     private static let minimumAudibleDuration: TimeInterval = 0.08
     private static let minimumAudibleFrameRatio = 0.04
+    private static let hardSilencePeakPowerDB: Float = -72
 
     let duration: TimeInterval
     let rmsPowerDB: Float
@@ -12,16 +19,28 @@ struct AudioContentAnalysis: Sendable {
     let audibleFrameRatio: Double
     let frameCount: AVAudioFramePosition
 
-    var containsAudibleSignal: Bool {
-        guard duration > 0 else { return false }
+    var signalClassification: AudioSignalClassification {
+        guard duration > 0, frameCount > 0 else { return .hardSilence }
 
-        if rmsPowerDB >= -42 {
-            return true
+        // Only reject recordings that are effectively digital silence. A user
+        // explicitly triggered these recordings, so low-energy input should be
+        // allowed to reach ASR instead of being discarded by a fixed loudness gate.
+        if peakPowerDB <= Self.hardSilencePeakPowerDB {
+            return .hardSilence
         }
 
-        return peakPowerDB >= -35
+        if rmsPowerDB >= -42 {
+            return .audible
+        }
+
+        let passesTransientGate = peakPowerDB >= -35
             && audibleDuration >= Self.minimumAudibleDuration
             && audibleFrameRatio >= Self.minimumAudibleFrameRatio
+        return passesTransientGate ? .audible : .lowEnergy
+    }
+
+    var containsAudibleSignal: Bool {
+        signalClassification == .audible
     }
 }
 
@@ -39,7 +58,7 @@ enum AudioContentAnalyzer {
                 peakPowerDB: -Float.infinity,
                 audibleDuration: 0,
                 audibleFrameRatio: 0,
-                frameCount: totalFrames,
+                frameCount: totalFrames
             )
         }
 
@@ -48,7 +67,7 @@ enum AudioContentAnalyzer {
             throw NSError(
                 domain: "AudioContentAnalyzer",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to allocate audio analysis buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Unable to allocate audio analysis buffer."]
             )
         }
 
@@ -58,7 +77,10 @@ enum AudioContentAnalyzer {
         var audibleFrameCount: AVAudioFramePosition = 0
 
         while audioFile.framePosition < totalFrames {
-            try audioFile.read(into: buffer, frameCount: min(chunkCapacity, AVAudioFrameCount(totalFrames - audioFile.framePosition)))
+            try audioFile.read(
+                into: buffer,
+                frameCount: min(chunkCapacity, AVAudioFrameCount(totalFrames - audioFile.framePosition))
+            )
             let framesInBuffer = Int(buffer.frameLength)
             guard framesInBuffer > 0, let channels = buffer.floatChannelData else { break }
 
@@ -88,7 +110,7 @@ enum AudioContentAnalyzer {
             peakPowerDB: decibels(fromAmplitude: peakAmplitude),
             audibleDuration: Double(audibleFrameCount) / sampleRate,
             audibleFrameRatio: frameCount > 0 ? Double(audibleFrameCount) / Double(frameCount) : 0,
-            frameCount: frameCount,
+            frameCount: frameCount
         )
     }
 

@@ -3,7 +3,7 @@ import Foundation
 struct InputContextSnapshot: Equatable {
     static let defaultPrefixLimit = 500
     static let defaultSuffixLimit = 200
-    static let defaultSelectionLimit = 2_000
+    static let defaultSelectionLimit = 2000
 
     let appName: String?
     let bundleIdentifier: String?
@@ -23,14 +23,14 @@ struct InputContextSnapshot: Equatable {
         selectionSnapshot: TextSelectionSnapshot,
         prefixLimit: Int = defaultPrefixLimit,
         suffixLimit: Int = defaultSuffixLimit,
-        selectionLimit: Int = defaultSelectionLimit,
+        selectionLimit: Int = defaultSelectionLimit
     ) -> InputContextSnapshot? {
         if let context = rangedInputContext(
             inputSnapshot: inputSnapshot,
             selectionSnapshot: selectionSnapshot,
             prefixLimit: prefixLimit,
             suffixLimit: suffixLimit,
-            selectionLimit: selectionLimit,
+            selectionLimit: selectionLimit
         ) {
             return context
         }
@@ -41,14 +41,14 @@ struct InputContextSnapshot: Equatable {
                 selectionSnapshot: selectionSnapshot,
                 prefixLimit: prefixLimit,
                 suffixLimit: suffixLimit,
-                selectionLimit: selectionLimit,
+                selectionLimit: selectionLimit
             ) {
                 return context
             }
             return selectionOnlyContext(
                 inputSnapshot: inputSnapshot,
                 selectionSnapshot: selectionSnapshot,
-                selectionLimit: selectionLimit,
+                selectionLimit: selectionLimit
             )
         }
 
@@ -57,14 +57,14 @@ struct InputContextSnapshot: Equatable {
             selectionSnapshot: selectionSnapshot,
             prefixLimit: prefixLimit,
             suffixLimit: suffixLimit,
-            selectionLimit: selectionLimit,
+            selectionLimit: selectionLimit
         ) {
             return context
         }
         return selectionOnlyContext(
             inputSnapshot: inputSnapshot,
             selectionSnapshot: selectionSnapshot,
-            selectionLimit: selectionLimit,
+            selectionLimit: selectionLimit
         )
     }
 
@@ -73,7 +73,7 @@ struct InputContextSnapshot: Equatable {
         selectionSnapshot: TextSelectionSnapshot,
         prefixLimit: Int,
         suffixLimit: Int,
-        selectionLimit: Int,
+        selectionLimit: Int
     ) -> InputContextSnapshot? {
         guard inputSnapshot.isEditable || inputSnapshot.textSource == "application-state" else {
             return nil
@@ -91,7 +91,7 @@ struct InputContextSnapshot: Equatable {
             ? normalizedSelectedText(
                 selectionSnapshot.selectedText,
                 fallback: String(text[range]),
-                limit: selectionLimit,
+                limit: selectionLimit
             )
             : nil
         let prefix = String(text[..<range.lowerBound]).suffixCharacters(prefixLimit)
@@ -105,7 +105,7 @@ struct InputContextSnapshot: Equatable {
             isFocusedTarget: inputSnapshot.isFocusedTarget || selectionSnapshot.isFocusedTarget,
             prefix: prefix,
             suffix: suffix,
-            selectedText: selected,
+            selectedText: selected
         )
         return snapshot.hasContent ? snapshot : nil
     }
@@ -113,7 +113,7 @@ struct InputContextSnapshot: Equatable {
     static func logCapture(
         inputSnapshot: CurrentInputTextSnapshot,
         selectionSnapshot: TextSelectionSnapshot,
-        context: InputContextSnapshot?,
+        context: InputContextSnapshot?
     ) {
         let selectedRangeDescription = inputSnapshot.selectedRange.map {
             "location=\($0.location), length=\($0.length)"
@@ -154,19 +154,19 @@ struct InputContextSnapshot: Equatable {
             \(context?.selectedText ?? "")
             suffix(\(context?.suffix.count ?? 0)):
             \(context?.suffix ?? "")
-            """,
+            """
         )
     }
 
     private static func selectionOnlyContext(
         inputSnapshot: CurrentInputTextSnapshot,
         selectionSnapshot: TextSelectionSnapshot,
-        selectionLimit: Int,
+        selectionLimit: Int
     ) -> InputContextSnapshot? {
         guard let selected = normalizedSelectedText(
             selectionSnapshot.selectedText,
             fallback: "",
-            limit: selectionLimit,
+            limit: selectionLimit
         ) else {
             return nil
         }
@@ -179,7 +179,7 @@ struct InputContextSnapshot: Equatable {
             isFocusedTarget: inputSnapshot.isFocusedTarget || selectionSnapshot.isFocusedTarget,
             prefix: "",
             suffix: "",
-            selectedText: selected,
+            selectedText: selected
         )
     }
 
@@ -188,7 +188,7 @@ struct InputContextSnapshot: Equatable {
         selectionSnapshot: TextSelectionSnapshot,
         prefixLimit: Int,
         suffixLimit: Int,
-        selectionLimit: Int,
+        selectionLimit: Int
     ) -> InputContextSnapshot? {
         guard
             let documentText = inputSnapshot.text,
@@ -211,14 +211,14 @@ struct InputContextSnapshot: Equatable {
             isFocusedTarget: inputSnapshot.isFocusedTarget || selectionSnapshot.isFocusedTarget,
             prefix: prefix,
             suffix: suffix,
-            selectedText: boundedSelectedText,
+            selectedText: boundedSelectedText
         )
         return snapshot.hasContent ? snapshot : nil
     }
 
     private static func inputContextSkipReason(
         inputSnapshot: CurrentInputTextSnapshot,
-        selectionSnapshot: TextSelectionSnapshot,
+        selectionSnapshot: TextSelectionSnapshot
     ) -> String {
         guard selectionSnapshot.hasSelection else {
             return inputSnapshot.failureReason ?? "missing-input-and-selection-context"
@@ -255,13 +255,13 @@ struct InputContextSnapshot: Equatable {
         else {
             return nil
         }
-        return lowerBound..<upperBound
+        return lowerBound ..< upperBound
     }
 
     private static func normalizedSelectedText(
         _ selectedText: String?,
         fallback: String,
-        limit: Int,
+        limit: Int
     ) -> String? {
         let candidate = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? selectedText ?? ""
@@ -284,8 +284,14 @@ struct InputContextSnapshot: Equatable {
             return nil
         }
 
-        let lowerOffset = normalizedText.text.distance(from: normalizedText.text.startIndex, to: normalizedRange.lowerBound)
-        let upperOffset = normalizedText.text.distance(from: normalizedText.text.startIndex, to: normalizedRange.upperBound) - 1
+        let lowerOffset = normalizedText.text.distance(
+            from: normalizedText.text.startIndex,
+            to: normalizedRange.lowerBound
+        )
+        let upperOffset = normalizedText.text.distance(
+            from: normalizedText.text.startIndex,
+            to: normalizedRange.upperBound
+        ) - 1
         guard
             lowerOffset >= 0,
             upperOffset >= lowerOffset,
@@ -300,7 +306,7 @@ struct InputContextSnapshot: Equatable {
 
     private static func bestPartialSelectedTextRange(
         in normalizedText: String,
-        normalizedSelection: String,
+        normalizedSelection: String
     ) -> Range<String.Index>? {
         let minimumLength = 18
         guard normalizedSelection.count >= minimumLength else { return nil }
@@ -308,11 +314,11 @@ struct InputContextSnapshot: Equatable {
         let maximumLength = min(80, normalizedSelection.count)
         let minimumIndex = normalizedSelection.index(
             normalizedSelection.startIndex,
-            offsetBy: minimumLength,
+            offsetBy: minimumLength
         )
         let maximumIndex = normalizedSelection.index(
             normalizedSelection.startIndex,
-            offsetBy: maximumLength,
+            offsetBy: maximumLength
         )
 
         var index = maximumIndex

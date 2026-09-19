@@ -1,3 +1,4 @@
+import AppKit
 @testable import Typeflux
 import XCTest
 
@@ -65,7 +66,7 @@ final class SettingsStoreTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: nil,
-            queue: nil,
+            queue: nil
         ) { _ in
             expectation.fulfill()
         }
@@ -82,7 +83,7 @@ final class SettingsStoreTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: nil,
-            queue: nil,
+            queue: nil
         ) { _ in
             notificationFired = true
         }
@@ -93,15 +94,98 @@ final class SettingsStoreTests: XCTestCase {
         NotificationCenter.default.removeObserver(observer)
     }
 
-    // MARK: - Sound Effects
+    // MARK: - Overlay Style
 
-    func testDefaultSoundEffectsEnabled() {
-        XCTAssertTrue(store.soundEffectsEnabled)
+    func testDefaultOverlayStyle() {
+        XCTAssertEqual(store.overlayStyle, .liquidGlass)
     }
 
-    func testSetSoundEffectsDisabled() {
-        store.soundEffectsEnabled = false
+    func testSetOverlayStyle() {
+        store.overlayStyle = .classic
+        XCTAssertEqual(store.overlayStyle, .classic)
+    }
+
+    func testInvalidOverlayStyleFallsBackToLiquidGlass() {
+        defaults.set("nonexistent", forKey: "ui.overlayStyle")
+        XCTAssertEqual(store.overlayStyle, .liquidGlass)
+    }
+
+    func testOverlayStyleChangePostsNotification() {
+        let expectation = XCTestExpectation(description: "Notification posted")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .overlayStyleDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            expectation.fulfill()
+        }
+
+        store.overlayStyle = .classic
+        wait(for: [expectation], timeout: 1.0)
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    // MARK: - Sound Effects
+
+    func testDefaultSoundEffectsDisabled() {
         XCTAssertFalse(store.soundEffectsEnabled)
+    }
+
+    func testSoundEffectsRemainDisabledWhenPersistedOrSetToTrue() {
+        defaults.set(true, forKey: "audio.soundEffects.enabled")
+        XCTAssertFalse(store.soundEffectsEnabled)
+
+        store.soundEffectsEnabled = true
+        XCTAssertFalse(store.soundEffectsEnabled)
+    }
+
+    // MARK: - Voice Processing Timeout
+
+    func testVoiceProcessingTimeoutDefaultsToThreeSeconds() {
+        XCTAssertEqual(store.voiceProcessingTimeout, .threeSeconds)
+    }
+
+    func testVoiceProcessingTimeoutPersistsAllowedValue() {
+        store.voiceProcessingTimeout = .thirtySeconds
+
+        XCTAssertEqual(store.voiceProcessingTimeout, .thirtySeconds)
+        XCTAssertEqual(SettingsStore(defaults: defaults).voiceProcessingTimeout, .thirtySeconds)
+    }
+
+    func testVoiceProcessingTimeoutRejectsUnsupportedStoredValue() {
+        defaults.set(7, forKey: "voice.processing.timeoutSeconds")
+
+        XCTAssertEqual(store.voiceProcessingTimeout, .threeSeconds)
+    }
+
+    func testVoiceProcessingTimeoutMigratesLegacySixtySecondsToThirtySeconds() {
+        defaults.set(60, forKey: "voice.processing.timeoutSeconds")
+
+        XCTAssertEqual(store.voiceProcessingTimeout, .thirtySeconds)
+        XCTAssertEqual(defaults.integer(forKey: "voice.processing.timeoutSeconds"), 30)
+    }
+
+    func testVoiceProcessingTimeoutProvidesRequiredChoices() {
+        XCTAssertEqual(VoiceProcessingTimeout.allCases.map(\.rawValue), [1, 3, 5, 10, 30])
+    }
+
+    // MARK: - Analytics Sharing
+
+    func testAnalyticsSharingDefaultsToEnabledAndPersists() {
+        XCTAssertTrue(store.analyticsSharingEnabled)
+
+        store.analyticsSharingEnabled = false
+
+        XCTAssertFalse(store.analyticsSharingEnabled)
+        XCTAssertFalse(SettingsStore(defaults: defaults).analyticsSharingEnabled)
+    }
+
+    func testDisablingAnalyticsSharingClearsPendingEvents() {
+        defaults.set(Data("pending".utf8), forKey: "analytics.pendingEvents")
+
+        store.analyticsSharingEnabled = false
+
+        XCTAssertNil(defaults.object(forKey: "analytics.pendingEvents"))
     }
 
     // MARK: - Mute System Output
@@ -168,6 +252,39 @@ final class SettingsStoreTests: XCTestCase {
     func testSetAndGetPreferredMicrophoneID() {
         store.preferredMicrophoneID = "BuiltInMic-1234"
         XCTAssertEqual(store.preferredMicrophoneID, "BuiltInMic-1234")
+    }
+
+    func testPreferredMicrophoneChangePostsNotification() {
+        let expectation = XCTestExpectation(description: "Preferred microphone notification posted")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .preferredMicrophoneDidChange,
+            object: store,
+            queue: nil
+        ) { _ in
+            expectation.fulfill()
+        }
+
+        store.preferredMicrophoneID = "BluetoothMic-1234"
+
+        wait(for: [expectation], timeout: 1.0)
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    func testPreferredMicrophoneDoesNotNotifyWhenValueIsUnchanged() {
+        store.preferredMicrophoneID = "BuiltInMic-1234"
+        var notificationFired = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .preferredMicrophoneDidChange,
+            object: store,
+            queue: nil
+        ) { _ in
+            notificationFired = true
+        }
+
+        store.preferredMicrophoneID = "BuiltInMic-1234"
+
+        XCTAssertFalse(notificationFired)
+        NotificationCenter.default.removeObserver(observer)
     }
 
     // MARK: - History Retention Policy Store
@@ -237,11 +354,11 @@ final class SettingsStoreTests: XCTestCase {
     func testResolvedDefaultWhisperConfigurationUsesOpenAIDefaults() {
         XCTAssertEqual(
             OpenAIAudioModelCatalog.resolvedWhisperEndpoint(store.whisperBaseURL),
-            "https://api.openai.com/v1/audio/transcriptions",
+            "https://api.openai.com/v1/audio/transcriptions"
         )
         XCTAssertEqual(
             OpenAIAudioModelCatalog.resolvedWhisperModel(store.whisperModel),
-            "gpt-4o-transcribe",
+            "gpt-4o-transcribe"
         )
     }
 
@@ -251,9 +368,9 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(
             OpenAIAudioModelCatalog.resolvedWhisperModel(
                 store.whisperModel,
-                endpoint: store.whisperBaseURL,
+                endpoint: store.whisperBaseURL
             ),
-            "whisper-1",
+            "whisper-1"
         )
     }
 
@@ -325,6 +442,27 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.aliCloudAPIKey, "ali-key-123")
     }
 
+    func testDefaultAliCloudModelUsesParaformerRealtimeV2() {
+        XCTAssertEqual(store.aliCloudModel, "paraformer-realtime-v2")
+    }
+
+    func testSetAndGetAliCloudModel() {
+        store.aliCloudModel = "fun-asr-realtime"
+        XCTAssertEqual(store.aliCloudModel, "fun-asr-realtime")
+    }
+
+    func testEmptyAliCloudModelFallsBackToDefault() {
+        store.aliCloudModel = "fun-asr-realtime"
+        store.aliCloudModel = "   "
+        XCTAssertEqual(store.aliCloudModel, "paraformer-realtime-v2")
+    }
+
+    func testAliCloudSuggestedModelsIncludeParaformerRealtimeV2() {
+        XCTAssertEqual(AliCloudASRDefaults.suggestedModels.first, "paraformer-realtime-v2")
+        XCTAssertTrue(AliCloudASRDefaults.suggestedModels.contains("fun-asr-realtime"))
+        XCTAssertFalse(AliCloudASRDefaults.suggestedModels.contains("paraformer-realtime-8k-v2"))
+    }
+
     // MARK: - Doubao
 
     func testDefaultDoubaoAppID() {
@@ -345,13 +483,13 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.doubaoAccessToken, "token-abc")
     }
 
-    func testDefaultDoubaoResourceIDMigration() {
-        XCTAssertEqual(store.doubaoResourceID, "volc.seedasr.sauc.duration")
+    func testDefaultDoubaoResourceID() {
+        XCTAssertEqual(store.doubaoResourceID, DoubaoASRDefaults.resourceID)
     }
 
-    func testDoubaoResourceIDMigratesLegacyValue() {
-        defaults.set("volc.bigasr.sauc.duration", forKey: "stt.doubao.resourceID")
-        XCTAssertEqual(store.doubaoResourceID, "volc.seedasr.sauc.duration")
+    func testDoubaoResourceIDUsesDefaultValue() {
+        defaults.set(DoubaoASRDefaults.resourceID, forKey: "stt.doubao.resourceID")
+        XCTAssertEqual(store.doubaoResourceID, DoubaoASRDefaults.resourceID)
     }
 
     func testDoubaoResourceIDPreservesCustomValue() {
@@ -374,9 +512,21 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(store.personaHotkeyAppliesToSelection)
     }
 
-    func testSetPersonaHotkeyAppliesToSelection() {
+    func testPersonaHotkeyAlwaysAppliesToSelection() {
+        defaults.set(false, forKey: "persona.hotkeyAppliesToSelection")
+        XCTAssertTrue(store.personaHotkeyAppliesToSelection)
+
         store.personaHotkeyAppliesToSelection = false
-        XCTAssertFalse(store.personaHotkeyAppliesToSelection)
+        XCTAssertTrue(store.personaHotkeyAppliesToSelection)
+    }
+
+    func testDefaultQuickInputDisabled() {
+        XCTAssertFalse(store.quickInputEnabled)
+    }
+
+    func testSetQuickInputEnabled() {
+        store.quickInputEnabled = true
+        XCTAssertTrue(store.quickInputEnabled)
     }
 
     func testDefaultActivePersonaID() {
@@ -413,8 +563,11 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.localSTTMemoryOptimizationEnabled)
     }
 
-    func testSetLocalSTTMemoryOptimizationDisabled() {
-        store.localSTTMemoryOptimizationEnabled = false
+    func testLocalSTTMemoryOptimizationRemainsDisabledWhenPersistedOrSetToTrue() {
+        defaults.set(true, forKey: "stt.local.memoryOptimization.enabled")
+        XCTAssertFalse(store.localSTTMemoryOptimizationEnabled)
+
+        store.localSTTMemoryOptimizationEnabled = true
         XCTAssertFalse(store.localSTTMemoryOptimizationEnabled)
     }
 
@@ -426,6 +579,37 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(systemPersonas.count, 2)
         XCTAssertTrue(personas.contains(where: { $0.name == "Typeflux" }))
         XCTAssertTrue(personas.contains(where: { $0.name == "English Translator" }))
+    }
+
+    func testTypefluxSystemPersonaRequiresStructuralOrganizationInEveryAppLanguage() throws {
+        let persona = try XCTUnwrap(store.personas.first(where: { $0.name == "Typeflux" }))
+        let expectations: [(AppLanguage, String)] = [
+            (.english, "Identify distinct topics, points, decisions, requests, and action items"),
+            (.simplifiedChinese, "识别不同的主题、要点、决定、请求和行动项"),
+            (.traditionalChinese, "識別不同的主題、要點、決定、請求和行動項目"),
+            (.japanese, "異なるトピック、要点、決定、依頼、アクション項目を特定"),
+            (.korean, "서로 다른 주제, 요점, 결정, 요청, 실행 항목을 식별")
+        ]
+
+        for (language, expectedInstruction) in expectations {
+            store.appLanguage = language
+            XCTAssertTrue(
+                store.resolvedPersonaPrompt(for: persona).contains(expectedInstruction),
+                "Missing structural organization instruction for \(language)"
+            )
+        }
+    }
+
+    func testEnglishTranslatorSystemPersonaCombinesOrganizationAndTranslation() throws {
+        let persona = try XCTUnwrap(store.personas.first(where: { $0.name == "English Translator" }))
+        let prompt = store.resolvedPersonaPrompt(for: persona)
+
+        XCTAssertTrue(prompt.contains("Perform one unified transformation"))
+        XCTAssertTrue(prompt.contains("organize the transcript as you translate it"))
+        XCTAssertTrue(prompt.contains("Do not split organization and translation into separate stages"))
+        XCTAssertTrue(prompt.contains("natural, idiomatic written English"))
+        XCTAssertTrue(prompt.contains("Do not add new information or over-rewrite"))
+        XCTAssertFalse(prompt.contains("Follow these steps in order"))
     }
 
     func testPersonasEncodeDecodeRoundTrip() {
@@ -460,7 +644,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let effectivePersona = store.effectivePersona(
             appName: "Slack",
-            bundleIdentifier: "com.tinyspeck.slackmacgap",
+            bundleIdentifier: "com.tinyspeck.slackmacgap"
         )
 
         XCTAssertEqual(effectivePersona?.id, appSpecificPersona.id)
@@ -473,7 +657,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let effectivePersona = store.effectivePersona(
             appName: "Slack",
-            bundleIdentifier: "com.tinyspeck.slackmacgap",
+            bundleIdentifier: "com.tinyspeck.slackmacgap"
         )
 
         XCTAssertNil(effectivePersona)
@@ -487,7 +671,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let effectivePersona = store.effectivePersona(
             appName: "Notes",
-            bundleIdentifier: "com.apple.Notes",
+            bundleIdentifier: "com.apple.Notes"
         )
 
         XCTAssertEqual(store.personaAppBindings.first?.personaID, missingPersonaID)
@@ -504,7 +688,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let effectivePersona = store.effectivePersona(
             appName: "Slack",
-            bundleIdentifier: "com.tinyspeck.slackmacgap",
+            bundleIdentifier: "com.tinyspeck.slackmacgap"
         )
 
         XCTAssertEqual(effectivePersona?.id, defaultPersona.id)
@@ -518,7 +702,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let effectivePersona = store.effectivePersona(
             appName: "Slack",
-            bundleIdentifier: nil,
+            bundleIdentifier: nil
         )
 
         XCTAssertEqual(effectivePersona?.id, defaultPersona.id)
@@ -555,7 +739,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let effectivePersona = store.effectivePersona(
             appName: "Slack",
-            bundleIdentifier: nil,
+            bundleIdentifier: nil
         )
 
         XCTAssertEqual(effectivePersona?.id, defaultPersona.id)
@@ -570,17 +754,17 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(
             store.activePersonaAppBinding(
                 appName: "Slack",
-                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                bundleIdentifier: "com.tinyspeck.slackmacgap"
             )?.id,
-            bindingID,
+            bindingID
         )
 
         store.setPersonaAppBindingEnabled(id: bindingID, isEnabled: false)
         XCTAssertNil(
             store.activePersonaAppBinding(
                 appName: "Slack",
-                bundleIdentifier: "com.tinyspeck.slackmacgap",
-            ),
+                bundleIdentifier: "com.tinyspeck.slackmacgap"
+            )
         )
 
         store.setPersonaAppBindingEnabled(id: bindingID, isEnabled: true)
@@ -588,8 +772,8 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertNil(
             store.activePersonaAppBinding(
                 appName: "Slack",
-                bundleIdentifier: "com.tinyspeck.slackmacgap",
-            ),
+                bundleIdentifier: "com.tinyspeck.slackmacgap"
+            )
         )
     }
 
@@ -649,7 +833,7 @@ final class SettingsStoreTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(
             forName: .personaSelectionDidChange,
             object: nil,
-            queue: nil,
+            queue: nil
         ) { _ in
             expectation.fulfill()
         }
@@ -669,7 +853,7 @@ final class SettingsStoreTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(
             forName: .personaSelectionDidChange,
             object: nil,
-            queue: nil,
+            queue: nil
         ) { _ in
             expectation.fulfill()
         }
@@ -835,6 +1019,20 @@ extension SettingsStoreTests {
         XCTAssertEqual(store.askHotkey?.modifierFlags, 256)
     }
 
+    func testHistoryHotkeyDefaultIsCommandOptionO() {
+        let defaultHotkey = store.historyHotkey
+        XCTAssertNotNil(defaultHotkey)
+        XCTAssertEqual(defaultHotkey?.keyCode, HotkeyBinding.oKeyCode)
+        XCTAssertEqual(defaultHotkey?.modifierFlags, UInt(NSEvent.ModifierFlags.command.union(.option).rawValue))
+    }
+
+    func testHistoryHotkeyRoundTrip() {
+        let testHotkey = HotkeyBinding(keyCode: 45, modifierFlags: 256)
+        store.historyHotkey = testHotkey
+        XCTAssertEqual(store.historyHotkey?.keyCode, 45)
+        XCTAssertEqual(store.historyHotkey?.modifierFlags, 256)
+    }
+
     // MARK: - automaticVocabularyCollectionEnabled
 
     func testAutomaticVocabularyCollectionEnabledDefaultIsTrue() {
@@ -893,5 +1091,58 @@ extension SettingsStoreTests {
 
         XCTAssertEqual(store.llmAPIKey(for: .openAI), "sk-openai")
         XCTAssertEqual(store.llmAPIKey(for: .anthropic), "sk-anthropic")
+
+        // MARK: - Output OpenCC
+
+        func testDefaultOutputOpenCCEnabled() {
+            #if DEBUG
+                XCTAssertTrue(store.outputOpenCCEnabled, "OpenCC should be enabled by default in debug builds")
+            #else
+                XCTAssertTrue(store.outputOpenCCEnabled, "OpenCC should be enabled by default in release builds")
+            #endif
+        }
+
+        func testDefaultOutputOpenCCConfig() {
+            XCTAssertEqual(
+                store.outputOpenCCConfig,
+                "s2twp",
+                "Default config should be s2twp (Simplified to Traditional Taiwan)"
+            )
+        }
+
+        func testSetOutputOpenCCEnabled() {
+            store.outputOpenCCEnabled = false
+            XCTAssertFalse(store.outputOpenCCEnabled)
+
+            store.outputOpenCCEnabled = true
+            XCTAssertTrue(store.outputOpenCCEnabled)
+        }
+
+        func testSetOutputOpenCCConfig() {
+            store.outputOpenCCConfig = "s2tw"
+            XCTAssertEqual(store.outputOpenCCConfig, "s2tw")
+
+            store.outputOpenCCConfig = "t2s"
+            XCTAssertEqual(store.outputOpenCCConfig, "t2s")
+
+            store.outputOpenCCConfig = "s2twp"
+            XCTAssertEqual(store.outputOpenCCConfig, "s2twp")
+        }
+
+        func testOutputOpenCCEnabledPersistence() {
+            store.outputOpenCCEnabled = false
+
+            // Create new store instance with same defaults
+            let newStore = SettingsStore(defaults: defaults)
+            XCTAssertFalse(newStore.outputOpenCCEnabled, "Setting should persist across store instances")
+        }
+
+        func testOutputOpenCCConfigPersistence() {
+            store.outputOpenCCConfig = "t2s"
+
+            // Create new store instance with same defaults
+            let newStore = SettingsStore(defaults: defaults)
+            XCTAssertEqual(newStore.outputOpenCCConfig, "t2s", "Config should persist across store instances")
+        }
     }
 }

@@ -68,7 +68,7 @@ final class AgentJobsWindowController: NSObject {
     init(
         settingsStore: SettingsStore,
         jobStore: AgentJobStore,
-        executionRegistry: AgentExecutionRegistry,
+        executionRegistry: AgentExecutionRegistry
     ) {
         self.settingsStore = settingsStore
         model = Model(jobStore: jobStore, executionRegistry: executionRegistry)
@@ -77,7 +77,7 @@ final class AgentJobsWindowController: NSObject {
         languageObserver = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.window?.title = L("agent.jobs.title")
@@ -87,7 +87,7 @@ final class AgentJobsWindowController: NSObject {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, let window else { return }
@@ -98,7 +98,7 @@ final class AgentJobsWindowController: NSObject {
         storeObserver = NotificationCenter.default.addObserver(
             forName: .agentJobStoreDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.model.refresh()
@@ -151,7 +151,7 @@ final class AgentJobsWindowController: NSObject {
             contentRect: NSRect(x: 0, y: 0, width: 860, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
-            defer: false,
+            defer: false
         )
         window.title = L("agent.jobs.title")
         window.titleVisibility = .hidden
@@ -206,13 +206,13 @@ private struct AgentJobsWindowView: View {
                     job: job,
                     appearanceMode: appearanceMode,
                     onBack: model.showList,
-                    onCancel: { model.cancel(jobID: job.id) },
+                    onCancel: { model.cancel(jobID: job.id) }
                 )
             } else {
                 AgentJobsListPane(
                     jobs: model.jobs,
                     isLoading: model.isLoading,
-                    onOpenJob: { model.showJob($0.id) },
+                    onOpenJob: { model.showJob($0.id) }
                 )
             }
         }
@@ -354,7 +354,7 @@ private struct AgentJobDetailPane: View {
                             title: L("agent.jobs.cancel"),
                             systemImage: "stop.circle",
                             variant: .secondary,
-                            action: onCancel,
+                            action: onCancel
                         )
                     }
                 }
@@ -427,9 +427,9 @@ private struct AgentJobDetailPane: View {
                                 StudioSegmentedPicker(
                                     options: [
                                         (L("agent.jobs.detail.result.view.plainText"), ResultViewMode.plainText),
-                                        (L("agent.jobs.detail.result.view.markdown"), ResultViewMode.markdown),
+                                        (L("agent.jobs.detail.result.view.markdown"), ResultViewMode.markdown)
                                     ],
-                                    selection: $resultViewMode,
+                                    selection: $resultViewMode
                                 )
 
                                 if resultViewMode == .plainText {

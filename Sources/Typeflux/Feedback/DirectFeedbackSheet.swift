@@ -15,14 +15,14 @@ enum FeedbackImageUploadState: Equatable {
     var isInProgress: Bool {
         switch self {
         case .preparing, .uploading:
-            return true
+            true
         case .uploaded, .failed:
-            return false
+            false
         }
     }
 
     var uploadedURL: String? {
-        if case .uploaded(let url) = self { return url }
+        if case let .uploaded(url) = self { return url }
         return nil
     }
 }
@@ -233,7 +233,7 @@ private struct FeedbackContentTextView: NSViewRepresentable {
         return scrollView
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+    func updateNSView(_ scrollView: NSScrollView, context _: Context) {
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
 

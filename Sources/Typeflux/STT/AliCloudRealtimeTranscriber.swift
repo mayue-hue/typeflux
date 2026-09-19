@@ -16,7 +16,7 @@ final class AliCloudRealtimeTranscriber: Transcriber, RealtimeTranscriptionSessi
             throw NSError(
                 domain: "AliCloudRealtimeTranscriber",
                 code: 1001,
-                userInfo: [NSLocalizedDescriptionKey: "Alibaba Cloud API key is not configured."],
+                userInfo: [NSLocalizedDescriptionKey: "Alibaba Cloud API key is not configured."]
             )
         }
 
@@ -26,9 +26,11 @@ final class AliCloudRealtimeTranscriber: Transcriber, RealtimeTranscriptionSessi
         let pcmData = RemoteSTTTestAudio.pcm16MonoSilence()
 
         if resolvedModel.lowercased().hasPrefix("qwen") {
-            return try await AliCloudQwenASRSession.run(pcmData: pcmData, model: resolvedModel, apiKey: trimmedAPIKey) { _ in }
+            return try await AliCloudQwenASRSession
+                .run(pcmData: pcmData, model: resolvedModel, apiKey: trimmedAPIKey) { _ in }
         } else {
-            return try await AliCloudFunASRSession.run(pcmData: pcmData, model: resolvedModel, apiKey: trimmedAPIKey) { _ in }
+            return try await AliCloudFunASRSession
+                .run(pcmData: pcmData, model: resolvedModel, apiKey: trimmedAPIKey) { _ in }
         }
     }
 
@@ -38,7 +40,7 @@ final class AliCloudRealtimeTranscriber: Transcriber, RealtimeTranscriptionSessi
 
     func transcribeStream(
         audioFile: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let model = settingsStore.aliCloudModel
         let apiKey = settingsStore.aliCloudAPIKey
@@ -47,7 +49,7 @@ final class AliCloudRealtimeTranscriber: Transcriber, RealtimeTranscriptionSessi
             throw NSError(
                 domain: "AliCloudRealtimeTranscriber",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Alibaba Cloud API key is not configured."],
+                userInfo: [NSLocalizedDescriptionKey: "Alibaba Cloud API key is not configured."]
             )
         }
 
@@ -55,18 +57,18 @@ final class AliCloudRealtimeTranscriber: Transcriber, RealtimeTranscriptionSessi
 
         if model.lowercased().hasPrefix("qwen") {
             return try await AliCloudQwenASRSession.run(
-                pcmData: pcmData, model: model, apiKey: apiKey, onUpdate: onUpdate,
+                pcmData: pcmData, model: model, apiKey: apiKey, onUpdate: onUpdate
             )
         } else {
             return try await AliCloudFunASRSession.run(
-                pcmData: pcmData, model: model, apiKey: apiKey, onUpdate: onUpdate,
+                pcmData: pcmData, model: model, apiKey: apiKey, onUpdate: onUpdate
             )
         }
     }
 
     func makeRealtimeTranscriptionSession(
         scenario _: TypefluxCloudScenario,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> any RealtimeTranscriptionSession {
         let model = settingsStore.aliCloudModel
         let apiKey = settingsStore.aliCloudAPIKey
@@ -75,7 +77,7 @@ final class AliCloudRealtimeTranscriber: Transcriber, RealtimeTranscriptionSessi
             throw NSError(
                 domain: "AliCloudRealtimeTranscriber",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Alibaba Cloud API key is not configured."],
+                userInfo: [NSLocalizedDescriptionKey: "Alibaba Cloud API key is not configured."]
             )
         }
 
@@ -116,12 +118,12 @@ private enum AliCloudAudioConverter {
             commonFormat: .pcmFormatInt16,
             sampleRate: targetSampleRate,
             channels: 1,
-            interleaved: true,
+            interleaved: true
         ) else {
             throw NSError(
                 domain: "AliCloudAudioConverter",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create target audio format."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create target audio format."]
             )
         }
 
@@ -129,7 +131,7 @@ private enum AliCloudAudioConverter {
             throw NSError(
                 domain: "AliCloudAudioConverter",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter."]
             )
         }
 
@@ -137,7 +139,7 @@ private enum AliCloudAudioConverter {
             throw NSError(
                 domain: "AliCloudAudioConverter",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate source buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate source buffer."]
             )
         }
         try sourceFile.read(into: sourceBuffer)
@@ -148,7 +150,7 @@ private enum AliCloudAudioConverter {
             throw NSError(
                 domain: "AliCloudAudioConverter",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate target buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate target buffer."]
             )
         }
 
@@ -169,7 +171,7 @@ private enum AliCloudAudioConverter {
             throw NSError(
                 domain: "AliCloudAudioConverter",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Audio conversion failed."],
+                userInfo: [NSLocalizedDescriptionKey: "Audio conversion failed."]
             )
         }
 
@@ -180,6 +182,37 @@ private enum AliCloudAudioConverter {
     }
 }
 
+// MARK: - FunASR Request Configuration
+
+enum AliCloudFunASRRequestConfiguration {
+    static func parameters(for model: String) -> [String: Any] {
+        let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isParaformerRealtimeV2(normalizedModel) else {
+            return [
+                "format": "pcm",
+                "sample_rate": 16000,
+                "semantic_punctuation_enabled": true,
+                "max_sentence_silence": 800,
+                "heartbeat": false
+            ]
+        }
+
+        return [
+            "format": "pcm",
+            "sample_rate": 16000,
+            "disfluency_removal_enabled": true,
+            "semantic_punctuation_enabled": false,
+            "max_sentence_silence": 800,
+            "punctuation_prediction_enabled": true,
+            "heartbeat": false
+        ]
+    }
+
+    private static func isParaformerRealtimeV2(_ normalizedModel: String) -> Bool {
+        normalizedModel == "paraformer-realtime-v2"
+    }
+}
+
 // MARK: - FunASR Session (DashScope WebSocket protocol)
 
 actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
@@ -187,7 +220,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
         pcmData: Data,
         model: String,
         apiKey: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let session = AliCloudFunASRSession(model: model, apiKey: apiKey, onUpdate: onUpdate)
         try await session.start()
@@ -222,7 +255,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
     init(
         model: String,
         apiKey: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) {
         self.model = model
         self.apiKey = apiKey
@@ -253,22 +286,16 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             "header": [
                 "action": "run-task",
                 "task_id": taskID,
-                "streaming": "duplex",
+                "streaming": "duplex"
             ],
             "payload": [
                 "task_group": "audio",
                 "task": "asr",
                 "function": "recognition",
                 "model": model,
-                "parameters": [
-                    "format": "pcm",
-                    "sample_rate": 16000,
-                    "semantic_punctuation_enabled": false,
-                    "max_sentence_silence": 800,
-                    "heartbeat": false,
-                ],
-                "input": [String: Any](),
-            ],
+                "parameters": AliCloudFunASRRequestConfiguration.parameters(for: model),
+                "input": [String: Any]()
+            ]
         ]
         try await sendJSON(runTask, to: socketTask)
 
@@ -284,7 +311,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             throw NSError(
                 domain: "AliCloudFunASR",
                 code: 6,
-                userInfo: [NSLocalizedDescriptionKey: "AliCloud realtime WebSocket is not connected."],
+                userInfo: [NSLocalizedDescriptionKey: "AliCloud realtime WebSocket is not connected."]
             )
         }
         var offset = data.startIndex
@@ -310,7 +337,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             throw NSError(
                 domain: "AliCloudFunASR",
                 code: 7,
-                userInfo: [NSLocalizedDescriptionKey: "AliCloud realtime WebSocket is not connected."],
+                userInfo: [NSLocalizedDescriptionKey: "AliCloud realtime WebSocket is not connected."]
             )
         }
         let silencePadding = Data(count: AliCloudAudioConverter.trailingSilenceBytes)
@@ -320,7 +347,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             let end = silencePadding.index(
                 silenceOffset,
                 offsetBy: chunkSize,
-                limitedBy: silencePadding.endIndex,
+                limitedBy: silencePadding.endIndex
             ) ?? silencePadding.endIndex
             try await socketTask.send(.data(Data(silencePadding[silenceOffset ..< end])))
             silenceOffset = end
@@ -330,9 +357,9 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             "header": [
                 "action": "finish-task",
                 "task_id": taskID,
-                "streaming": "duplex",
+                "streaming": "duplex"
             ],
-            "payload": ["input": [String: Any]()],
+            "payload": ["input": [String: Any]()]
         ]
         try await sendJSON(finishTask, to: socketTask)
 
@@ -375,7 +402,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
                 NetworkDebugLogger.logWebSocketEvent(
                     provider: "AliCloud FunASR",
                     phase: "receive",
-                    details: String(data: data, encoding: .utf8) ?? "<\(data.count) bytes>",
+                    details: String(data: data, encoding: .utf8) ?? "<\(data.count) bytes>"
                 )
                 await handleEvent(data: data)
             } catch {
@@ -441,12 +468,12 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             NetworkDebugLogger.logWebSocketEvent(
                 provider: "AliCloud FunASR",
                 phase: "task-failed",
-                details: "code=\(errorCode) message=\(msg)",
+                details: "code=\(errorCode) message=\(msg)"
             )
             signalError(NSError(
                 domain: "AliCloudFunASR",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "[\(errorCode)] \(msg)"],
+                userInfo: [NSLocalizedDescriptionKey: "[\(errorCode)] \(msg)"]
             ))
 
         default:
@@ -513,7 +540,7 @@ actor AliCloudFunASRSession: PCM16RealtimeTranscriptionSession {
             throw NSError(
                 domain: "AliCloudFunASR",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to encode JSON payload."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to encode JSON payload."]
             )
         }
         NetworkDebugLogger.logWebSocketEvent(provider: "AliCloud FunASR", phase: "send", details: text)
@@ -620,7 +647,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
         pcmData: Data,
         model: String,
         apiKey: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let session = AliCloudQwenASRSession(model: model, apiKey: apiKey, onUpdate: onUpdate)
         try await session.start()
@@ -647,7 +674,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
     init(
         model: String,
         apiKey: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) {
         self.model = model
         self.apiKey = apiKey
@@ -678,8 +705,8 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
                 "modalities": ["text"],
                 "input_audio_format": "pcm",
                 "sample_rate": 16000,
-                "turn_detection": NSNull(),
-            ],
+                "turn_detection": NSNull()
+            ]
         ]
         try await sendJSON(sessionUpdate, to: socketTask)
 
@@ -695,7 +722,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             throw NSError(
                 domain: "AliCloudQwenASR",
                 code: 6,
-                userInfo: [NSLocalizedDescriptionKey: "AliCloud Qwen realtime WebSocket is not connected."],
+                userInfo: [NSLocalizedDescriptionKey: "AliCloud Qwen realtime WebSocket is not connected."]
             )
         }
         var offset = data.startIndex
@@ -705,7 +732,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             let chunk = Data(data[offset ..< end])
             let audioAppend: [String: Any] = [
                 "type": "input_audio_buffer.append",
-                "audio": chunk.base64EncodedString(),
+                "audio": chunk.base64EncodedString()
             ]
             try await sendJSON(audioAppend, to: socketTask)
             offset = end
@@ -725,7 +752,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             throw NSError(
                 domain: "AliCloudQwenASR",
                 code: 7,
-                userInfo: [NSLocalizedDescriptionKey: "AliCloud Qwen realtime WebSocket is not connected."],
+                userInfo: [NSLocalizedDescriptionKey: "AliCloud Qwen realtime WebSocket is not connected."]
             )
         }
         let silencePadding = Data(count: AliCloudAudioConverter.trailingSilenceBytes)
@@ -735,12 +762,12 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             let end = silencePadding.index(
                 silenceOffset,
                 offsetBy: chunkSize,
-                limitedBy: silencePadding.endIndex,
+                limitedBy: silencePadding.endIndex
             ) ?? silencePadding.endIndex
             let chunk = Data(silencePadding[silenceOffset ..< end])
             let silenceAppend: [String: Any] = [
                 "type": "input_audio_buffer.append",
-                "audio": chunk.base64EncodedString(),
+                "audio": chunk.base64EncodedString()
             ]
             try await sendJSON(silenceAppend, to: socketTask)
             silenceOffset = end
@@ -759,7 +786,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             !accumulator.orderedItemIDs.allSatisfy { accumulator.finalTexts[$0] != nil }
         await drainState.waitForSentenceEndOrTimeout(
             hasPartial: hasPendingItems,
-            timeout: AliCloudAudioConverter.lastSentenceDrainTimeout,
+            timeout: AliCloudAudioConverter.lastSentenceDrainTimeout
         )
         await snapshotDispatcher.flush()
 
@@ -789,7 +816,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
                 NetworkDebugLogger.logWebSocketEvent(
                     provider: "AliCloud Qwen ASR",
                     phase: "receive",
-                    details: String(data: data, encoding: .utf8) ?? "<\(data.count) bytes>",
+                    details: String(data: data, encoding: .utf8) ?? "<\(data.count) bytes>"
                 )
                 await handleEvent(data: data)
             } catch {
@@ -824,12 +851,12 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             NetworkDebugLogger.logWebSocketEvent(
                 provider: "AliCloud Qwen ASR",
                 phase: "error",
-                details: message,
+                details: message
             )
             signalError(NSError(
                 domain: "AliCloudQwenASR",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: message],
+                userInfo: [NSLocalizedDescriptionKey: message]
             ))
 
         default:
@@ -878,7 +905,7 @@ private actor AliCloudQwenASRSession: PCM16RealtimeTranscriptionSession {
             throw NSError(
                 domain: "AliCloudQwenASR",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to encode JSON payload."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to encode JSON payload."]
             )
         }
         NetworkDebugLogger.logWebSocketEvent(provider: "AliCloud Qwen ASR", phase: "send", details: text)
@@ -955,7 +982,7 @@ private actor AliCloudWSDelegateState {
                 throw NSError(
                     domain: "AliCloudWSDelegate",
                     code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "WebSocket handshake timed out."],
+                    userInfo: [NSLocalizedDescriptionKey: "WebSocket handshake timed out."]
                 )
             }
             try await group.next()
@@ -989,7 +1016,7 @@ private final class AliCloudWSDelegate: NSObject, URLSessionWebSocketDelegate, U
     func urlSession(
         _: URLSession,
         webSocketTask _: URLSessionWebSocketTask,
-        didOpenWithProtocol _: String?,
+        didOpenWithProtocol _: String?
     ) {
         Task { await state.markOpened() }
     }
@@ -997,7 +1024,7 @@ private final class AliCloudWSDelegate: NSObject, URLSessionWebSocketDelegate, U
     func urlSession(
         _: URLSession,
         task _: URLSessionTask,
-        didCompleteWithError error: Error?,
+        didCompleteWithError error: Error?
     ) {
         guard let error else { return }
         Task { await state.markFailed(error) }

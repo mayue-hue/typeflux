@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// HTTP client for the Typeflux authentication API.
-struct AuthAPIService {
+enum AuthAPIService {
     private static let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "AuthAPIService")
 
     // MARK: - Public API
@@ -14,7 +14,7 @@ struct AuthAPIService {
     static func register(email: String, password: String, name: String?) async throws -> RegisterResponse {
         try await post(
             path: "/api/v1/auth/register",
-            body: RegisterRequest(email: email, password: password, name: name),
+            body: RegisterRequest(email: email, password: password, name: name)
         )
     }
 
@@ -25,7 +25,7 @@ struct AuthAPIService {
     static func resendActivation(email: String, password: String) async throws -> ResendActivationResponse {
         try await post(
             path: "/api/v1/auth/resend-activation",
-            body: ResendActivationRequest(email: email, password: password),
+            body: ResendActivationRequest(email: email, password: password)
         )
     }
 
@@ -40,15 +40,16 @@ struct AuthAPIService {
     static func resetPassword(email: String, code: String, newPassword: String) async throws -> ResetPasswordResponse {
         try await post(
             path: "/api/v1/auth/reset-password",
-            body: ResetPasswordRequest(email: email, code: code, newPassword: newPassword),
+            body: ResetPasswordRequest(email: email, code: code, newPassword: newPassword)
         )
     }
 
-    static func changePassword(token: String, oldPassword: String, newPassword: String) async throws -> ChangePasswordResponse {
+    static func changePassword(token: String, oldPassword: String,
+                               newPassword: String) async throws -> ChangePasswordResponse {
         try await post(
             path: "/api/v1/auth/change-password",
             body: ChangePasswordRequest(oldPassword: oldPassword, newPassword: newPassword),
-            token: token,
+            token: token
         )
     }
 
@@ -61,7 +62,10 @@ struct AuthAPIService {
     }
 
     static func logout(refreshToken: String) async throws {
-        let _: LogoutResponse = try await post(path: "/api/v1/auth/logout", body: LogoutRequest(refreshToken: refreshToken))
+        let _: LogoutResponse = try await post(
+            path: "/api/v1/auth/logout",
+            body: LogoutRequest(refreshToken: refreshToken)
+        )
     }
 
     static func loginWithGoogle(idToken: String) async throws -> LoginResponse {
@@ -81,10 +85,10 @@ struct AuthAPIService {
 
     // MARK: - Networking Helpers
 
-    private static func post<Body: Encodable, Response: Decodable>(
+    private static func post<Response: Decodable>(
         path: String,
-        body: Body,
-        token: String? = nil,
+        body: some Encodable,
+        token: String? = nil
     ) async throws -> Response {
         let payload: Data
         do {
@@ -98,7 +102,7 @@ struct AuthAPIService {
 
     private static func get<Response: Decodable>(
         path: String,
-        token: String? = nil,
+        token: String? = nil
     ) async throws -> Response {
         try await execute(path: path, method: "GET", token: token, body: nil)
     }
@@ -107,7 +111,7 @@ struct AuthAPIService {
         path: String,
         method: String,
         token: String?,
-        body: Data?,
+        body: Data?
     ) async throws -> Response {
         let executor = CloudRequestExecutor()
 
@@ -130,7 +134,7 @@ struct AuthAPIService {
             }
         } catch is CancellationError {
             throw CancellationError()
-        } catch CloudRequestExecutorError.allEndpointsFailed(let lastError) {
+        } catch let CloudRequestExecutorError.allEndpointsFailed(lastError) {
             logger.error("All endpoints failed: \(lastError.localizedDescription)")
             throw AuthError.networkError(lastError)
         } catch {
@@ -157,10 +161,13 @@ struct AuthAPIService {
               let responseData = envelope.data
         else {
             let raw = String(data: data, encoding: .utf8) ?? "<non-utf8>"
-            logger.error("[\(path, privacy: .public)] \(httpResponse.statusCode, privacy: .public) body: \(raw, privacy: .public)")
+            logger
+                .error(
+                    "[\(path, privacy: .public)] \(httpResponse.statusCode, privacy: .public) body: \(raw, privacy: .public)"
+                )
             throw AuthError.serverError(
                 code: envelope.code,
-                message: envelope.message,
+                message: envelope.message
             )
         }
 

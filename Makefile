@@ -2,64 +2,88 @@ RELEASE_VARIANT := $(if $(TYPEFLUX_RELEASE_VARIANT),$(TYPEFLUX_RELEASE_VARIANT),
 RELEASE_ARCH := $(if $(TYPEFLUX_RELEASE_ARCH),$(TYPEFLUX_RELEASE_ARCH),native)
 PACKAGE_NAME = Typeflux$(if $(filter full,$(RELEASE_VARIANT)),-full,$(if $(filter app-only,$(RELEASE_VARIANT)),-app-only,))$(if $(filter arm64,$(RELEASE_ARCH)),-apple-silicon,$(if $(filter x86_64,$(RELEASE_ARCH)),-intel,$(if $(filter universal,$(RELEASE_ARCH)),-universal,)))
 
-run:
+.PHONY: help
+help: ## Display this help message
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_0-9-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
+
+.DEFAULT_GOAL := help
+
+.PHONY: run
+run: ## Run the development version of the app
 	./scripts/run_dev_app.sh
 
-release:
+.PHONY: release
+release: ## Build and notarize a release (native architecture)
 	./scripts/release_notarize.sh --move-to-downloads
 
-intel-release:
+.PHONY: intel-release
+intel-release: ## Build and notarize an Intel release
 	./scripts/release_intel.sh --move-to-downloads
 
-release-continue:
+.PHONY: release-continue
+release-continue: ## Continue a previously interrupted release notarization
 	./scripts/release_notarize.sh --continue --move-to-downloads
 
-intel-release-continue:
+.PHONY: intel-release-continue
+intel-release-continue: ## Continue a previously interrupted Intel release notarization
 	./scripts/release_intel.sh --continue --move-to-downloads
 
-full-release:
+.PHONY: full-release
+full-release: ## Build a "full" variant release (with all models)
 	TYPEFLUX_RELEASE_VARIANT=full $(MAKE) release
 
-full-intel-release:
+.PHONY: full-intel-release
+full-intel-release: ## Build a "full" variant Intel release
 	TYPEFLUX_RELEASE_VARIANT=full $(MAKE) intel-release
 
-app-only-release:
+.PHONY: app-only-release
+app-only-release: ## Build an "app-only" variant release
 	TYPEFLUX_RELEASE_VARIANT=app-only $(MAKE) release
 
-app-only-intel-release:
+.PHONY: app-only-intel-release
+app-only-intel-release: ## Build an "app-only" variant Intel release
 	TYPEFLUX_RELEASE_VARIANT=app-only $(MAKE) intel-release
 
-full-release-continue:
+.PHONY: full-release-continue
+full-release-continue: ## Continue a "full" variant release notarization
 	TYPEFLUX_RELEASE_VARIANT=full $(MAKE) release-continue
 
-dev:
+.PHONY: dev
+dev: ## Run dev version attached to terminal with local API URL
 	TYPEFLUX_API_URL=http://127.0.0.1:8080 ./scripts/run_dev_attached.sh
 
-full-dev:
+.PHONY: full-dev
+full-dev: ## Run "full" variant dev version attached to terminal
 	TYPEFLUX_API_URL=http://127.0.0.1:8080 TYPEFLUX_DEV_VARIANT=full ./scripts/run_dev_attached.sh
 
-build:
+.PHONY: build
+build: ## Build the Swift package
 	swift build
 
-test:
+.PHONY: test
+test: ## Run all unit tests
 	swift test
 
-coverage:
+.PHONY: coverage
+coverage: ## Generate code coverage report
 	./scripts/coverage.sh
 
-dmg:
+.PHONY: dmg
+dmg: ## Build a DMG disk image
 	./scripts/build_dmg.sh
 
-release-notarize:
+.PHONY: release-notarize
+release-notarize: ## Run the release notarization script
 	./scripts/release_notarize.sh
 
-release-notarize-continue:
+.PHONY: release-notarize-continue
+release-notarize-continue: ## Continue the release notarization script
 	./scripts/release_notarize.sh --continue
 
-verify-release-artifacts:
+.PHONY: verify-release-artifacts
+verify-release-artifacts: ## Verify the integrity of release artifacts
 	./scripts/verify_release_artifacts.sh
 
-format:
+.PHONY: format
+format: ## Format code using SwiftFormat and SwiftLint
 	./scripts/format.sh
-
-.PHONY: run release intel-release release-continue intel-release-continue full-release full-intel-release app-only-release app-only-intel-release full-release-continue dev full-dev build test coverage dmg release-notarize release-notarize-continue verify-release-artifacts format

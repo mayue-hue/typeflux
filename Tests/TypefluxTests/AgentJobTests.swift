@@ -25,13 +25,13 @@ final class AgentJobTests: XCTestCase {
 
     func testStepCodable() throws {
         let toolCall = AgentJobToolCall(
-            id: "tc-1", name: "search", argumentsJSON: "{}", resultContent: "ok", isError: false,
+            id: "tc-1", name: "search", argumentsJSON: "{}", resultContent: "ok", isError: false
         )
         let step = AgentJobStep(
             stepIndex: 0,
             toolCalls: [toolCall],
             assistantText: "Thinking...",
-            durationMs: 250,
+            durationMs: 250
         )
 
         let data = try JSONEncoder().encode(step)
@@ -52,7 +52,7 @@ final class AgentJobTests: XCTestCase {
             name: "get_clipboard",
             argumentsJSON: #"{"format":"text"}"#,
             resultContent: "Hello",
-            isError: false,
+            isError: false
         )
         let data = try JSONEncoder().encode(tc)
         let decoded = try JSONDecoder().decode(AgentJobToolCall.self, from: data)
@@ -64,7 +64,13 @@ final class AgentJobTests: XCTestCase {
     }
 
     func testToolCallErrorFlag() {
-        let tc = AgentJobToolCall(id: "e1", name: "fail_tool", argumentsJSON: "{}", resultContent: "error", isError: true)
+        let tc = AgentJobToolCall(
+            id: "e1",
+            name: "fail_tool",
+            argumentsJSON: "{}",
+            resultContent: "error",
+            isError: true
+        )
         XCTAssertTrue(tc.isError)
     }
 
@@ -212,22 +218,34 @@ final class AgentJobTests: XCTestCase {
     }
 
     func testFormattedTotalTokensZero() {
-        let job = AgentJob(userPrompt: "test", totalTokenUsage: LLMTokenUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0))
+        let job = AgentJob(
+            userPrompt: "test",
+            totalTokenUsage: LLMTokenUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0)
+        )
         XCTAssertNil(job.formattedTotalTokens)
     }
 
     func testFormattedTotalTokensSmall() {
-        let job = AgentJob(userPrompt: "test", totalTokenUsage: LLMTokenUsage(promptTokens: 100, completionTokens: 50, totalTokens: 150))
+        let job = AgentJob(
+            userPrompt: "test",
+            totalTokenUsage: LLMTokenUsage(promptTokens: 100, completionTokens: 50, totalTokens: 150)
+        )
         XCTAssertEqual(job.formattedTotalTokens, "150 tokens")
     }
 
     func testFormattedTotalTokensThousands() {
-        let job = AgentJob(userPrompt: "test", totalTokenUsage: LLMTokenUsage(promptTokens: 1500, completionTokens: 500, totalTokens: 2000))
+        let job = AgentJob(
+            userPrompt: "test",
+            totalTokenUsage: LLMTokenUsage(promptTokens: 1500, completionTokens: 500, totalTokens: 2000)
+        )
         XCTAssertEqual(job.formattedTotalTokens, "2.0K tokens")
     }
 
     func testFormattedTotalTokensMillions() {
-        let job = AgentJob(userPrompt: "test", totalTokenUsage: LLMTokenUsage(promptTokens: 900_000, completionTokens: 200_000, totalTokens: 1_100_000))
+        let job = AgentJob(
+            userPrompt: "test",
+            totalTokenUsage: LLMTokenUsage(promptTokens: 900_000, completionTokens: 200_000, totalTokens: 1_100_000)
+        )
         XCTAssertEqual(job.formattedTotalTokens, "1.1M tokens")
     }
 
@@ -306,7 +324,13 @@ final class AgentJobTests: XCTestCase {
     // MARK: - Codable round-trip
 
     func testAgentJobCodable() throws {
-        let tc = AgentJobToolCall(id: "tc1", name: "search", argumentsJSON: #"{"q":"test"}"#, resultContent: "found", isError: false)
+        let tc = AgentJobToolCall(
+            id: "tc1",
+            name: "search",
+            argumentsJSON: #"{"q":"test"}"#,
+            resultContent: "found",
+            isError: false
+        )
         let step = AgentJobStep(stepIndex: 0, toolCalls: [tc], assistantText: "Let me search.", durationMs: 150)
         let job = AgentJob(
             id: UUID(),
@@ -320,7 +344,7 @@ final class AgentJobTests: XCTestCase {
             errorMessage: nil,
             steps: [step],
             totalDurationMs: 1500,
-            outcomeType: "answer_text",
+            outcomeType: "answer_text"
         )
 
         let data = try JSONEncoder().encode(job)

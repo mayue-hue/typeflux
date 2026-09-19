@@ -26,30 +26,34 @@ enum AppMenuController {
         let menu = NSMenu(title: L("about.appName"))
 
         let appName = ProcessInfo.processInfo.processName
-        let aboutItem = NSMenuItem(title: L("appMenu.about", appName), action: #selector(AppMenuActionRouter.openAbout(_:)), keyEquivalent: "")
+        let aboutItem = NSMenuItem(
+            title: L("appMenu.about", appName),
+            action: #selector(AppMenuActionRouter.openAbout(_:)),
+            keyEquivalent: ""
+        )
         aboutItem.target = AppMenuActionRouter.shared
         menu.addItem(aboutItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(
             withTitle: L("appMenu.hide", appName),
             action: #selector(NSApplication.hide(_:)),
-            keyEquivalent: "h",
+            keyEquivalent: "h"
         )
         menu.addItem(
             withTitle: L("appMenu.hideOthers"),
             action: #selector(NSApplication.hideOtherApplications(_:)),
-            keyEquivalent: "h",
+            keyEquivalent: "h"
         ).keyEquivalentModifierMask = [.command, .option]
         menu.addItem(
             withTitle: L("appMenu.showAll"),
             action: #selector(NSApplication.unhideAllApplications(_:)),
-            keyEquivalent: "",
+            keyEquivalent: ""
         )
         menu.addItem(NSMenuItem.separator())
         menu.addItem(
             withTitle: L("appMenu.quit", appName),
             action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q",
+            keyEquivalent: "q"
         )
 
         return menu

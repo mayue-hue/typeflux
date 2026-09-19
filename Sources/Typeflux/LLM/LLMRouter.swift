@@ -35,13 +35,13 @@ final class LLMRouter: LLMService {
             try await openAICompatible.completeJSON(
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: schema,
+                schema: schema
             )
         case .ollama:
             try await ollama.completeJSON(
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: schema,
+                schema: schema
             )
         }
     }

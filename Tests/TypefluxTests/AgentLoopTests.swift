@@ -11,7 +11,7 @@ final class MockLLMMultiTurnService: LLMMultiTurnService, @unchecked Sendable {
     func complete(
         messages _: [AgentMessage],
         tools _: [LLMAgentTool],
-        config _: LLMCallConfig,
+        config _: LLMCallConfig
     ) async throws -> AgentTurnResult {
         guard callCount < turns.count else {
             return AgentTurnResult(turn: .text("fallback"), tokenUsage: nil)
@@ -51,7 +51,7 @@ final class AgentLoopTests: XCTestCase {
     func testTerminatesOnAnswerTextTool() async throws {
         let mockLLM = MockLLMMultiTurnService()
         mockLLM.turns = [
-            .toolCalls([AgentToolCall(id: "1", name: "answer_text", argumentsJSON: #"{"answer":"42"}"#)]),
+            .toolCalls([AgentToolCall(id: "1", name: "answer_text", argumentsJSON: #"{"answer":"42"}"#)])
         ]
 
         let registry = AgentToolRegistry()
@@ -71,7 +71,7 @@ final class AgentLoopTests: XCTestCase {
     func testTerminatesOnEditTextTool() async throws {
         let mockLLM = MockLLMMultiTurnService()
         mockLLM.turns = [
-            .toolCalls([AgentToolCall(id: "1", name: "edit_text", argumentsJSON: #"{"replacement":"new text"}"#)]),
+            .toolCalls([AgentToolCall(id: "1", name: "edit_text", argumentsJSON: #"{"replacement":"new text"}"#)])
         ]
 
         let registry = AgentToolRegistry()
@@ -95,7 +95,7 @@ final class AgentLoopTests: XCTestCase {
         // Always return get_clipboard (non-termination) tool call
         mockLLM.turns = Array(
             repeating: .toolCalls([AgentToolCall(id: "1", name: "get_clipboard", argumentsJSON: "{}")]),
-            count: 20,
+            count: 20
         )
 
         let registry = AgentToolRegistry()
@@ -119,7 +119,7 @@ final class AgentLoopTests: XCTestCase {
 
         mockLLM.turns = [
             .toolCalls([AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")]),
-            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"done"}"#)]),
+            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"done"}"#)])
         ]
 
         let registry = AgentToolRegistry()
@@ -146,9 +146,9 @@ final class AgentLoopTests: XCTestCase {
         mockLLM.turns = [
             .textWithToolCalls(
                 text: "Let me check...",
-                toolCalls: [AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")],
+                toolCalls: [AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")]
             ),
-            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"found"}"#)]),
+            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"found"}"#)])
         ]
 
         let registry = AgentToolRegistry()
@@ -185,7 +185,7 @@ final class AgentLoopTests: XCTestCase {
 
         mockLLM.turns = [
             .toolCalls([AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")]),
-            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"x"}"#)]),
+            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"x"}"#)])
         ]
 
         let registry = AgentToolRegistry()
@@ -209,11 +209,11 @@ final class AgentLoopTests: XCTestCase {
 
         mockLLM.turns = [
             .toolCalls([AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")]),
-            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"done"}"#)]),
+            .toolCalls([AgentToolCall(id: "a1", name: "answer_text", argumentsJSON: #"{"answer":"done"}"#)])
         ]
         mockLLM.tokenUsagePerTurn = [
             LLMTokenUsage(promptTokens: 100, completionTokens: 50, totalTokens: 150),
-            LLMTokenUsage(promptTokens: 200, completionTokens: 80, totalTokens: 280),
+            LLMTokenUsage(promptTokens: 200, completionTokens: 80, totalTokens: 280)
         ]
 
         let registry = AgentToolRegistry()
@@ -251,7 +251,7 @@ final class AgentLoopTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "answer_text", argumentsJSON: #"{"answer":"Hello"}"#),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertEqual(result.answerText, "Hello")
         XCTAssertNil(result.editedText)
@@ -261,7 +261,7 @@ final class AgentLoopTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "edit_text", argumentsJSON: #"{"replacement":"New content"}"#),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertEqual(result.editedText, "New content")
         XCTAssertNil(result.answerText)
@@ -271,7 +271,7 @@ final class AgentLoopTests: XCTestCase {
         let result = AgentResult(
             outcome: .text("Plain answer"),
             steps: [],
-            totalDurationMs: 50,
+            totalDurationMs: 50
         )
         XCTAssertEqual(result.answerText, "Plain answer")
         XCTAssertNil(result.editedText)
@@ -285,9 +285,9 @@ final class AgentLoopTests: XCTestCase {
         mockLLM.turns = [
             .textWithToolCalls(
                 text: "Let me look at clipboard...",
-                toolCalls: [AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")],
+                toolCalls: [AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}")]
             ),
-            .text("Done"),
+            .text("Done")
         ]
 
         let registry = AgentToolRegistry()
@@ -311,9 +311,9 @@ final class AgentLoopTests: XCTestCase {
             .toolCalls([
                 AgentToolCall(id: "c1", name: "get_clipboard", argumentsJSON: "{}"),
                 AgentToolCall(id: "c2", name: "get_clipboard", argumentsJSON: "{}"),
-                AgentToolCall(id: "c3", name: "get_clipboard", argumentsJSON: "{}"),
+                AgentToolCall(id: "c3", name: "get_clipboard", argumentsJSON: "{}")
             ]),
-            .text("done"),
+            .text("done")
         ]
 
         let registry = AgentToolRegistry()
@@ -359,7 +359,7 @@ extension AgentLoopTests {
         let stubTool = StubAgentTool(
             name: "search",
             description: "Searches",
-            result: "results found",
+            result: "results found"
         )
         await registry.register(stubTool)
         await registry.register(AnswerTextTool())
@@ -367,7 +367,11 @@ extension AgentLoopTests {
         // Tool call -> text response
         mockLLM.turns = [
             .toolCalls([AgentToolCall(id: "tc1", name: "search", argumentsJSON: #"{"query":"test"}"#)]),
-            .toolCalls([AgentToolCall(id: "tc2", name: BuiltinAgentToolName.answerText.rawValue, argumentsJSON: #"{"answer":"done"}"#)]),
+            .toolCalls([AgentToolCall(
+                id: "tc2",
+                name: BuiltinAgentToolName.answerText.rawValue,
+                argumentsJSON: #"{"answer":"done"}"#
+            )])
         ]
 
         let loop = AgentLoop(llmService: mockLLM, toolRegistry: registry, config: .default)
@@ -385,7 +389,7 @@ extension AgentLoopTests {
         let stubTool = StubAgentTool(
             name: "stub",
             description: "Stub",
-            result: "ok",
+            result: "ok"
         )
         await registry.register(stubTool)
 
@@ -393,7 +397,7 @@ extension AgentLoopTests {
         mockLLM.turns = [
             .toolCalls([AgentToolCall(id: "tc1", name: "stub", argumentsJSON: "{}")]),
             .toolCalls([AgentToolCall(id: "tc2", name: "stub", argumentsJSON: "{}")]),
-            .toolCalls([AgentToolCall(id: "tc3", name: "stub", argumentsJSON: "{}")]),
+            .toolCalls([AgentToolCall(id: "tc3", name: "stub", argumentsJSON: "{}")])
         ]
 
         let config = AgentConfig(maxSteps: 2, allowParallelToolCalls: false, temperature: nil, enableStreaming: false)
@@ -415,16 +419,16 @@ extension AgentLoopTests {
         let stubTool = StubAgentTool(
             name: "info",
             description: "Info tool",
-            result: "information",
+            result: "information"
         )
         await registry.register(stubTool)
 
         mockLLM.turns = [
             .textWithToolCalls(
                 text: "Let me look that up...",
-                toolCalls: [AgentToolCall(id: "tc1", name: "info", argumentsJSON: "{}")],
+                toolCalls: [AgentToolCall(id: "tc1", name: "info", argumentsJSON: "{}")]
             ),
-            .text("Here is the answer."),
+            .text("Here is the answer.")
         ]
 
         let loop = AgentLoop(llmService: mockLLM, toolRegistry: registry, config: .default)
@@ -452,8 +456,8 @@ private struct StubAgentTool: AgentTool {
             inputSchema: LLMJSONSchema(
                 name: name,
                 schema: ["type": .string("object"), "properties": .object([:])],
-                strict: false,
-            ),
+                strict: false
+            )
         )
         self.result = result
     }

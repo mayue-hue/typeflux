@@ -22,13 +22,13 @@ struct AskSelectionDecision: Codable, Equatable {
             "properties": .object([
                 "answer_edit": .object([
                     "type": .string("string"),
-                    "enum": .array([.string("answer"), .string("edit")]),
+                    "enum": .array([.string("answer"), .string("edit")])
                 ]),
                 "content": .object([
-                    "type": .string("string"),
-                ]),
-            ]),
-        ],
+                    "type": .string("string")
+                ])
+            ])
+        ]
     )
 
     static let tool = LLMAgentTool(
@@ -37,7 +37,7 @@ struct AskSelectionDecision: Codable, Equatable {
         Decide whether the user wants a read-only answer about the selected text or wants the selected text rewritten in place.
         Return answer_edit=\"answer\" with the final answer in content, or answer_edit=\"edit\" with the final rewritten text in content.
         """,
-        inputSchema: schema,
+        inputSchema: schema
     )
 
     var isValid: Bool {

@@ -7,7 +7,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testDisplayRightCommandTrigger() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightCommandKeyCode,
-            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue)
         )
         XCTAssertEqual(HotkeyFormat.display(binding), "⌘(R)")
     }
@@ -15,7 +15,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testDisplayRightOptionTrigger() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightOptionKeyCode,
-            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue)
         )
         XCTAssertEqual(HotkeyFormat.display(binding), "⌥(R)")
     }
@@ -45,7 +45,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testDisplayCommandModifier() {
         let binding = HotkeyBinding(
             keyCode: 0,
-            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue)
         )
         let display = HotkeyFormat.display(binding)
         XCTAssertTrue(display.contains("⌘"))
@@ -55,7 +55,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testDisplayShiftModifier() {
         let binding = HotkeyBinding(
             keyCode: 0,
-            modifierFlags: UInt(NSEvent.ModifierFlags.shift.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.shift.rawValue)
         )
         let display = HotkeyFormat.display(binding)
         XCTAssertTrue(display.contains("⇧"))
@@ -64,7 +64,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testDisplayControlModifier() {
         let binding = HotkeyBinding(
             keyCode: 0,
-            modifierFlags: UInt(NSEvent.ModifierFlags.control.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.control.rawValue)
         )
         let display = HotkeyFormat.display(binding)
         XCTAssertTrue(display.contains("⌃"))
@@ -73,7 +73,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testDisplayOptionModifier() {
         let binding = HotkeyBinding(
             keyCode: 0,
-            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue)
         )
         let display = HotkeyFormat.display(binding)
         XCTAssertTrue(display.contains("⌥"))
@@ -97,7 +97,7 @@ final class HotkeyFormatTests: XCTestCase {
             (11, "B"), (12, "Q"), (13, "W"), (14, "E"), (15, "R"),
             (16, "Y"), (17, "T"), (31, "O"), (32, "U"), (34, "I"),
             (35, "P"), (37, "L"), (38, "J"), (40, "K"), (45, "N"),
-            (46, "M"),
+            (46, "M")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -110,7 +110,7 @@ final class HotkeyFormatTests: XCTestCase {
         let expected: [(Int, String)] = [
             (18, "1"), (19, "2"), (20, "3"), (21, "4"),
             (23, "5"), (22, "6"), (26, "7"), (28, "8"),
-            (25, "9"), (29, "0"),
+            (25, "9"), (29, "0")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -122,7 +122,7 @@ final class HotkeyFormatTests: XCTestCase {
     func testSpecialKeys() {
         let expected: [(Int, String)] = [
             (36, "↩"), (48, "⇥"), (49, "Space"),
-            (51, "⌫"), (53, "Esc"), (50, "`"),
+            (51, "⌫"), (53, "Esc"), (50, "`")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -133,7 +133,7 @@ final class HotkeyFormatTests: XCTestCase {
 
     func testArrowKeys() {
         let expected: [(Int, String)] = [
-            (123, "←"), (124, "→"), (125, "↓"), (126, "↑"),
+            (123, "←"), (124, "→"), (125, "↓"), (126, "↑")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -148,7 +148,7 @@ final class HotkeyFormatTests: XCTestCase {
             (96, "F5"), (97, "F6"), (98, "F7"), (100, "F8"),
             (101, "F9"), (109, "F10"), (103, "F11"), (111, "F12"),
             (105, "F13"), (107, "F14"), (113, "F15"), (106, "F16"),
-            (64, "F17"), (79, "F18"), (80, "F19"), (90, "F20"),
+            (64, "F17"), (79, "F18"), (80, "F19"), (90, "F20")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -163,7 +163,7 @@ final class HotkeyFormatTests: XCTestCase {
             (76, "Enter"), (78, "-"), (81, "="), (82, "0"),
             (83, "1"), (84, "2"), (85, "3"), (86, "4"),
             (87, "5"), (88, "6"), (89, "7"), (91, "8"),
-            (92, "9"),
+            (92, "9")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -177,7 +177,7 @@ final class HotkeyFormatTests: XCTestCase {
             (71, "Clear"), (72, "Vol+"), (73, "Vol-"),
             (74, "Mute"), (114, "Help"), (115, "Home"),
             (116, "PgUp"), (117, "⌦"), (119, "End"),
-            (121, "PgDn"),
+            (121, "PgDn")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)
@@ -196,7 +196,7 @@ final class HotkeyFormatTests: XCTestCase {
         let expected: [(Int, String)] = [
             (24, "="), (27, "-"), (30, "]"), (33, "["),
             (39, "'"), (41, ";"), (42, "\\"), (43, ","),
-            (44, "/"), (47, "."),
+            (44, "/"), (47, ".")
         ]
         for (code, name) in expected {
             let binding = HotkeyBinding(keyCode: code, modifierFlags: 0)

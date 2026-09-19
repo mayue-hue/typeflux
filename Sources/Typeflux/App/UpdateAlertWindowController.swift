@@ -60,7 +60,7 @@ final class UpdateAlertWindowController: NSWindowController, NSWindowDelegate {
         window?.close()
     }
 
-    func windowWillClose(_ notification: Notification) {
+    func windowWillClose(_: Notification) {
         if let window {
             DockVisibilityController.shared.windowDidHide(window)
         }

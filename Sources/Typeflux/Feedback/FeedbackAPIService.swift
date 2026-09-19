@@ -69,9 +69,9 @@ enum FeedbackAPIError: LocalizedError, Equatable {
         switch self {
         case .emptyContent:
             L("feedback.error.emptyContent")
-        case .networkError(let message):
+        case let .networkError(message):
             message
-        case .serverError(let code, let message):
+        case let .serverError(code, message):
             TypefluxCloudServerErrorMessage.userMessage(
                 code: code,
                 message: message,
@@ -85,7 +85,7 @@ enum FeedbackAPIError: LocalizedError, Equatable {
     }
 }
 
-struct FeedbackAPIService {
+enum FeedbackAPIService {
     private static let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "FeedbackAPIService")
 
     static func submit(
@@ -130,7 +130,7 @@ struct FeedbackAPIService {
             }
         } catch is CancellationError {
             throw CancellationError()
-        } catch CloudRequestExecutorError.allEndpointsFailed(let lastError) {
+        } catch let CloudRequestExecutorError.allEndpointsFailed(lastError) {
             logger.error("Feedback submission failed on all endpoints: \(lastError.localizedDescription)")
             throw FeedbackAPIError.networkError(lastError.localizedDescription)
         } catch {
@@ -149,7 +149,7 @@ struct FeedbackAPIService {
             logger.error(
                 "Feedback response decoding error for HTTP \(httpResponse.statusCode, privacy: .public): \(String(describing: error), privacy: .public)"
             )
-            if !(200..<300).contains(httpResponse.statusCode) {
+            if !(200 ..< 300).contains(httpResponse.statusCode) {
                 throw FeedbackAPIError.serverError(code: "HTTP_\(httpResponse.statusCode)", message: nil)
             }
             throw FeedbackAPIError.invalidResponse
@@ -203,7 +203,7 @@ struct FeedbackAPIService {
             }
         } catch is CancellationError {
             throw CancellationError()
-        } catch CloudRequestExecutorError.allEndpointsFailed(let lastError) {
+        } catch let CloudRequestExecutorError.allEndpointsFailed(lastError) {
             logger.error("Feedback upload presign failed on all endpoints: \(lastError.localizedDescription)")
             throw FeedbackAPIError.networkError(lastError.localizedDescription)
         } catch {
@@ -222,7 +222,7 @@ struct FeedbackAPIService {
             logger.error(
                 "Feedback upload presign decoding error for HTTP \(httpResponse.statusCode, privacy: .public): \(String(describing: error), privacy: .public)"
             )
-            if !(200..<300).contains(httpResponse.statusCode) {
+            if !(200 ..< 300).contains(httpResponse.statusCode) {
                 throw FeedbackAPIError.serverError(code: "HTTP_\(httpResponse.statusCode)", message: nil)
             }
             throw FeedbackAPIError.invalidResponse

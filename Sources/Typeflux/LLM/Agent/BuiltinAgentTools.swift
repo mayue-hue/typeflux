@@ -18,15 +18,15 @@ struct AnswerTextTool: AgentTool, TerminationTool {
                 "properties": .object([
                     "answer": .object([
                         "type": .string("string"),
-                        "description": .string("Final answer to show to the user"),
+                        "description": .string("Final answer to show to the user")
                     ]),
                     "format": .object([
                         "type": .string("string"),
-                        "enum": .array([.string("markdown"), .string("plain")]),
-                    ]),
-                ]),
-            ],
-        ),
+                        "enum": .array([.string("markdown"), .string("plain")])
+                    ])
+                ])
+            ]
+        )
     )
 
     func execute(arguments: String) async throws -> String {
@@ -60,12 +60,12 @@ struct EditTextTool: AgentTool, TerminationTool {
                         "description": .string(
                             """
                             The final text to replace the selected text with, or to insert into the current input field
-                            """,
-                        ),
-                    ]),
-                ]),
-            ],
-        ),
+                            """
+                        )
+                    ])
+                ])
+            ]
+        )
     )
 
     func execute(arguments: String) async throws -> String {
@@ -96,12 +96,12 @@ struct RunAgentTool: AgentTool, TerminationTool {
                             """
                             A clarified, precise restatement of the user's goal - unambiguous and directly actionable
                             by the agent. Resolve any implicit assumptions and specify the expected output if relevant.
-                            """,
-                        ),
-                    ]),
-                ]),
-            ],
-        ),
+                            """
+                        )
+                    ])
+                ])
+            ]
+        )
     )
 
     func execute(arguments: String) async throws -> String {
@@ -122,9 +122,9 @@ struct GetClipboardTool: AgentTool {
             schema: [
                 "type": .string("object"),
                 "additionalProperties": .bool(false),
-                "properties": .object([:]),
-            ],
-        ),
+                "properties": .object([:])
+            ]
+        )
     )
 
     private let clipboardService: ClipboardService

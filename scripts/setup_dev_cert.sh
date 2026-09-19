@@ -4,9 +4,67 @@ set -euo pipefail
 CERT_NAME="Typeflux Dev"
 KEYCHAIN_NAME="typeflux-dev.keychain-db"
 KEYCHAIN_PATH="$HOME/Library/Keychains/$KEYCHAIN_NAME"
+LOGIN_KEYCHAIN_PATH="$HOME/Library/Keychains/login.keychain-db"
+
+normalize_keychain_path() {
+  local keychain="$1"
+  keychain="$(printf '%s' "$keychain" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')"
+  printf '%s' "$keychain"
+}
+
+append_keychain_once() {
+  local candidate="$1"
+  local existing
+
+  if [[ ${keychain_count:-0} -gt 0 ]]; then
+    for existing in "${keychains[@]}"; do
+      if [[ "$existing" == "$candidate" ]]; then
+        return
+      fi
+    done
+  fi
+
+  keychains[$keychain_count]="$candidate"
+  keychain_count=$((keychain_count + 1))
+}
+
+repair_user_keychain_search_list() {
+  local -a keychains
+  local keychain_count
+  local keychain
+
+  keychains=()
+  keychain_count=0
+
+  # Keep the real login keychain first. This also repairs malformed entries
+  # caused by older versions of this script passing the whole list as one arg.
+  if [[ -f "$LOGIN_KEYCHAIN_PATH" ]]; then
+    append_keychain_once "$LOGIN_KEYCHAIN_PATH"
+  fi
+
+  while IFS= read -r keychain; do
+    keychain="$(normalize_keychain_path "$keychain")"
+    [[ -n "$keychain" ]] || continue
+    [[ -e "$keychain" ]] || continue
+    append_keychain_once "$keychain"
+  done < <(security list-keychains -d user 2>/dev/null || true)
+
+  if [[ -f "$KEYCHAIN_PATH" ]]; then
+    append_keychain_once "$KEYCHAIN_PATH"
+  fi
+
+  if [[ $keychain_count -gt 0 ]]; then
+    security list-keychains -d user -s "${keychains[@]}"
+  fi
+
+  if [[ -f "$LOGIN_KEYCHAIN_PATH" ]]; then
+    security default-keychain -d user -s "$LOGIN_KEYCHAIN_PATH"
+  fi
+}
 
 # Already set up?
 if security find-identity -v -p codesigning 2>/dev/null | grep -qF "\"$CERT_NAME\""; then
+  repair_user_keychain_search_list
   echo "Certificate '$CERT_NAME' is already a valid code-signing identity."
   exit 0
 fi
@@ -49,12 +107,11 @@ security add-trusted-cert -d -p codeSign \
   -k "$KEYCHAIN_PATH" \
   "$TEMP_DIR/typeflux_dev.crt"
 
-# Register this keychain in the user dashboard search list so codesign and
-# security find-identity see the new identity.
-security list-keychains -d user -s \
-  "$(security list-keychains -d user 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" \
-  "$KEYCHAIN_PATH" \
-  2>/dev/null || security list-keychains -d user -s "$KEYCHAIN_PATH"
+# Register this keychain in the user search list so codesign and
+# security find-identity see the new identity. Preserve valid existing
+# keychains as separate arguments; never pass the whole printed list as one
+# string, because that corrupts the user's search list on macOS.
+repair_user_keychain_search_list
 
 echo ""
 echo "Certificate '$CERT_NAME' created and trusted for code signing."

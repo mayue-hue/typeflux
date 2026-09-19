@@ -28,6 +28,7 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
     private let localBackendFactory: () -> any LivePreviewBackend
     private let openAIBackendFactory: () -> any LivePreviewBackend
     private let appleBackendFactory: () -> any LivePreviewBackend
+    private let canUseCloudASR: @Sendable () async -> Bool
     private var backend: (any LivePreviewBackend)?
     private var state: State = .idle
     private var pendingBuffers: [AVAudioPCMBuffer] = []
@@ -37,6 +38,9 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
         localBackendFactory = { UnavailableLivePreviewBackend(providerName: "Local model") }
         openAIBackendFactory = { OpenAIRealtimePreviewBackend(settingsStore: settingsStore) }
         appleBackendFactory = { AppleSpeechPreviewBackend() }
+        canUseCloudASR = {
+            await MainActor.run { AuthState.shared.canUseCloudASR }
+        }
     }
 
     init(
@@ -46,11 +50,13 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
         },
         openAIBackendFactory: @escaping () -> any LivePreviewBackend,
         appleBackendFactory: @escaping () -> any LivePreviewBackend,
+        canUseCloudASR: @escaping @Sendable () async -> Bool = { true }
     ) {
         self.settingsStore = settingsStore
         self.localBackendFactory = localBackendFactory
         self.openAIBackendFactory = openAIBackendFactory
         self.appleBackendFactory = appleBackendFactory
+        self.canUseCloudASR = canUseCloudASR
     }
 
     func prepareForStart() {
@@ -68,7 +74,11 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
             state = .starting
         }
 
-        if shouldUseLocalBackend {
+        var useLocalBackend = shouldUseLocalBackend
+        if !useLocalBackend {
+            useLocalBackend = !(await canUseCloudASR())
+        }
+        if useLocalBackend {
             let local = localBackendFactory()
             try await local.start(onTextUpdate: onTextUpdate)
             backend = local
@@ -86,7 +96,10 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
                 await flushPendingBuffers()
                 return
             } catch {
-                NetworkDebugLogger.logError(context: "Realtime preview setup failed, falling back to Apple Speech", error: error)
+                NetworkDebugLogger.logError(
+                    context: "Realtime preview setup failed, falling back to Apple Speech",
+                    error: error
+                )
             }
         }
 
@@ -171,7 +184,6 @@ actor LiveTranscriptionPreviewer: LiveTranscriptionPreviewing {
 
     private var shouldUseLocalBackend: Bool {
         settingsStore.sttProvider == .localModel
-            || (settingsStore.sttProvider == .typefluxOfficial && settingsStore.localOptimizationEnabled)
     }
 }
 
@@ -186,7 +198,7 @@ actor UnavailableLivePreviewBackend: LivePreviewBackend {
         throw NSError(
             domain: "UnavailableLivePreviewBackend",
             code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "\(providerName) live preview is not configured."],
+            userInfo: [NSLocalizedDescriptionKey: "\(providerName) live preview is not configured."]
         )
     }
 
@@ -213,7 +225,7 @@ actor AppleSpeechPreviewBackend: LivePreviewBackend {
             throw NSError(
                 domain: "AppleSpeechPreviewBackend",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Speech recognition not authorized"],
+                userInfo: [NSLocalizedDescriptionKey: "Speech recognition not authorized"]
             )
         }
 
@@ -227,7 +239,7 @@ actor AppleSpeechPreviewBackend: LivePreviewBackend {
             throw NSError(
                 domain: "AppleSpeechPreviewBackend",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Speech recognizer not available"],
+                userInfo: [NSLocalizedDescriptionKey: "Speech recognizer not available"]
             )
         }
 

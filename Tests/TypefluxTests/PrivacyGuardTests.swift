@@ -38,7 +38,7 @@ final class PrivacyGuardTests: XCTestCase {
         let snapshot = PrivacyGuard.PermissionSnapshot(
             id: .microphone,
             state: .granted,
-            detail: "Microphone access is granted.",
+            detail: "Microphone access is granted."
         )
 
         XCTAssertTrue(snapshot.isGranted)
@@ -50,7 +50,7 @@ final class PrivacyGuardTests: XCTestCase {
         let snapshot = PrivacyGuard.PermissionSnapshot(
             id: .accessibility,
             state: .needsAttention,
-            detail: "Accessibility access is needed.",
+            detail: "Accessibility access is needed."
         )
 
         XCTAssertFalse(snapshot.isGranted)
@@ -68,7 +68,7 @@ final class PrivacyGuardTests: XCTestCase {
         let snapshot = PrivacyGuard.PermissionSnapshot(
             id: .microphone,
             state: .needsAttention,
-            detailKey: "permission.microphone.detail.notDetermined",
+            detailKey: "permission.microphone.detail.notDetermined"
         )
 
         AppLocalization.shared.setLanguage(.simplifiedChinese)

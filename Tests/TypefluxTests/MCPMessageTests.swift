@@ -28,7 +28,7 @@ final class MCPMessageTests: XCTestCase {
             method: "initialize",
             params: nil,
             result: nil,
-            error: nil,
+            error: nil
         )
         let data = try JSONEncoder().encode(message)
         let decoded = try JSONDecoder().decode(MCPJsonRPCMessage.self, from: data)
@@ -117,7 +117,7 @@ final class MCPMessageTests: XCTestCase {
         let params = MCPInitializeParams(
             protocolVersion: "2024-11-05",
             capabilities: MCPServerCapabilities(tools: MCPToolsCapability(listChanged: nil)),
-            clientInfo: MCPClientInfo(name: "Test", version: "1.0"),
+            clientInfo: MCPClientInfo(name: "Test", version: "1.0")
         )
         let msg = try MCPJsonRPCMessage.initializeRequest(id: .string("1"), params: params)
         XCTAssertEqual(msg.jsonrpc, "2.0")

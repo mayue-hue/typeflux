@@ -1,15 +1,22 @@
 import Foundation
+import os
 import Security
 
 /// Stores authentication tokens in the macOS Keychain.
-struct KeychainTokenStore {
+enum KeychainTokenStore {
     private struct StoredToken: Codable {
         let token: String
         let expiresAt: Int
         let refreshToken: String?
     }
 
-    private static var service: String {
+    static let service = "ai.gulu.app.typeflux.auth"
+    static let legacyServices = [
+        "ai.gulu.app.typeflux.auth.v2",
+        "ai.gulu.app.typeflux.auth.v1"
+    ]
+
+    static var runtimeDerivedService: String {
         let environmentBundleID = ProcessInfo.processInfo.environment["TYPEFLUX_BUNDLE_IDENTIFIER"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let bundleID = environmentBundleID?.isEmpty == false
@@ -17,14 +24,32 @@ struct KeychainTokenStore {
             : (Bundle.main.bundleIdentifier ?? "ai.gulu.app.typeflux")
         return "\(bundleID).auth"
     }
+
+    static var serviceCandidates: [String] {
+        let candidates = [service] + legacyServices + [runtimeDerivedService]
+        var seen = Set<String>()
+        return candidates.filter { candidate in
+            seen.insert(candidate).inserted
+        }
+    }
+
     private static let tokenAccount = "session"
     private static let userProfileAccount = "userProfile"
+    static let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "KeychainTokenStore")
+    static let inMemoryLock = NSLock()
+    static var inMemoryValues: [String: Data] = [:]
+    static var useInMemoryStoreForTesting = false
+
+    static var usesInMemoryStore: Bool {
+        useInMemoryStoreForTesting
+    }
 
     // MARK: - Token
 
-    static func saveToken(_ token: String, expiresAt: Int, refreshToken: String? = nil) {
+    @discardableResult
+    static func saveToken(_ token: String, expiresAt: Int, refreshToken: String? = nil) -> Bool {
         let storedToken = StoredToken(token: token, expiresAt: expiresAt, refreshToken: refreshToken)
-        setKeychainValue(storedToken, account: tokenAccount)
+        return setKeychainValue(storedToken, account: tokenAccount)
     }
 
     static func loadToken() -> (token: String, expiresAt: Int)? {
@@ -57,7 +82,8 @@ struct KeychainTokenStore {
 
     // MARK: - User Profile
 
-    static func saveUserProfile(_ profile: UserProfile) {
+    @discardableResult
+    static func saveUserProfile(_ profile: UserProfile) -> Bool {
         setKeychainValue(profile, account: userProfileAccount)
     }
 
@@ -74,56 +100,5 @@ struct KeychainTokenStore {
     static func clearAll() {
         deleteToken()
         deleteUserProfile()
-    }
-
-    // MARK: - Keychain Helpers
-
-    private static func setKeychainValue<Value: Encodable>(_ value: Value, account: String) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-
-        // Delete existing item first
-        SecItemDelete(query as CFDictionary)
-
-        var addQuery = query
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-
-        SecItemAdd(addQuery as CFDictionary, nil)
-    }
-
-    private static func getKeychainValue<Value: Decodable>(account: String) -> Value? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let value = try? JSONDecoder().decode(Value.self, from: data)
-        else {
-            return nil
-        }
-        return value
-    }
-
-    private static func deleteKeychainItem(account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 }

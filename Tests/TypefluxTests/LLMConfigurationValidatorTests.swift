@@ -1,5 +1,5 @@
-import XCTest
 @testable import Typeflux
+import XCTest
 
 final class LLMConfigurationValidatorTests: XCTestCase {
     private func makeSettingsStore() -> SettingsStore {
@@ -49,7 +49,10 @@ final class LLMConfigurationValidatorTests: XCTestCase {
         let validator = LLMConfigurationValidator(settingsStore: store, isLoggedIn: false)
         let status = validator.validate()
 
-        XCTAssertEqual(status, .notConfigured(reason: .incompleteConfig(details: "Custom LLM base URL or model not configured")))
+        XCTAssertEqual(
+            status,
+            .notConfigured(reason: .incompleteConfig(details: "Custom LLM base URL or model not configured"))
+        )
     }
 
     func testOpenAICompatibleWithCustom_FullyConfigured() {
@@ -126,7 +129,10 @@ final class LLMConfigurationValidatorTests: XCTestCase {
         let validator = LLMConfigurationValidator(settingsStore: store, isLoggedIn: false)
         let status = validator.validate()
 
-        XCTAssertEqual(status, .notConfigured(reason: .incompleteConfig(details: "Ollama base URL or model not configured")))
+        XCTAssertEqual(
+            status,
+            .notConfigured(reason: .incompleteConfig(details: "Ollama base URL or model not configured"))
+        )
     }
 
     func testOllama_MissingModel() {
@@ -138,7 +144,10 @@ final class LLMConfigurationValidatorTests: XCTestCase {
         let validator = LLMConfigurationValidator(settingsStore: store, isLoggedIn: false)
         let status = validator.validate()
 
-        XCTAssertEqual(status, .notConfigured(reason: .incompleteConfig(details: "Ollama base URL or model not configured")))
+        XCTAssertEqual(
+            status,
+            .notConfigured(reason: .incompleteConfig(details: "Ollama base URL or model not configured"))
+        )
     }
 
     func testOllama_FullyConfigured() {

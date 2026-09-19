@@ -106,7 +106,7 @@ enum PrivacyGuard {
             return PermissionSnapshot(
                 id: id,
                 state: status == .authorized ? .granted : .needsAttention,
-                detailKey: microphoneDetailKey(for: status),
+                detailKey: microphoneDetailKey(for: status)
             )
 
         case .speechRecognition:
@@ -114,7 +114,7 @@ enum PrivacyGuard {
             return PermissionSnapshot(
                 id: id,
                 state: status == .authorized ? .granted : .needsAttention,
-                detailKey: speechRecognitionDetailKey(for: status),
+                detailKey: speechRecognitionDetailKey(for: status)
             )
 
         case .accessibility:
@@ -124,7 +124,7 @@ enum PrivacyGuard {
                 state: trusted ? .granted : .needsAttention,
                 detailKey: trusted
                     ? "permission.accessibility.detail.granted"
-                    : "permission.accessibility.detail.required",
+                    : "permission.accessibility.detail.required"
             )
         }
     }
@@ -141,11 +141,11 @@ enum PrivacyGuard {
     static func willShowInAppDialog(for id: PermissionID) -> Bool {
         switch id {
         case .microphone:
-            return AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined
+            AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined
         case .speechRecognition:
-            return SFSpeechRecognizer.authorizationStatus() == .notDetermined
+            SFSpeechRecognizer.authorizationStatus() == .notDetermined
         case .accessibility:
-            return false
+            false
         }
     }
 
@@ -245,7 +245,7 @@ enum PrivacyGuard {
     static func requiredPermissionIDs(settingsStore: SettingsStore) -> [PermissionID] {
         var required: [PermissionID] = [
             .microphone,
-            .accessibility,
+            .accessibility
         ]
 
         if settingsStore.sttProvider == .appleSpeech || settingsStore.useAppleSpeechFallback {

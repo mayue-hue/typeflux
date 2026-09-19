@@ -11,11 +11,11 @@ enum CloudRequestExecutorError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noEndpointsAvailable:
-            return "No Typeflux Cloud endpoints are configured."
-        case .allEndpointsFailed(let lastError):
-            return "All Typeflux Cloud endpoints failed: \(lastError.localizedDescription)"
+            "No Typeflux Cloud endpoints are configured."
+        case let .allEndpointsFailed(lastError):
+            "All Typeflux Cloud endpoints failed: \(lastError.localizedDescription)"
         case .invalidResponse:
-            return "Received an invalid HTTP response."
+            "Received an invalid HTTP response."
         }
     }
 }
@@ -80,14 +80,13 @@ struct CloudRequestExecutor: Sendable {
         build: @Sendable (URL) -> URLRequest
     ) async throws -> (Data, HTTPURLResponse) {
         let resolvedStrategy = resolveRoutingStrategy(routingStrategy, apiPath: apiPath)
-        let endpoints: [URL]
-        switch resolvedStrategy {
+        let endpoints: [URL] = switch resolvedStrategy {
         case .automatic:
-            endpoints = await selector.primaryFirstEndpoints()
+            await selector.primaryFirstEndpoints()
         case .primaryFirst:
-            endpoints = await selector.primaryFirstEndpoints()
+            await selector.primaryFirstEndpoints()
         case .latencyOptimized:
-            endpoints = await selector.latencyOptimizedEndpoints()
+            await selector.latencyOptimizedEndpoints()
         }
         guard !endpoints.isEmpty else {
             throw CloudRequestExecutorError.noEndpointsAvailable
@@ -98,15 +97,13 @@ struct CloudRequestExecutor: Sendable {
             try Task.checkCancellation()
             var request = build(endpoint)
             TypefluxCloudRequestHeaders.applyClientInfo(to: &request)
-            let start = ContinuousClock.now
 
             do {
                 let (data, response) = try await session.data(for: request)
-                let elapsed = ContinuousClock.now - start
                 guard let http = response as? HTTPURLResponse else {
                     throw CloudRequestExecutorError.invalidResponse
                 }
-                if (500..<600).contains(http.statusCode) {
+                if (500 ..< 600).contains(http.statusCode) {
                     let httpError = NSError(
                         domain: "CloudRequestExecutor",
                         code: http.statusCode,
@@ -114,25 +111,39 @@ struct CloudRequestExecutor: Sendable {
                     )
                     await selector.reportFailure(endpoint, error: httpError)
                     lastError = httpError
-                    logger.error("HTTP \(http.statusCode) from \(endpoint.absoluteString); will try next endpoint (\(index + 1)/\(endpoints.count))")
+                    let retryDisposition = index + 1 < endpoints.count
+                        ? "will try next endpoint"
+                        : "no endpoints remaining"
+                    logger
+                        .error(
+                            "HTTP \(http.statusCode) from \(endpoint.absoluteString); \(retryDisposition) (\(index + 1)/\(endpoints.count))"
+                        )
                     continue
                 }
-                let latency = durationToMilliseconds(elapsed)
-                await selector.reportSuccess(endpoint, latencyMs: latency)
+                await selector.reportRequestSuccess(endpoint)
                 return (data, http)
             } catch is CancellationError {
                 throw CancellationError()
             } catch let error as URLError where error.code == .cancelled {
                 throw CancellationError()
+            } catch let error where TypefluxCloudBillingError.fromError(error) != nil {
+                throw TypefluxCloudBillingError.fromError(error) ?? error
             } catch {
                 await selector.reportFailure(endpoint, error: error)
                 lastError = error
-                logger.error("Endpoint \(endpoint.absoluteString) failed: \(error.localizedDescription); will try next (\(index + 1)/\(endpoints.count))")
+                let retryDisposition = index + 1 < endpoints.count
+                    ? "will try next endpoint"
+                    : "no endpoints remaining"
+                logger
+                    .error(
+                        "Endpoint \(endpoint.absoluteString) failed: \(error.localizedDescription); \(retryDisposition) (\(index + 1)/\(endpoints.count))"
+                    )
                 continue
             }
         }
 
-        throw CloudRequestExecutorError.allEndpointsFailed(lastError: lastError ?? CloudRequestExecutorError.noEndpointsAvailable)
+        throw CloudRequestExecutorError
+            .allEndpointsFailed(lastError: lastError ?? CloudRequestExecutorError.noEndpointsAvailable)
     }
 
     private func resolveRoutingStrategy(
@@ -154,10 +165,4 @@ struct CloudRequestExecutor: Sendable {
             || normalized.contains("/api/v1/asr/")
     }
 
-    private func durationToMilliseconds(_ duration: Duration) -> Double {
-        let components = duration.components
-        let secondsAsMs = Double(components.seconds) * 1000.0
-        let attoAsMs = Double(components.attoseconds) / 1_000_000_000_000_000.0
-        return secondsAsMs + attoAsMs
-    }
 }

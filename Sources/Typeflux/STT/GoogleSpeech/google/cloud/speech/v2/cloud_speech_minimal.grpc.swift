@@ -10,303 +10,317 @@ import NIO
 import NIOConcurrencyHelpers
 import SwiftProtobuf
 
-
 /// Usage: instantiate `Google_Cloud_Speech_V2_SpeechClient`, then call methods of this protocol to make API calls.
-internal protocol Google_Cloud_Speech_V2_SpeechClientProtocol: GRPCClient {
-  var serviceName: String { get }
-  var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? { get }
+protocol Google_Cloud_Speech_V2_SpeechClientProtocol: GRPCClient {
+    var serviceName: String { get }
+    var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? { get }
 
-  func streamingRecognize(
-    callOptions: CallOptions?,
-    handler: @escaping (Google_Cloud_Speech_V2_StreamingRecognizeResponse) -> Void
-  ) -> BidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest, Google_Cloud_Speech_V2_StreamingRecognizeResponse>
+    func streamingRecognize(
+        callOptions: CallOptions?,
+        handler: @escaping (Google_Cloud_Speech_V2_StreamingRecognizeResponse) -> Void
+    )
+        -> BidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest,
+            Google_Cloud_Speech_V2_StreamingRecognizeResponse>
 }
 
 extension Google_Cloud_Speech_V2_SpeechClientProtocol {
-  internal var serviceName: String {
-    return "google.cloud.speech.v2.Speech"
-  }
+    var serviceName: String {
+        "google.cloud.speech.v2.Speech"
+    }
 
-  /// Bidirectional streaming call to StreamingRecognize
-  ///
-  /// Callers should use the `send` method on the returned object to send messages
-  /// to the server. The caller should send an `.end` after the final message has been sent.
-  ///
-  /// - Parameters:
-  ///   - callOptions: Call options.
-  ///   - handler: A closure called when each response is received from the server.
-  /// - Returns: A `ClientStreamingCall` with futures for the metadata and status.
-  internal func streamingRecognize(
-    callOptions: CallOptions? = nil,
-    handler: @escaping (Google_Cloud_Speech_V2_StreamingRecognizeResponse) -> Void
-  ) -> BidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest, Google_Cloud_Speech_V2_StreamingRecognizeResponse> {
-    return self.makeBidirectionalStreamingCall(
-      path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
-      callOptions: callOptions ?? self.defaultCallOptions,
-      interceptors: self.interceptors?.makeStreamingRecognizeInterceptors() ?? [],
-      handler: handler
+    /// Bidirectional streaming call to StreamingRecognize
+    ///
+    /// Callers should use the `send` method on the returned object to send messages
+    /// to the server. The caller should send an `.end` after the final message has been sent.
+    ///
+    /// - Parameters:
+    ///   - callOptions: Call options.
+    ///   - handler: A closure called when each response is received from the server.
+    /// - Returns: A `ClientStreamingCall` with futures for the metadata and status.
+    func streamingRecognize(
+        callOptions: CallOptions? = nil,
+        handler: @escaping (Google_Cloud_Speech_V2_StreamingRecognizeResponse) -> Void
     )
-  }
+        -> BidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest,
+            Google_Cloud_Speech_V2_StreamingRecognizeResponse> {
+        makeBidirectionalStreamingCall(
+            path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
+            callOptions: callOptions ?? defaultCallOptions,
+            interceptors: interceptors?.makeStreamingRecognizeInterceptors() ?? [],
+            handler: handler
+        )
+    }
 }
 
 @available(*, deprecated)
 extension Google_Cloud_Speech_V2_SpeechClient: @unchecked Sendable {}
 
 @available(*, deprecated, renamed: "Google_Cloud_Speech_V2_SpeechNIOClient")
-internal final class Google_Cloud_Speech_V2_SpeechClient: Google_Cloud_Speech_V2_SpeechClientProtocol {
-  private let lock = Lock()
-  private var _defaultCallOptions: CallOptions
-  private var _interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol?
-  internal let channel: GRPCChannel
-  internal var defaultCallOptions: CallOptions {
-    get { self.lock.withLock { return self._defaultCallOptions } }
-    set { self.lock.withLockVoid { self._defaultCallOptions = newValue } }
-  }
-  internal var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? {
-    get { self.lock.withLock { return self._interceptors } }
-    set { self.lock.withLockVoid { self._interceptors = newValue } }
-  }
+final class Google_Cloud_Speech_V2_SpeechClient: Google_Cloud_Speech_V2_SpeechClientProtocol {
+    private let lock = Lock()
+    private var _defaultCallOptions: CallOptions
+    private var _interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol?
+    let channel: GRPCChannel
+    var defaultCallOptions: CallOptions {
+        get { lock.withLock { self._defaultCallOptions } }
+        set { lock.withLockVoid { self._defaultCallOptions = newValue } }
+    }
 
-  /// Creates a client for the google.cloud.speech.v2.Speech service.
-  ///
-  /// - Parameters:
-  ///   - channel: `GRPCChannel` to the service host.
-  ///   - defaultCallOptions: Options to use for each service call if the user doesn't provide them.
-  ///   - interceptors: A factory providing interceptors for each RPC.
-  internal init(
-    channel: GRPCChannel,
-    defaultCallOptions: CallOptions = CallOptions(),
-    interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? = nil
-  ) {
-    self.channel = channel
-    self._defaultCallOptions = defaultCallOptions
-    self._interceptors = interceptors
-  }
+    var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? {
+        get { lock.withLock { self._interceptors } }
+        set { lock.withLockVoid { self._interceptors = newValue } }
+    }
+
+    /// Creates a client for the google.cloud.speech.v2.Speech service.
+    ///
+    /// - Parameters:
+    ///   - channel: `GRPCChannel` to the service host.
+    ///   - defaultCallOptions: Options to use for each service call if the user doesn't provide them.
+    ///   - interceptors: A factory providing interceptors for each RPC.
+    init(
+        channel: GRPCChannel,
+        defaultCallOptions: CallOptions = CallOptions(),
+        interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? = nil
+    ) {
+        self.channel = channel
+        _defaultCallOptions = defaultCallOptions
+        _interceptors = interceptors
+    }
 }
 
-internal struct Google_Cloud_Speech_V2_SpeechNIOClient: Google_Cloud_Speech_V2_SpeechClientProtocol {
-  internal var channel: GRPCChannel
-  internal var defaultCallOptions: CallOptions
-  internal var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol?
+struct Google_Cloud_Speech_V2_SpeechNIOClient: Google_Cloud_Speech_V2_SpeechClientProtocol {
+    var channel: GRPCChannel
+    var defaultCallOptions: CallOptions
+    var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol?
 
-  /// Creates a client for the google.cloud.speech.v2.Speech service.
-  ///
-  /// - Parameters:
-  ///   - channel: `GRPCChannel` to the service host.
-  ///   - defaultCallOptions: Options to use for each service call if the user doesn't provide them.
-  ///   - interceptors: A factory providing interceptors for each RPC.
-  internal init(
-    channel: GRPCChannel,
-    defaultCallOptions: CallOptions = CallOptions(),
-    interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? = nil
-  ) {
-    self.channel = channel
-    self.defaultCallOptions = defaultCallOptions
-    self.interceptors = interceptors
-  }
-}
-
-@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
-internal protocol Google_Cloud_Speech_V2_SpeechAsyncClientProtocol: GRPCClient {
-  static var serviceDescriptor: GRPCServiceDescriptor { get }
-  var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? { get }
-
-  func makeStreamingRecognizeCall(
-    callOptions: CallOptions?
-  ) -> GRPCAsyncBidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest, Google_Cloud_Speech_V2_StreamingRecognizeResponse>
+    /// Creates a client for the google.cloud.speech.v2.Speech service.
+    ///
+    /// - Parameters:
+    ///   - channel: `GRPCChannel` to the service host.
+    ///   - defaultCallOptions: Options to use for each service call if the user doesn't provide them.
+    ///   - interceptors: A factory providing interceptors for each RPC.
+    init(
+        channel: GRPCChannel,
+        defaultCallOptions: CallOptions = CallOptions(),
+        interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? = nil
+    ) {
+        self.channel = channel
+        self.defaultCallOptions = defaultCallOptions
+        self.interceptors = interceptors
+    }
 }
 
 @available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
-extension Google_Cloud_Speech_V2_SpeechAsyncClientProtocol {
-  internal static var serviceDescriptor: GRPCServiceDescriptor {
-    return Google_Cloud_Speech_V2_SpeechClientMetadata.serviceDescriptor
-  }
+protocol Google_Cloud_Speech_V2_SpeechAsyncClientProtocol: GRPCClient {
+    static var serviceDescriptor: GRPCServiceDescriptor { get }
+    var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? { get }
 
-  internal var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? {
-    return nil
-  }
-
-  internal func makeStreamingRecognizeCall(
-    callOptions: CallOptions? = nil
-  ) -> GRPCAsyncBidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest, Google_Cloud_Speech_V2_StreamingRecognizeResponse> {
-    return self.makeAsyncBidirectionalStreamingCall(
-      path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
-      callOptions: callOptions ?? self.defaultCallOptions,
-      interceptors: self.interceptors?.makeStreamingRecognizeInterceptors() ?? []
+    func makeStreamingRecognizeCall(
+        callOptions: CallOptions?
     )
-  }
+        -> GRPCAsyncBidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest,
+            Google_Cloud_Speech_V2_StreamingRecognizeResponse>
 }
 
 @available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 extension Google_Cloud_Speech_V2_SpeechAsyncClientProtocol {
-  internal func streamingRecognize<RequestStream>(
-    _ requests: RequestStream,
-    callOptions: CallOptions? = nil
-  ) -> GRPCAsyncResponseStream<Google_Cloud_Speech_V2_StreamingRecognizeResponse> where RequestStream: Sequence, RequestStream.Element == Google_Cloud_Speech_V2_StreamingRecognizeRequest {
-    return self.performAsyncBidirectionalStreamingCall(
-      path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
-      requests: requests,
-      callOptions: callOptions ?? self.defaultCallOptions,
-      interceptors: self.interceptors?.makeStreamingRecognizeInterceptors() ?? []
-    )
-  }
+    static var serviceDescriptor: GRPCServiceDescriptor {
+        Google_Cloud_Speech_V2_SpeechClientMetadata.serviceDescriptor
+    }
 
-  internal func streamingRecognize<RequestStream>(
-    _ requests: RequestStream,
-    callOptions: CallOptions? = nil
-  ) -> GRPCAsyncResponseStream<Google_Cloud_Speech_V2_StreamingRecognizeResponse> where RequestStream: AsyncSequence & Sendable, RequestStream.Element == Google_Cloud_Speech_V2_StreamingRecognizeRequest {
-    return self.performAsyncBidirectionalStreamingCall(
-      path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
-      requests: requests,
-      callOptions: callOptions ?? self.defaultCallOptions,
-      interceptors: self.interceptors?.makeStreamingRecognizeInterceptors() ?? []
+    var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? {
+        nil
+    }
+
+    func makeStreamingRecognizeCall(
+        callOptions: CallOptions? = nil
     )
-  }
+        -> GRPCAsyncBidirectionalStreamingCall<Google_Cloud_Speech_V2_StreamingRecognizeRequest,
+            Google_Cloud_Speech_V2_StreamingRecognizeResponse> {
+        makeAsyncBidirectionalStreamingCall(
+            path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
+            callOptions: callOptions ?? defaultCallOptions,
+            interceptors: interceptors?.makeStreamingRecognizeInterceptors() ?? []
+        )
+    }
 }
 
 @available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
-internal struct Google_Cloud_Speech_V2_SpeechAsyncClient: Google_Cloud_Speech_V2_SpeechAsyncClientProtocol {
-  internal var channel: GRPCChannel
-  internal var defaultCallOptions: CallOptions
-  internal var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol?
+extension Google_Cloud_Speech_V2_SpeechAsyncClientProtocol {
+    func streamingRecognize(
+        _ requests: some Sequence<Google_Cloud_Speech_V2_StreamingRecognizeRequest>,
+        callOptions: CallOptions? = nil
+    ) -> GRPCAsyncResponseStream<Google_Cloud_Speech_V2_StreamingRecognizeResponse> {
+        performAsyncBidirectionalStreamingCall(
+            path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
+            requests: requests,
+            callOptions: callOptions ?? defaultCallOptions,
+            interceptors: interceptors?.makeStreamingRecognizeInterceptors() ?? []
+        )
+    }
 
-  internal init(
-    channel: GRPCChannel,
-    defaultCallOptions: CallOptions = CallOptions(),
-    interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? = nil
-  ) {
-    self.channel = channel
-    self.defaultCallOptions = defaultCallOptions
-    self.interceptors = interceptors
-  }
+    func streamingRecognize<RequestStream: AsyncSequence & Sendable>(
+        _ requests: RequestStream,
+        callOptions: CallOptions? = nil
+    ) -> GRPCAsyncResponseStream<Google_Cloud_Speech_V2_StreamingRecognizeResponse>
+        where RequestStream.Element == Google_Cloud_Speech_V2_StreamingRecognizeRequest {
+        performAsyncBidirectionalStreamingCall(
+            path: Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize.path,
+            requests: requests,
+            callOptions: callOptions ?? defaultCallOptions,
+            interceptors: interceptors?.makeStreamingRecognizeInterceptors() ?? []
+        )
+    }
 }
 
-internal protocol Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol: Sendable {
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+struct Google_Cloud_Speech_V2_SpeechAsyncClient: Google_Cloud_Speech_V2_SpeechAsyncClientProtocol {
+    var channel: GRPCChannel
+    var defaultCallOptions: CallOptions
+    var interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol?
 
-  /// - Returns: Interceptors to use when invoking 'streamingRecognize'.
-  func makeStreamingRecognizeInterceptors() -> [ClientInterceptor<Google_Cloud_Speech_V2_StreamingRecognizeRequest, Google_Cloud_Speech_V2_StreamingRecognizeResponse>]
+    init(
+        channel: GRPCChannel,
+        defaultCallOptions: CallOptions = CallOptions(),
+        interceptors: Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol? = nil
+    ) {
+        self.channel = channel
+        self.defaultCallOptions = defaultCallOptions
+        self.interceptors = interceptors
+    }
 }
 
-internal enum Google_Cloud_Speech_V2_SpeechClientMetadata {
-  internal static let serviceDescriptor = GRPCServiceDescriptor(
-    name: "Speech",
-    fullName: "google.cloud.speech.v2.Speech",
-    methods: [
-      Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize,
-    ]
-  )
+protocol Google_Cloud_Speech_V2_SpeechClientInterceptorFactoryProtocol: Sendable {
+    /// - Returns: Interceptors to use when invoking 'streamingRecognize'.
+    func makeStreamingRecognizeInterceptors() -> [ClientInterceptor<
+        Google_Cloud_Speech_V2_StreamingRecognizeRequest,
+        Google_Cloud_Speech_V2_StreamingRecognizeResponse
+    >]
+}
 
-  internal enum Methods {
-    internal static let streamingRecognize = GRPCMethodDescriptor(
-      name: "StreamingRecognize",
-      path: "/google.cloud.speech.v2.Speech/StreamingRecognize",
-      type: GRPCCallType.bidirectionalStreaming
+enum Google_Cloud_Speech_V2_SpeechClientMetadata {
+    static let serviceDescriptor = GRPCServiceDescriptor(
+        name: "Speech",
+        fullName: "google.cloud.speech.v2.Speech",
+        methods: [
+            Google_Cloud_Speech_V2_SpeechClientMetadata.Methods.streamingRecognize
+        ]
     )
-  }
+
+    enum Methods {
+        static let streamingRecognize = GRPCMethodDescriptor(
+            name: "StreamingRecognize",
+            path: "/google.cloud.speech.v2.Speech/StreamingRecognize",
+            type: GRPCCallType.bidirectionalStreaming
+        )
+    }
 }
 
 /// To build a server, implement a class that conforms to this protocol.
-internal protocol Google_Cloud_Speech_V2_SpeechProvider: CallHandlerProvider {
-  var interceptors: Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol? { get }
+protocol Google_Cloud_Speech_V2_SpeechProvider: CallHandlerProvider {
+    var interceptors: Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol? { get }
 
-  func streamingRecognize(context: StreamingResponseCallContext<Google_Cloud_Speech_V2_StreamingRecognizeResponse>) -> EventLoopFuture<(StreamEvent<Google_Cloud_Speech_V2_StreamingRecognizeRequest>) -> Void>
+    func streamingRecognize(context: StreamingResponseCallContext<Google_Cloud_Speech_V2_StreamingRecognizeResponse>)
+        -> EventLoopFuture<(StreamEvent<Google_Cloud_Speech_V2_StreamingRecognizeRequest>) -> Void>
 }
 
 extension Google_Cloud_Speech_V2_SpeechProvider {
-  internal var serviceName: Substring {
-    return Google_Cloud_Speech_V2_SpeechServerMetadata.serviceDescriptor.fullName[...]
-  }
-
-  /// Determines, calls and returns the appropriate request handler, depending on the request's method.
-  /// Returns nil for methods not handled by this service.
-  internal func handle(
-    method name: Substring,
-    context: CallHandlerContext
-  ) -> GRPCServerHandlerProtocol? {
-    switch name {
-    case "StreamingRecognize":
-      return BidirectionalStreamingServerHandler(
-        context: context,
-        requestDeserializer: ProtobufDeserializer<Google_Cloud_Speech_V2_StreamingRecognizeRequest>(),
-        responseSerializer: ProtobufSerializer<Google_Cloud_Speech_V2_StreamingRecognizeResponse>(),
-        interceptors: self.interceptors?.makeStreamingRecognizeInterceptors() ?? [],
-        observerFactory: self.streamingRecognize(context:)
-      )
-
-    default:
-      return nil
+    var serviceName: Substring {
+        Google_Cloud_Speech_V2_SpeechServerMetadata.serviceDescriptor.fullName[...]
     }
-  }
+
+    /// Determines, calls and returns the appropriate request handler, depending on the request's method.
+    /// Returns nil for methods not handled by this service.
+    func handle(
+        method name: Substring,
+        context: CallHandlerContext
+    ) -> GRPCServerHandlerProtocol? {
+        switch name {
+        case "StreamingRecognize":
+            BidirectionalStreamingServerHandler(
+                context: context,
+                requestDeserializer: ProtobufDeserializer<Google_Cloud_Speech_V2_StreamingRecognizeRequest>(),
+                responseSerializer: ProtobufSerializer<Google_Cloud_Speech_V2_StreamingRecognizeResponse>(),
+                interceptors: interceptors?.makeStreamingRecognizeInterceptors() ?? [],
+                observerFactory: streamingRecognize(context:)
+            )
+
+        default:
+            nil
+        }
+    }
 }
 
 /// To implement a server, implement an object which conforms to this protocol.
 @available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
-internal protocol Google_Cloud_Speech_V2_SpeechAsyncProvider: CallHandlerProvider, Sendable {
-  static var serviceDescriptor: GRPCServiceDescriptor { get }
-  var interceptors: Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol? { get }
+protocol Google_Cloud_Speech_V2_SpeechAsyncProvider: CallHandlerProvider, Sendable {
+    static var serviceDescriptor: GRPCServiceDescriptor { get }
+    var interceptors: Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol? { get }
 
-  func streamingRecognize(
-    requestStream: GRPCAsyncRequestStream<Google_Cloud_Speech_V2_StreamingRecognizeRequest>,
-    responseStream: GRPCAsyncResponseStreamWriter<Google_Cloud_Speech_V2_StreamingRecognizeResponse>,
-    context: GRPCAsyncServerCallContext
-  ) async throws
+    func streamingRecognize(
+        requestStream: GRPCAsyncRequestStream<Google_Cloud_Speech_V2_StreamingRecognizeRequest>,
+        responseStream: GRPCAsyncResponseStreamWriter<Google_Cloud_Speech_V2_StreamingRecognizeResponse>,
+        context: GRPCAsyncServerCallContext
+    ) async throws
 }
 
 @available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 extension Google_Cloud_Speech_V2_SpeechAsyncProvider {
-  internal static var serviceDescriptor: GRPCServiceDescriptor {
-    return Google_Cloud_Speech_V2_SpeechServerMetadata.serviceDescriptor
-  }
-
-  internal var serviceName: Substring {
-    return Google_Cloud_Speech_V2_SpeechServerMetadata.serviceDescriptor.fullName[...]
-  }
-
-  internal var interceptors: Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol? {
-    return nil
-  }
-
-  internal func handle(
-    method name: Substring,
-    context: CallHandlerContext
-  ) -> GRPCServerHandlerProtocol? {
-    switch name {
-    case "StreamingRecognize":
-      return GRPCAsyncServerHandler(
-        context: context,
-        requestDeserializer: ProtobufDeserializer<Google_Cloud_Speech_V2_StreamingRecognizeRequest>(),
-        responseSerializer: ProtobufSerializer<Google_Cloud_Speech_V2_StreamingRecognizeResponse>(),
-        interceptors: self.interceptors?.makeStreamingRecognizeInterceptors() ?? [],
-        wrapping: { try await self.streamingRecognize(requestStream: $0, responseStream: $1, context: $2) }
-      )
-
-    default:
-      return nil
+    static var serviceDescriptor: GRPCServiceDescriptor {
+        Google_Cloud_Speech_V2_SpeechServerMetadata.serviceDescriptor
     }
-  }
+
+    var serviceName: Substring {
+        Google_Cloud_Speech_V2_SpeechServerMetadata.serviceDescriptor.fullName[...]
+    }
+
+    var interceptors: Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol? {
+        nil
+    }
+
+    func handle(
+        method name: Substring,
+        context: CallHandlerContext
+    ) -> GRPCServerHandlerProtocol? {
+        switch name {
+        case "StreamingRecognize":
+            GRPCAsyncServerHandler(
+                context: context,
+                requestDeserializer: ProtobufDeserializer<Google_Cloud_Speech_V2_StreamingRecognizeRequest>(),
+                responseSerializer: ProtobufSerializer<Google_Cloud_Speech_V2_StreamingRecognizeResponse>(),
+                interceptors: interceptors?.makeStreamingRecognizeInterceptors() ?? [],
+                wrapping: { try await self.streamingRecognize(requestStream: $0, responseStream: $1, context: $2) }
+            )
+
+        default:
+            nil
+        }
+    }
 }
 
-internal protocol Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol: Sendable {
-
-  /// - Returns: Interceptors to use when handling 'streamingRecognize'.
-  ///   Defaults to calling `self.makeInterceptors()`.
-  func makeStreamingRecognizeInterceptors() -> [ServerInterceptor<Google_Cloud_Speech_V2_StreamingRecognizeRequest, Google_Cloud_Speech_V2_StreamingRecognizeResponse>]
+protocol Google_Cloud_Speech_V2_SpeechServerInterceptorFactoryProtocol: Sendable {
+    /// - Returns: Interceptors to use when handling 'streamingRecognize'.
+    ///   Defaults to calling `self.makeInterceptors()`.
+    func makeStreamingRecognizeInterceptors() -> [ServerInterceptor<
+        Google_Cloud_Speech_V2_StreamingRecognizeRequest,
+        Google_Cloud_Speech_V2_StreamingRecognizeResponse
+    >]
 }
 
-internal enum Google_Cloud_Speech_V2_SpeechServerMetadata {
-  internal static let serviceDescriptor = GRPCServiceDescriptor(
-    name: "Speech",
-    fullName: "google.cloud.speech.v2.Speech",
-    methods: [
-      Google_Cloud_Speech_V2_SpeechServerMetadata.Methods.streamingRecognize,
-    ]
-  )
-
-  internal enum Methods {
-    internal static let streamingRecognize = GRPCMethodDescriptor(
-      name: "StreamingRecognize",
-      path: "/google.cloud.speech.v2.Speech/StreamingRecognize",
-      type: GRPCCallType.bidirectionalStreaming
+enum Google_Cloud_Speech_V2_SpeechServerMetadata {
+    static let serviceDescriptor = GRPCServiceDescriptor(
+        name: "Speech",
+        fullName: "google.cloud.speech.v2.Speech",
+        methods: [
+            Google_Cloud_Speech_V2_SpeechServerMetadata.Methods.streamingRecognize
+        ]
     )
-  }
+
+    enum Methods {
+        static let streamingRecognize = GRPCMethodDescriptor(
+            name: "StreamingRecognize",
+            path: "/google.cloud.speech.v2.Speech/StreamingRecognize",
+            type: GRPCCallType.bidirectionalStreaming
+        )
+    }
 }

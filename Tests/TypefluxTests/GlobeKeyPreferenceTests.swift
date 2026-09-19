@@ -43,5 +43,7 @@ final class GlobeKeyPreferenceTests: XCTestCase {
 
 private struct FixedGlobeKeyReader: GlobeKeyPreferenceReading {
     let usage: GlobeKeyUsage?
-    func currentUsage() -> GlobeKeyUsage? { usage }
+    func currentUsage() -> GlobeKeyUsage? {
+        usage
+    }
 }

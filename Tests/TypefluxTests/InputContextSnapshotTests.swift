@@ -8,7 +8,7 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "Hello world",
             selectedRange: CFRange(location: 5, length: 0),
             isEditable: false,
-            isFocusedTarget: false,
+            isFocusedTarget: false
         )
 
         XCTAssertNil(InputContextSnapshot.make(inputSnapshot: snapshot, selectionSnapshot: TextSelectionSnapshot()))
@@ -20,12 +20,12 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "Hello world",
             selectedRange: CFRange(location: 5, length: 0),
             isEditable: true,
-            isFocusedTarget: false,
+            isFocusedTarget: false
         )
 
         let context = InputContextSnapshot.make(
             inputSnapshot: snapshot,
-            selectionSnapshot: TextSelectionSnapshot(),
+            selectionSnapshot: TextSelectionSnapshot()
         )
 
         XCTAssertEqual(context?.prefix, "Hello")
@@ -42,7 +42,7 @@ final class InputContextSnapshotTests: XCTestCase {
             selectedRange: nil,
             isEditable: false,
             isFocusedTarget: true,
-            failureReason: "focused-element-not-editable",
+            failureReason: "focused-element-not-editable"
         )
 
         var selection = TextSelectionSnapshot()
@@ -55,7 +55,7 @@ final class InputContextSnapshotTests: XCTestCase {
         let context = InputContextSnapshot.make(
             inputSnapshot: input,
             selectionSnapshot: selection,
-            selectionLimit: 8,
+            selectionLimit: 8
         )
 
         XCTAssertEqual(context?.appName, "Zed")
@@ -78,7 +78,7 @@ final class InputContextSnapshotTests: XCTestCase {
             isEditable: false,
             isFocusedTarget: true,
             failureReason: "focused-element-not-editable-document-context",
-            documentURL: URL(fileURLWithPath: "/tmp/v2ex.md"),
+            documentURL: URL(fileURLWithPath: "/tmp/v2ex.md")
         )
 
         var selection = TextSelectionSnapshot()
@@ -92,7 +92,7 @@ final class InputContextSnapshotTests: XCTestCase {
             inputSnapshot: input,
             selectionSnapshot: selection,
             prefixLimit: 7,
-            suffixLimit: 6,
+            suffixLimit: 6
         )
 
         XCTAssertEqual(context?.appName, "Zed")
@@ -112,7 +112,7 @@ final class InputContextSnapshotTests: XCTestCase {
             isEditable: false,
             isFocusedTarget: true,
             failureReason: "focused-element-not-editable-context",
-            textSource: "visible-text",
+            textSource: "visible-text"
         )
 
         var selection = TextSelectionSnapshot()
@@ -126,7 +126,7 @@ final class InputContextSnapshotTests: XCTestCase {
             inputSnapshot: input,
             selectionSnapshot: selection,
             prefixLimit: 7,
-            suffixLimit: 6,
+            suffixLimit: 6
         )
 
         XCTAssertEqual(context?.prefix, "agraph\n")
@@ -143,7 +143,7 @@ final class InputContextSnapshotTests: XCTestCase {
             isEditable: false,
             isFocusedTarget: true,
             failureReason: "focused-element-not-editable-context",
-            textSource: "application-state",
+            textSource: "application-state"
         )
 
         var selection = TextSelectionSnapshot()
@@ -157,7 +157,7 @@ final class InputContextSnapshotTests: XCTestCase {
             inputSnapshot: input,
             selectionSnapshot: selection,
             prefixLimit: 20,
-            suffixLimit: 20,
+            suffixLimit: 20
         )
 
         XCTAssertEqual(context?.prefix, "before\n")
@@ -175,7 +175,7 @@ final class InputContextSnapshotTests: XCTestCase {
             isEditable: false,
             isFocusedTarget: true,
             failureReason: "focused-element-not-editable-context",
-            textSource: "application-state",
+            textSource: "application-state"
         )
 
         var selection = TextSelectionSnapshot()
@@ -189,12 +189,12 @@ final class InputContextSnapshotTests: XCTestCase {
             inputSnapshot: input,
             selectionSnapshot: selection,
             prefixLimit: 200,
-            suffixLimit: 200,
+            suffixLimit: 200
         )
 
         XCTAssertEqual(
             context?.prefix,
-            "最初我以为花一两天就能跑通。结果发现，做一个\"能用的原型\"和做一个\"可以给别人用的产品\"之间，差的是一个月的废寝忘食",
+            "最初我以为花一两天就能跑通。结果发现，做一个\"能用的原型\"和做一个\"可以给别人用的产品\"之间，差的是一个月的废寝忘食"
         )
         XCTAssertNil(context?.selectedText)
         XCTAssertEqual(context?.suffix, "。\n\n到今天，我终于把它发布出来了。")
@@ -207,14 +207,14 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "0123456789abcdefghij",
             selectedRange: CFRange(location: 10, length: 0),
             isEditable: true,
-            isFocusedTarget: true,
+            isFocusedTarget: true
         )
 
         let context = InputContextSnapshot.make(
             inputSnapshot: input,
             selectionSnapshot: TextSelectionSnapshot(),
             prefixLimit: 4,
-            suffixLimit: 3,
+            suffixLimit: 3
         )
 
         XCTAssertEqual(context?.appName, "Notes")
@@ -231,14 +231,14 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "A😀B",
             selectedRange: CFRange(location: 3, length: 0),
             isEditable: true,
-            isFocusedTarget: true,
+            isFocusedTarget: true
         )
 
         let context = InputContextSnapshot.make(
             inputSnapshot: input,
             selectionSnapshot: TextSelectionSnapshot(),
             prefixLimit: 10,
-            suffixLimit: 10,
+            suffixLimit: 10
         )
 
         XCTAssertEqual(context?.prefix, "A😀")
@@ -253,12 +253,12 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "A😀B",
             selectedRange: CFRange(location: 2, length: 0),
             isEditable: true,
-            isFocusedTarget: true,
+            isFocusedTarget: true
         )
 
         let context = InputContextSnapshot.make(
             inputSnapshot: input,
-            selectionSnapshot: TextSelectionSnapshot(),
+            selectionSnapshot: TextSelectionSnapshot()
         )
 
         XCTAssertNil(context)
@@ -270,7 +270,7 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "before selected after",
             selectedRange: CFRange(location: 7, length: 8),
             isEditable: true,
-            isFocusedTarget: true,
+            isFocusedTarget: true
         )
 
         var selection = TextSelectionSnapshot()
@@ -279,7 +279,7 @@ final class InputContextSnapshotTests: XCTestCase {
         let context = InputContextSnapshot.make(
             inputSnapshot: input,
             selectionSnapshot: selection,
-            selectionLimit: 4,
+            selectionLimit: 4
         )
 
         XCTAssertEqual(context?.prefix, "before ")
@@ -293,7 +293,7 @@ final class InputContextSnapshotTests: XCTestCase {
             text: "short",
             selectedRange: CFRange(location: 99, length: 0),
             isEditable: true,
-            isFocusedTarget: true,
+            isFocusedTarget: true
         )
 
         XCTAssertNil(InputContextSnapshot.make(inputSnapshot: input, selectionSnapshot: TextSelectionSnapshot()))

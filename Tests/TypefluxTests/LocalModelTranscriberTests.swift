@@ -15,6 +15,25 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertTrue(options.detectLanguage)
         XCTAssertTrue(options.usePrefillPrompt)
         XCTAssertTrue(options.withoutTimestamps)
+        XCTAssertEqual(options.noSpeechThreshold, 0.6)
+    }
+
+    func testWhisperKitLowEnergyRetryUsesLanguageHintAndRelaxedNoSpeechThreshold() {
+        let chineseOptions = WhisperKitTranscriber.decodingOptions(
+            profile: .lowEnergyRetry,
+            preferredLanguages: ["zh-CN"]
+        )
+        XCTAssertEqual(chineseOptions.language, "zh")
+        XCTAssertFalse(chineseOptions.detectLanguage)
+        XCTAssertEqual(chineseOptions.noSpeechThreshold, 0.8)
+
+        let unsupportedLanguageOptions = WhisperKitTranscriber.decodingOptions(
+            profile: .lowEnergyRetry,
+            preferredLanguages: ["ja-JP"]
+        )
+        XCTAssertNil(unsupportedLanguageOptions.language)
+        XCTAssertTrue(unsupportedLanguageOptions.detectLanguage)
+        XCTAssertEqual(unsupportedLanguageOptions.noSpeechThreshold, 0.8)
     }
 
     func testSenseVoiceTranscriberUsesAutomaticLanguageDetectionAndParsesTranscript() async throws {
@@ -27,15 +46,23 @@ final class LocalModelTranscriberTests: XCTestCase {
         let transcriber = SenseVoiceTranscriber(
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             modelFolder: modelFolder.path,
-            processRunner: runner,
+            processRunner: runner
         )
         let audioFile = try makeTestWAVFile()
 
         let text = try await transcriber.transcribe(audioFile: audioFile)
 
         XCTAssertEqual(text, "你好 Typeflux")
-        XCTAssertEqual(runner.lastExecutablePath, modelFolder.appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/bin/sherpa-onnx-offline").path)
-        XCTAssertEqual(runner.lastEnvironment?["DYLD_LIBRARY_PATH"], modelFolder.appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/lib").path)
+        XCTAssertEqual(
+            runner.lastExecutablePath,
+            modelFolder
+                .appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/bin/sherpa-onnx-offline")
+                .path
+        )
+        XCTAssertEqual(
+            runner.lastEnvironment?["DYLD_LIBRARY_PATH"],
+            modelFolder.appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/lib").path
+        )
         XCTAssertTrue(runner.lastArguments.contains("--sense-voice-language=auto"))
         XCTAssertTrue(runner.lastArguments.contains("--sense-voice-use-itn=true"))
         XCTAssertTrue(runner.lastArguments.contains(where: { $0.hasPrefix("--sense-voice-model=") }))
@@ -53,7 +80,7 @@ final class LocalModelTranscriberTests: XCTestCase {
         let transcriber = SenseVoiceTranscriber(
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             modelFolder: modelFolder.path,
-            processRunner: runner,
+            processRunner: runner
         )
 
         _ = try await transcriber.transcribe(audioFile: makeTestWAVFile())
@@ -68,12 +95,12 @@ final class LocalModelTranscriberTests: XCTestCase {
             log line
             {"lang": "", "emotion": "", "event": "", "text": "试一下前文三大模型的效果。", "timestamps": [], "durations": [], "tokens":["试", "一下", "前", "文", "三大", "模型", "的效果", "。"], "ys_log_probs": [], "words": []}
 
-            """,
+            """
         )
         let transcriber = Qwen3ASRTranscriber(
             modelIdentifier: LocalSTTModel.qwen3ASR.defaultModelIdentifier,
             modelFolder: modelFolder.path,
-            processRunner: runner,
+            processRunner: runner
         )
         let audioFile = try makeTestWAVFile()
 
@@ -97,15 +124,23 @@ final class LocalModelTranscriberTests: XCTestCase {
         let transcriber = FunASRTranscriber(
             modelIdentifier: LocalSTTModel.funASR.defaultModelIdentifier,
             modelFolder: modelFolder.path,
-            processRunner: runner,
+            processRunner: runner
         )
         let audioFile = try makeTestWAVFile()
 
         let text = try await transcriber.transcribe(audioFile: audioFile)
 
         XCTAssertEqual(text, "你好 Typeflux")
-        XCTAssertEqual(runner.lastExecutablePath, modelFolder.appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/bin/sherpa-onnx-offline").path)
-        XCTAssertEqual(runner.lastEnvironment?["DYLD_LIBRARY_PATH"], modelFolder.appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/lib").path)
+        XCTAssertEqual(
+            runner.lastExecutablePath,
+            modelFolder
+                .appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/bin/sherpa-onnx-offline")
+                .path
+        )
+        XCTAssertEqual(
+            runner.lastEnvironment?["DYLD_LIBRARY_PATH"],
+            modelFolder.appendingPathComponent("sherpa-onnx-v1.12.35-osx-universal2-shared-no-tts/lib").path
+        )
         XCTAssertTrue(runner.lastArguments.contains(where: { $0.hasPrefix("--paraformer=") }))
         XCTAssertTrue(runner.lastArguments.contains(where: { $0.hasPrefix("--tokens=") }))
         XCTAssertEqual(runner.lastArguments.last, audioFile.fileURL.path)
@@ -128,7 +163,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             fileManager: .default,
             sherpaOnnxInstaller: fakeInstaller,
             applicationSupportURL: appSupportURL,
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace])
         )
 
         let updates = PreparationUpdateRecorder()
@@ -141,7 +176,7 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertEqual(prepared?.sourceDisplayName, ModelDownloadSource.huggingFace.displayName)
         XCTAssertEqual(
             prepared?.storagePath,
-            manager.storagePath(for: LocalSTTConfiguration(settingsStore: settingsStore)),
+            manager.storagePath(for: LocalSTTConfiguration(settingsStore: settingsStore))
         )
         XCTAssertEqual(fakeInstaller.lastPreparedModel, .senseVoiceSmall)
         XCTAssertEqual(fakeInstaller.lastStorageURL?.path, prepared?.storagePath)
@@ -149,7 +184,7 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertTrue(updates.values().contains(where: { $0.message == "fake sherpa ready" }))
     }
 
-    func testPreparedModelInfoDoesNotInstallBundledSenseVoice() async throws {
+    func testPreparedModelInfoDoesNotInstallBundledSenseVoice() throws {
         let suiteName = "LocalModelTranscriberTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -166,10 +201,13 @@ final class LocalModelTranscriberTests: XCTestCase {
         let bundledStorageURL = bundledModelsRootURL
             .appendingPathComponent("senseVoiceSmall", isDirectory: true)
             .appendingPathComponent(LocalSTTModel.senseVoiceSmall.defaultModelIdentifier, isDirectory: true)
-        try FileManager.default.createDirectory(at: bundledStorageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundledStorageURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try FileManager.default.copyItem(
             at: makeSherpaModelFolder(for: .senseVoiceSmall),
-            to: bundledStorageURL,
+            to: bundledStorageURL
         )
 
         let manager = LocalModelManager(
@@ -177,7 +215,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             sherpaOnnxInstaller: FakeSherpaOnnxInstaller(),
             applicationSupportURL: appSupportURL,
             downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
-            bundledModelsRootURL: bundledModelsRootURL,
+            bundledModelsRootURL: bundledModelsRootURL
         )
 
         let prepared = manager.preparedModelInfo(settingsStore: settingsStore)
@@ -259,11 +297,11 @@ final class LocalModelTranscriberTests: XCTestCase {
 
         try FileManager.default.createDirectory(
             at: URL(fileURLWithPath: targetPath, isDirectory: true),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try Data("stale".utf8).write(
             to: URL(fileURLWithPath: targetPath, isDirectory: true)
-                .appendingPathComponent("stale.txt"),
+                .appendingPathComponent("stale.txt")
         )
 
         try await manager.prepareModel(settingsStore: settingsStore)
@@ -272,7 +310,7 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: URL(fileURLWithPath: targetPath, isDirectory: true)
                 .appendingPathComponent("stale.txt")
-                .path,
+                .path
         ))
         XCTAssertEqual(fakeInstaller.preparedSources, [])
     }
@@ -302,7 +340,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             sherpaOnnxInstaller: fakeInstaller,
             applicationSupportURL: appSupportURL,
             downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
-            bundledModelsRootURL: bundledModelsRootURL,
+            bundledModelsRootURL: bundledModelsRootURL
         )
 
         try await manager.prepareModel(settingsStore: settingsStore)
@@ -327,10 +365,13 @@ final class LocalModelTranscriberTests: XCTestCase {
         let bundledStorageURL = bundledModelsRootURL
             .appendingPathComponent("senseVoiceSmall", isDirectory: true)
             .appendingPathComponent(LocalSTTModel.senseVoiceSmall.defaultModelIdentifier, isDirectory: true)
-        try FileManager.default.createDirectory(at: bundledStorageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: bundledStorageURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try FileManager.default.copyItem(
             at: makeSherpaModelFolder(for: .senseVoiceSmall),
-            to: bundledStorageURL,
+            to: bundledStorageURL
         )
 
         let fakeInstaller = FakeSherpaOnnxInstaller()
@@ -339,11 +380,11 @@ final class LocalModelTranscriberTests: XCTestCase {
             sherpaOnnxInstaller: fakeInstaller,
             applicationSupportURL: makeTemporaryApplicationSupportURL(),
             downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
-            bundledModelsRootURL: bundledModelsRootURL,
+            bundledModelsRootURL: bundledModelsRootURL
         )
         let service = AutoModelDownloadService(
             modelManager: manager,
-            settingsStore: settingsStore,
+            settingsStore: settingsStore
         )
 
         try manager.ensureBundledSenseVoiceLinked()
@@ -370,17 +411,20 @@ final class LocalModelTranscriberTests: XCTestCase {
                 applicationSupportURL: makeTemporaryApplicationSupportURL(),
                 downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
                 bundledModelsRootURL: FileManager.default.temporaryDirectory
-                    .appendingPathComponent("typeflux-auto-empty-bundle-\(UUID().uuidString)", isDirectory: true),
+                    .appendingPathComponent("typeflux-auto-empty-bundle-\(UUID().uuidString)", isDirectory: true)
             ),
-            settingsStore: settingsStore,
+            settingsStore: settingsStore
         )
         let progressNotification = expectation(description: "Auto model download progress notifications")
         progressNotification.expectedFulfillmentCount = 2
+        // Progress may legitimately emit more than two updates before this async
+        // test resumes and removes its observer. Require at least two updates.
+        progressNotification.assertForOverFulfill = false
 
         let observer = NotificationCenter.default.addObserver(
             forName: .autoModelDownloadStateDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { _ in
             progressNotification.fulfill()
         }
@@ -389,6 +433,108 @@ final class LocalModelTranscriberTests: XCTestCase {
         service.triggerIfNeeded()
 
         await fulfillment(of: [progressNotification], timeout: 2)
+    }
+
+    func testAutoModelDownloadServiceInstallsBaselineWhenOptimizationIsDisabled() async throws {
+        let suiteName = "LocalModelTranscriberTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settingsStore = SettingsStore(defaults: defaults)
+        settingsStore.localOptimizationEnabled = false
+        let fakeInstaller = FakeSherpaOnnxInstaller()
+        let manager = LocalModelManager(
+            fileManager: .default,
+            sherpaOnnxInstaller: fakeInstaller,
+            applicationSupportURL: makeTemporaryApplicationSupportURL(),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            bundledModelsRootURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("typeflux-auto-empty-bundle-\(UUID().uuidString)", isDirectory: true)
+        )
+        let service = AutoModelDownloadService(modelManager: manager, settingsStore: settingsStore)
+
+        service.triggerIfNeeded()
+        try await waitForAutoModel(service)
+
+        let configuration = AutoModelDownloadService.recommendedConfiguration()
+        XCTAssertEqual(service.status, .completed)
+        XCTAssertTrue(service.isModelReady)
+        XCTAssertNotNil(manager.preparedModelInfo(for: configuration))
+        XCTAssertEqual(fakeInstaller.preparedSources, [.huggingFace])
+    }
+
+    func testAutoModelDownloadServiceCoalescesConcurrentTriggers() async throws {
+        let suiteName = "LocalModelTranscriberTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settingsStore = SettingsStore(defaults: defaults)
+        let fakeInstaller = FakeSherpaOnnxInstaller()
+        let manager = LocalModelManager(
+            fileManager: .default,
+            sherpaOnnxInstaller: fakeInstaller,
+            applicationSupportURL: makeTemporaryApplicationSupportURL(),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            bundledModelsRootURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("typeflux-auto-empty-bundle-\(UUID().uuidString)", isDirectory: true)
+        )
+        let service = AutoModelDownloadService(modelManager: manager, settingsStore: settingsStore)
+
+        service.triggerIfNeeded()
+        service.triggerIfNeeded()
+        service.triggerIfNeeded()
+        try await waitForAutoModel(service)
+
+        XCTAssertEqual(fakeInstaller.preparedSources, [.huggingFace])
+    }
+
+    func testAutoModelDownloadServiceRepairsFilesThatBecomeInvalid() async throws {
+        let suiteName = "LocalModelTranscriberTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settingsStore = SettingsStore(defaults: defaults)
+        let fakeInstaller = FakeSherpaOnnxInstaller()
+        let manager = LocalModelManager(
+            fileManager: .default,
+            sherpaOnnxInstaller: fakeInstaller,
+            applicationSupportURL: makeTemporaryApplicationSupportURL(),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            bundledModelsRootURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("typeflux-auto-empty-bundle-\(UUID().uuidString)", isDirectory: true)
+        )
+        let service = AutoModelDownloadService(modelManager: manager, settingsStore: settingsStore)
+
+        service.triggerIfNeeded()
+        try await waitForAutoModel(service)
+        let configuration = AutoModelDownloadService.recommendedConfiguration()
+        let prepared = try XCTUnwrap(manager.preparedModelInfo(for: configuration))
+        let layout = try XCTUnwrap(SherpaOnnxModelLayout.layout(for: .senseVoiceSmall))
+        let tokensURL = URL(fileURLWithPath: prepared.storagePath, isDirectory: true)
+            .appendingPathComponent(layout.modelRootDirectory, isDirectory: true)
+            .appendingPathComponent("tokens.txt", isDirectory: false)
+        try FileManager.default.removeItem(at: tokensURL)
+
+        XCTAssertNil(service.makeTranscriberIfReady())
+        try await waitForAutoModel(service)
+
+        XCTAssertEqual(service.status, .completed)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tokensURL.path))
+        XCTAssertEqual(fakeInstaller.preparedSources, [.huggingFace, .huggingFace])
+    }
+
+    private func waitForAutoModel(
+        _ service: AutoModelDownloadService,
+        timeout: TimeInterval = 2
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if service.status == .completed {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("Timed out waiting for the baseline model")
     }
 
     func testLocalModelManagerPersistsQwen3PreparedModelInfo() async throws {
@@ -408,7 +554,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             fileManager: .default,
             sherpaOnnxInstaller: fakeInstaller,
             applicationSupportURL: appSupportURL,
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace])
         )
 
         try await manager.prepareModel(settingsStore: settingsStore)
@@ -427,7 +573,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             fileManager: .default,
             sherpaOnnxInstaller: fakeInstaller,
             applicationSupportURL: appSupportURL,
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.modelScope, .huggingFace]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.modelScope, .huggingFace])
         )
 
         let resolvedPath = try await manager.downloadModelFilesOnly(
@@ -435,19 +581,19 @@ final class LocalModelTranscriberTests: XCTestCase {
                 model: .senseVoiceSmall,
                 modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
                 downloadSource: .modelScope,
-                autoSetup: true,
-            ),
+                autoSetup: true
+            )
         )
 
         XCTAssertEqual(resolvedPath, fakeInstaller.lastStorageURL?.path)
         XCTAssertEqual(fakeInstaller.preparedSources, [.modelScope, .huggingFace])
         XCTAssertTrue(
-            SherpaOnnxModelLayout.layout(for: .senseVoiceSmall)!
-                .isInstalled(storageURL: URL(fileURLWithPath: resolvedPath, isDirectory: true))
+            try XCTUnwrap(SherpaOnnxModelLayout.layout(for: .senseVoiceSmall)?
+                .isInstalled(storageURL: URL(fileURLWithPath: resolvedPath, isDirectory: true)))
         )
     }
 
-    func testNetworkDownloadSourceResolverRanksReachableSourcesByLatency() async throws {
+    func testNetworkDownloadSourceResolverRanksReachableSourcesByLatency() async {
         let resolver = NetworkLocalModelDownloadSourceResolver { url in
             let latency: TimeInterval
             let reachable: Bool
@@ -461,7 +607,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             return LocalModelDownloadSourceCandidate(
                 source: .huggingFace,
                 latency: latency,
-                isReachable: reachable,
+                isReachable: reachable
             )
         }
 
@@ -469,14 +615,14 @@ final class LocalModelTranscriberTests: XCTestCase {
             model: .senseVoiceSmall,
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             downloadSource: .huggingFace,
-            autoSetup: true,
+            autoSetup: true
         ))
 
         XCTAssertEqual(sources.first, .modelScope)
         XCTAssertEqual(sources, [.modelScope, .huggingFace])
     }
 
-    func testNetworkDownloadSourceResolverKeepsFallbackSourcesWhenProbeFails() async throws {
+    func testNetworkDownloadSourceResolverKeepsFallbackSourcesWhenProbeFails() async {
         let resolver = NetworkLocalModelDownloadSourceResolver { _ in
             LocalModelDownloadSourceCandidate(source: .huggingFace, latency: nil, isReachable: false)
         }
@@ -485,7 +631,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             model: .whisperLocal,
             modelIdentifier: LocalSTTModel.whisperLocal.defaultModelIdentifier,
             downloadSource: .huggingFace,
-            autoSetup: true,
+            autoSetup: true
         ))
 
         XCTAssertEqual(sources, [.huggingFace, .modelScope])
@@ -500,9 +646,10 @@ final class LocalModelTranscriberTests: XCTestCase {
         let repositoryLoader = CapturingWhisperRepositoryFileListLoader(fileNames: [
             "openai_whisper-medium/MelSpectrogram.mlmodelc/weights/weight.bin",
             "openai_whisper-medium/AudioEncoder.mlmodelc/weights/weight.bin",
-            "openai_whisper-medium/TextDecoder.mlmodelc/weights/weight.bin",
+            "openai_whisper-medium/TextDecoder.mlmodelc/weights/weight.bin"
         ])
         let fileDownloader = CapturingWhisperFileDownloader()
+        let updates = PreparationUpdateRecorder()
         let manager = LocalModelManager(
             fileManager: .default,
             sherpaOnnxInstaller: FakeSherpaOnnxInstaller(),
@@ -516,10 +663,11 @@ final class LocalModelTranscriberTests: XCTestCase {
             remoteRepositoryFileListLoader: { url in
                 try await repositoryLoader.load(from: url)
             },
-            remoteFileDownloader: { sourceURL, destinationURL in
+            remoteFileDownloader: { sourceURL, destinationURL, onProgress in
                 try await fileDownloader.download(from: sourceURL, to: destinationURL)
+                onProgress?(1, 1)
             },
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.modelScope]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.modelScope])
         )
 
         let resolvedPath = try await manager.downloadModelFilesOnly(
@@ -527,8 +675,11 @@ final class LocalModelTranscriberTests: XCTestCase {
                 model: .whisperLocal,
                 modelIdentifier: LocalSTTModel.whisperLocal.defaultModelIdentifier,
                 downloadSource: .modelScope,
-                autoSetup: true,
+                autoSetup: true
             ),
+            onUpdate: { update in
+                updates.append(update)
+            }
         )
 
         XCTAssertEqual(
@@ -540,22 +691,25 @@ final class LocalModelTranscriberTests: XCTestCase {
         let requestedURLs = await remoteLoader.requestedURLs()
         XCTAssertEqual(requestedURLs.map(\.absoluteString), [
             "https://hf-mirror.com/openai/whisper-medium/resolve/main/tokenizer.json",
-            "https://hf-mirror.com/openai/whisper-medium/resolve/main/tokenizer_config.json",
+            "https://hf-mirror.com/openai/whisper-medium/resolve/main/tokenizer_config.json"
         ])
         let requestedFileListURLs = await repositoryLoader.requestedURLs()
         XCTAssertEqual(requestedFileListURLs.map(\.absoluteString), [
-            "https://hf-mirror.com/api/models/argmaxinc/whisperkit-coreml/revision/main",
+            "https://hf-mirror.com/api/models/argmaxinc/whisperkit-coreml/revision/main"
         ])
         let downloadedFiles = await fileDownloader.downloads()
         XCTAssertEqual(downloadedFiles.map(\.source.absoluteString), [
             "https://hf-mirror.com/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-medium/AudioEncoder.mlmodelc/weights/weight.bin",
             "https://hf-mirror.com/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-medium/MelSpectrogram.mlmodelc/weights/weight.bin",
-            "https://hf-mirror.com/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-medium/TextDecoder.mlmodelc/weights/weight.bin",
+            "https://hf-mirror.com/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-medium/TextDecoder.mlmodelc/weights/weight.bin"
         ])
+        XCTAssertTrue(updates.values().contains { $0.downloadedBytes == 1 && $0.totalBytes == 1 })
         let tokenizerRoot = URL(fileURLWithPath: downloadBasePath, isDirectory: true)
             .appendingPathComponent("models/openai/whisper-medium", isDirectory: true)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: tokenizerRoot.appendingPathComponent("tokenizer.json").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: tokenizerRoot.appendingPathComponent("tokenizer_config.json").path))
+        XCTAssertTrue(FileManager.default
+            .fileExists(atPath: tokenizerRoot.appendingPathComponent("tokenizer.json").path))
+        XCTAssertTrue(FileManager.default
+            .fileExists(atPath: tokenizerRoot.appendingPathComponent("tokenizer_config.json").path))
     }
 
     func testLocalModelManagerRetriesWhisperTokenizerFileDownloads() async throws {
@@ -564,7 +718,7 @@ final class LocalModelTranscriberTests: XCTestCase {
         let repositoryLoader = CapturingWhisperRepositoryFileListLoader(fileNames: [
             "openai_whisper-medium/MelSpectrogram.mlmodelc/weights/weight.bin",
             "openai_whisper-medium/AudioEncoder.mlmodelc/weights/weight.bin",
-            "openai_whisper-medium/TextDecoder.mlmodelc/weights/weight.bin",
+            "openai_whisper-medium/TextDecoder.mlmodelc/weights/weight.bin"
         ])
         let fileDownloader = CapturingWhisperFileDownloader()
         let manager = LocalModelManager(
@@ -580,10 +734,11 @@ final class LocalModelTranscriberTests: XCTestCase {
             remoteRepositoryFileListLoader: { url in
                 try await repositoryLoader.load(from: url)
             },
-            remoteFileDownloader: { sourceURL, destinationURL in
+            remoteFileDownloader: { sourceURL, destinationURL, onProgress in
                 try await fileDownloader.download(from: sourceURL, to: destinationURL)
+                onProgress?(1, 1)
             },
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.modelScope]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.modelScope])
         )
 
         _ = try await manager.downloadModelFilesOnly(
@@ -591,13 +746,16 @@ final class LocalModelTranscriberTests: XCTestCase {
                 model: .whisperLocal,
                 modelIdentifier: LocalSTTModel.whisperLocal.defaultModelIdentifier,
                 downloadSource: .modelScope,
-                autoSetup: true,
-            ),
+                autoSetup: true
+            )
         )
 
         let attemptCounts = await remoteLoader.attemptCountsByURL()
         XCTAssertEqual(attemptCounts["https://hf-mirror.com/openai/whisper-medium/resolve/main/tokenizer.json"], 4)
-        XCTAssertEqual(attemptCounts["https://hf-mirror.com/openai/whisper-medium/resolve/main/tokenizer_config.json"], 4)
+        XCTAssertEqual(
+            attemptCounts["https://hf-mirror.com/openai/whisper-medium/resolve/main/tokenizer_config.json"],
+            4
+        )
     }
 
     func testLocalModelManagerSkipsWhisperTokenizerPrefetchForHuggingFaceSource() async throws {
@@ -620,7 +778,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             remoteFileLoader: { url in
                 try await remoteLoader.load(from: url)
             },
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace])
         )
 
         let resolvedPath = try await manager.downloadModelFilesOnly(
@@ -628,8 +786,8 @@ final class LocalModelTranscriberTests: XCTestCase {
                 model: .whisperLocalLarge,
                 modelIdentifier: LocalSTTModel.whisperLocalLarge.defaultModelIdentifier,
                 downloadSource: .huggingFace,
-                autoSetup: true,
-            ),
+                autoSetup: true
+            )
         )
 
         XCTAssertEqual(resolvedPath, preparedFolder.path)
@@ -653,11 +811,11 @@ final class LocalModelTranscriberTests: XCTestCase {
             fileManager: .default,
             sherpaOnnxInstaller: FakeSherpaOnnxInstaller(),
             applicationSupportURL: makeTemporaryApplicationSupportURL(),
-            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace])
         )
         let transcriber = LocalModelTranscriber(
             settingsStore: settingsStore,
-            modelManager: manager,
+            modelManager: manager
         )
 
         let text = try await transcriber.transcribe(audioFile: makeTestWAVFile())
@@ -681,14 +839,15 @@ final class LocalModelTranscriberTests: XCTestCase {
 
         let manager = FakeLocalSTTModelManager(preparedInfo: LocalSTTPreparedModelInfo(
             storagePath: "/tmp/typeflux-whisperkit-test",
-            sourceDisplayName: ModelDownloadSource.huggingFace.displayName,
+            sourceDisplayName: ModelDownloadSource.huggingFace.displayName
         ))
         let factory = FakeWhisperKitTranscriberFactory()
         let transcriber = LocalModelTranscriber(
             settingsStore: settingsStore,
             modelManager: manager,
             whisperKitKeepAliveDuration: 0.05,
-            whisperKitTranscriberFactory: factory.makeTranscriber(modelName:modelFolder:),
+            memoryOptimizationEnabledOverride: { true },
+            whisperKitTranscriberFactory: factory.makeTranscriber(modelName:modelFolder:)
         )
         let audioFile = try makeTestWAVFile()
 
@@ -718,14 +877,14 @@ final class LocalModelTranscriberTests: XCTestCase {
 
         let manager = FakeLocalSTTModelManager(preparedInfo: LocalSTTPreparedModelInfo(
             storagePath: "/tmp/typeflux-whisperkit-test",
-            sourceDisplayName: ModelDownloadSource.huggingFace.displayName,
+            sourceDisplayName: ModelDownloadSource.huggingFace.displayName
         ))
         let factory = FakeWhisperKitTranscriberFactory()
         let transcriber = LocalModelTranscriber(
             settingsStore: settingsStore,
             modelManager: manager,
             whisperKitKeepAliveDuration: 0.05,
-            whisperKitTranscriberFactory: factory.makeTranscriber(modelName:modelFolder:),
+            whisperKitTranscriberFactory: factory.makeTranscriber(modelName:modelFolder:)
         )
         let audioFile = try makeTestWAVFile()
 
@@ -735,6 +894,37 @@ final class LocalModelTranscriberTests: XCTestCase {
 
         XCTAssertEqual(factory.createdTranscribers.count, 1)
         XCTAssertEqual(factory.createdTranscribers.map(\.modelName), ["base"])
+    }
+
+    func testWhisperKitLowEnergyProfileIsPropagatedToCachedTranscriber() async throws {
+        let suiteName = "LocalModelTranscriberTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settingsStore = SettingsStore(defaults: defaults)
+        settingsStore.sttProvider = .localModel
+        settingsStore.localSTTModel = .whisperLocal
+        settingsStore.localSTTModelIdentifier = "whisperkit-base"
+        settingsStore.localSTTAutoSetup = false
+        let manager = FakeLocalSTTModelManager(preparedInfo: LocalSTTPreparedModelInfo(
+            storagePath: "/tmp/typeflux-whisperkit-test",
+            sourceDisplayName: ModelDownloadSource.huggingFace.displayName
+        ))
+        let factory = FakeWhisperKitTranscriberFactory()
+        let transcriber = LocalModelTranscriber(
+            settingsStore: settingsStore,
+            modelManager: manager,
+            whisperKitTranscriberFactory: factory.makeTranscriber(modelName:modelFolder:)
+        )
+        let audioFile = try makeTestWAVFile()
+
+        _ = try await transcriber.transcribeStream(
+            audioFile: audioFile,
+            profile: .lowEnergyRetry
+        ) { _ in }
+
+        let whisper = try XCTUnwrap(factory.createdTranscribers.first)
+        XCTAssertEqual(whisper.profiles, [.lowEnergyRetry])
     }
 
     func testSherpaLayoutRejectsASCIIExecutableFixture() throws {
@@ -790,7 +980,7 @@ final class LocalModelTranscriberTests: XCTestCase {
         let layout = try XCTUnwrap(SherpaOnnxModelLayout.layout(for: .senseVoiceSmall))
         let modelArtifact = try XCTUnwrap(LocalModelDownloadCatalog.sherpaOnnxModelArtifact(
             for: .senseVoiceSmall,
-            source: .huggingFace,
+            source: .huggingFace
         ))
         let fixturesRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("typeflux-sherpa-fixtures-\(UUID().uuidString)", isDirectory: true)
@@ -803,14 +993,14 @@ final class LocalModelTranscriberTests: XCTestCase {
             requiredRelativePaths: [
                 "bin/sherpa-onnx-offline",
                 "lib/libsherpa-onnx-c-api.dylib",
-                "lib/libonnxruntime.dylib",
+                "lib/libonnxruntime.dylib"
             ],
-            outputDirectory: fixturesRoot,
+            outputDirectory: fixturesRoot
         )
 
         let modelDownloadCount: Int
         var downloadMap: [URL: URL] = [
-            layout.runtimeArchiveURL: runtimeArchiveURL,
+            layout.runtimeArchiveURL: runtimeArchiveURL
         ]
         switch modelArtifact {
         case let .archive(url, _):
@@ -819,26 +1009,26 @@ final class LocalModelTranscriberTests: XCTestCase {
                 rootDirectoryName: layout.modelRootDirectory,
                 requiredRelativePaths: [
                     "model.int8.onnx",
-                    "tokens.txt",
+                    "tokens.txt"
                 ],
-                outputDirectory: fixturesRoot,
+                outputDirectory: fixturesRoot
             )
         case let .files(files):
             modelDownloadCount = files.count
-            downloadMap.merge(
-                try makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
-                uniquingKeysWith: { _, new in new },
+            try downloadMap.merge(
+                makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
+                uniquingKeysWith: { _, new in new }
             )
         }
 
         let downloader = FlakyArchiveDownloader(
             archiveMap: downloadMap,
-            failuresBeforeSuccess: 2,
+            failuresBeforeSuccess: 2
         )
         let installer = SherpaOnnxModelInstaller(
             fileManager: .default,
             processRunner: ProcessCommandRunner(),
-            archiveDownloader: downloader,
+            archiveDownloader: downloader
         )
 
         let preparedPath = try await installer.prepareModel(.senseVoiceSmall, at: installRoot)
@@ -862,9 +1052,9 @@ final class LocalModelTranscriberTests: XCTestCase {
             requiredRelativePaths: [
                 "bin/sherpa-onnx-offline",
                 "lib/libsherpa-onnx-c-api.dylib",
-                "lib/libonnxruntime.dylib",
+                "lib/libonnxruntime.dylib"
             ],
-            outputDirectory: fixturesRoot,
+            outputDirectory: fixturesRoot
         )
         let modelArchiveURL = try await makeArchiveFixture(
             rootDirectoryName: layout.modelRootDirectory,
@@ -872,9 +1062,9 @@ final class LocalModelTranscriberTests: XCTestCase {
                 "conv_frontend.onnx",
                 "encoder.int8.onnx",
                 "decoder.int8.onnx",
-                "tokenizer/tokenizer.json",
+                "tokenizer/tokenizer.json"
             ],
-            outputDirectory: fixturesRoot,
+            outputDirectory: fixturesRoot
         )
 
         let badExecutableURL = installRoot
@@ -882,22 +1072,22 @@ final class LocalModelTranscriberTests: XCTestCase {
             .appendingPathComponent("bin/sherpa-onnx-offline", isDirectory: false)
         try FileManager.default.createDirectory(
             at: badExecutableURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try Data("fixture".utf8).write(to: badExecutableURL)
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o755))],
-            ofItemAtPath: badExecutableURL.path,
+            ofItemAtPath: badExecutableURL.path
         )
         XCTAssertFalse(layout.isInstalled(storageURL: installRoot, fileManager: .default))
 
-        let installer = SherpaOnnxModelInstaller(
+        let installer = try SherpaOnnxModelInstaller(
             fileManager: .default,
             processRunner: ProcessCommandRunner(),
             archiveDownloader: StaticArchiveDownloader(archiveMap: [
                 layout.runtimeArchiveURL: runtimeArchiveURL,
-                try XCTUnwrap(layout.modelArchiveURL): modelArchiveURL,
-            ]),
+                XCTUnwrap(layout.modelArchiveURL): modelArchiveURL
+            ])
         )
 
         let preparedPath = try await installer.prepareModel(.qwen3ASR, at: installRoot)
@@ -905,8 +1095,9 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertEqual(preparedPath, installRoot.path)
         XCTAssertTrue(layout.isInstalled(storageURL: installRoot, fileManager: .default))
         XCTAssertGreaterThan(
-            ((try? FileManager.default.attributesOfItem(atPath: badExecutableURL.path)[.size] as? NSNumber)?.int64Value ?? 0),
-            0,
+            ((try? FileManager.default.attributesOfItem(atPath: badExecutableURL.path)[.size] as? NSNumber)?
+                .int64Value ?? 0),
+            0
         )
     }
 
@@ -930,9 +1121,9 @@ final class LocalModelTranscriberTests: XCTestCase {
                 "include/sherpa-onnx/c-api/c-api.h",
                 "lib/libonnxruntime.dylib",
                 "lib/libsherpa-onnx-c-api.dylib",
-                "lib/libsherpa-onnx-cxx-api.dylib",
+                "lib/libsherpa-onnx-cxx-api.dylib"
             ],
-            outputDirectory: fixturesRoot,
+            outputDirectory: fixturesRoot
         )
 
         let modelDirectoryURL = fixturesRoot.appendingPathComponent(layout.modelRootDirectory, isDirectory: true)
@@ -940,33 +1131,40 @@ final class LocalModelTranscriberTests: XCTestCase {
 
         guard case let .files(files) = try XCTUnwrap(LocalModelDownloadCatalog.sherpaOnnxModelArtifact(
             for: .senseVoiceSmall,
-            source: .huggingFace,
+            source: .huggingFace
         )) else {
             return XCTFail("Expected file-based SenseVoice artifact for Hugging Face")
         }
 
         var archiveMap: [URL: URL] = [
-            layout.runtimeArchiveURL: runtimeArchiveURL,
+            layout.runtimeArchiveURL: runtimeArchiveURL
         ]
-        archiveMap.merge(
-            try makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
-            uniquingKeysWith: { _, new in new },
+        try archiveMap.merge(
+            makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
+            uniquingKeysWith: { _, new in new }
         )
 
         let installer = SherpaOnnxModelInstaller(
             fileManager: .default,
             processRunner: ProcessCommandRunner(),
-            archiveDownloader: StaticArchiveDownloader(archiveMap: archiveMap),
+            archiveDownloader: StaticArchiveDownloader(archiveMap: archiveMap)
         )
 
-        let preparedPath = try await installer.prepareModel(.senseVoiceSmall, at: installRoot, downloadSource: .huggingFace)
+        let preparedPath = try await installer.prepareModel(
+            .senseVoiceSmall,
+            at: installRoot,
+            downloadSource: .huggingFace
+        )
 
         XCTAssertEqual(preparedPath, installRoot.path)
         let runtimeRoot = installRoot.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: runtimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: runtimeRoot.appendingPathComponent("bin/sherpa-onnx").path))
+        XCTAssertTrue(FileManager.default
+            .fileExists(atPath: runtimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
+        XCTAssertFalse(FileManager.default
+            .fileExists(atPath: runtimeRoot.appendingPathComponent("bin/sherpa-onnx").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: runtimeRoot.appendingPathComponent("include").path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: runtimeRoot.appendingPathComponent("lib/libsherpa-onnx-cxx-api.dylib").path))
+        XCTAssertFalse(FileManager.default
+            .fileExists(atPath: runtimeRoot.appendingPathComponent("lib/libsherpa-onnx-cxx-api.dylib").path))
 
         let compatibilityLibraryPath = runtimeRoot.appendingPathComponent("lib/libonnxruntime.dylib").path
         let versionedLibraryPath = runtimeRoot
@@ -976,14 +1174,17 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: versionedLibraryPath))
         XCTAssertEqual(
             try FileManager.default.destinationOfSymbolicLink(atPath: compatibilityLibraryPath),
-            LocalModelDownloadCatalog.sherpaOnnxRuntimeVersionedLibraryName,
+            LocalModelDownloadCatalog.sherpaOnnxRuntimeVersionedLibraryName
         )
     }
 
     func testSherpaInstallerCopiesBundledRuntimeAndDownloadsOnlyModelAssets() async throws {
         let layout = try XCTUnwrap(SherpaOnnxModelLayout.layout(for: .funASR))
         let bundledRuntimeStorage = try makeSherpaModelFolder(for: .senseVoiceSmall)
-        let bundledRuntimeRoot = bundledRuntimeStorage.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
+        let bundledRuntimeRoot = bundledRuntimeStorage.appendingPathComponent(
+            layout.runtimeRootDirectory,
+            isDirectory: true
+        )
         let fixturesRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("typeflux-sherpa-fixtures-\(UUID().uuidString)", isDirectory: true)
         let installRoot = FileManager.default.temporaryDirectory
@@ -997,18 +1198,18 @@ final class LocalModelTranscriberTests: XCTestCase {
 
         guard case let .files(files) = try XCTUnwrap(LocalModelDownloadCatalog.sherpaOnnxModelArtifact(
             for: .funASR,
-            source: .huggingFace,
+            source: .huggingFace
         )) else {
             return XCTFail("Expected file-based FunASR artifact for Hugging Face")
         }
 
-        let installer = SherpaOnnxModelInstaller(
+        let installer = try SherpaOnnxModelInstaller(
             fileManager: .default,
             processRunner: ProcessCommandRunner(),
             archiveDownloader: StaticArchiveDownloader(
-                archiveMap: try makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
+                archiveMap: makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot)
             ),
-            runtimeLocator: BundledSherpaOnnxRuntimeLocator(explicitRuntimeRootURL: bundledRuntimeRoot),
+            runtimeLocator: BundledSherpaOnnxRuntimeLocator(explicitRuntimeRootURL: bundledRuntimeRoot)
         )
 
         let preparedPath = try await installer.prepareModel(.funASR, at: installRoot, downloadSource: .huggingFace)
@@ -1016,7 +1217,8 @@ final class LocalModelTranscriberTests: XCTestCase {
         XCTAssertEqual(preparedPath, installRoot.path)
         let copiedRuntimeRoot = installRoot.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
         XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: copiedRuntimeRoot.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: copiedRuntimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
+        XCTAssertTrue(FileManager.default
+            .fileExists(atPath: copiedRuntimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
         XCTAssertTrue(layout.isInstalled(storageURL: installRoot, fileManager: .default))
     }
 
@@ -1040,41 +1242,49 @@ final class LocalModelTranscriberTests: XCTestCase {
             requiredRelativePaths: [
                 "bin/sherpa-onnx-offline",
                 "lib/libsherpa-onnx-c-api.dylib",
-                "lib/libonnxruntime.dylib",
+                "lib/libonnxruntime.dylib"
             ],
-            outputDirectory: fixturesRoot,
+            outputDirectory: fixturesRoot
         )
         guard case let .files(files) = try XCTUnwrap(LocalModelDownloadCatalog.sherpaOnnxModelArtifact(
             for: .senseVoiceSmall,
-            source: .huggingFace,
+            source: .huggingFace
         )) else {
             return XCTFail("Expected file-based SenseVoice artifact for Hugging Face")
         }
 
         var archiveMap: [URL: URL] = [
-            layout.runtimeArchiveURL: runtimeArchiveURL,
+            layout.runtimeArchiveURL: runtimeArchiveURL
         ]
-        archiveMap.merge(
-            try makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
-            uniquingKeysWith: { _, new in new },
+        try archiveMap.merge(
+            makeDownloadedFileFixtures(for: files, outputDirectory: fixturesRoot),
+            uniquingKeysWith: { _, new in new }
         )
         let installer = SherpaOnnxModelInstaller(
             fileManager: .default,
             processRunner: ProcessCommandRunner(),
             archiveDownloader: StaticArchiveDownloader(archiveMap: archiveMap),
-            sharedRuntimeStorageURL: sharedRuntimeRoot,
+            sharedRuntimeStorageURL: sharedRuntimeRoot
         )
 
-        let preparedPath = try await installer.prepareModel(.senseVoiceSmall, at: installRoot, downloadSource: .huggingFace)
+        let preparedPath = try await installer.prepareModel(
+            .senseVoiceSmall,
+            at: installRoot,
+            downloadSource: .huggingFace
+        )
 
         XCTAssertEqual(preparedPath, installRoot.path)
-        let persistedRuntimeRoot = sharedRuntimeRoot.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: persistedRuntimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
+        let persistedRuntimeRoot = sharedRuntimeRoot.appendingPathComponent(
+            layout.runtimeRootDirectory,
+            isDirectory: true
+        )
+        XCTAssertTrue(FileManager.default
+            .fileExists(atPath: persistedRuntimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
         XCTAssertEqual(
             try FileManager.default.destinationOfSymbolicLink(
-                atPath: installRoot.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true).path,
+                atPath: installRoot.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true).path
             ),
-            persistedRuntimeRoot.path,
+            persistedRuntimeRoot.path
         )
         XCTAssertTrue(layout.isInstalled(storageURL: installRoot, fileManager: .default))
     }
@@ -1083,7 +1293,10 @@ final class LocalModelTranscriberTests: XCTestCase {
         let layout = try XCTUnwrap(SherpaOnnxModelLayout.layout(for: .senseVoiceSmall))
         let installRoot = try makeSherpaModelFolder(for: .senseVoiceSmall)
         let bundledRuntimeStorage = try makeSherpaModelFolder(for: .senseVoiceSmall)
-        let bundledRuntimeRoot = bundledRuntimeStorage.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
+        let bundledRuntimeRoot = bundledRuntimeStorage.appendingPathComponent(
+            layout.runtimeRootDirectory,
+            isDirectory: true
+        )
         let sharedRuntimeRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("typeflux-shared-runtimes-\(UUID().uuidString)", isDirectory: true)
         defer {
@@ -1101,17 +1314,21 @@ final class LocalModelTranscriberTests: XCTestCase {
             fileManager: .default,
             processRunner: ProcessCommandRunner(),
             archiveDownloader: StaticArchiveDownloader(archiveMap: [:]),
-            sharedRuntimeStorageURL: sharedRuntimeRoot,
+            sharedRuntimeStorageURL: sharedRuntimeRoot
         )
 
         _ = try await installer.prepareModel(.senseVoiceSmall, at: installRoot, downloadSource: .huggingFace)
 
-        let persistedRuntimeRoot = sharedRuntimeRoot.appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: persistedRuntimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
+        let persistedRuntimeRoot = sharedRuntimeRoot.appendingPathComponent(
+            layout.runtimeRootDirectory,
+            isDirectory: true
+        )
+        XCTAssertTrue(FileManager.default
+            .fileExists(atPath: persistedRuntimeRoot.appendingPathComponent("bin/sherpa-onnx-offline").path))
         XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: persistedRuntimeRoot.path))
         XCTAssertEqual(
             try FileManager.default.destinationOfSymbolicLink(atPath: legacyRuntimeLink.path),
-            persistedRuntimeRoot.path,
+            persistedRuntimeRoot.path
         )
         XCTAssertTrue(layout.isInstalled(storageURL: installRoot, fileManager: .default))
     }
@@ -1135,11 +1352,11 @@ final class LocalModelTranscriberTests: XCTestCase {
             .appendingPathComponent(LocalSTTModel.senseVoiceSmall.defaultModelIdentifier, isDirectory: true)
         try FileManager.default.createDirectory(
             at: bundledStorageURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try FileManager.default.copyItem(
             at: makeSherpaModelFolder(for: .senseVoiceSmall),
-            to: bundledStorageURL,
+            to: bundledStorageURL
         )
 
         let appSupportURL = makeTemporaryApplicationSupportURL()
@@ -1149,14 +1366,14 @@ final class LocalModelTranscriberTests: XCTestCase {
             sherpaOnnxInstaller: installer,
             applicationSupportURL: appSupportURL,
             downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
-            bundledModelsRootURL: bundledModelsRootURL,
+            bundledModelsRootURL: bundledModelsRootURL
         )
         return (manager, bundledStorageURL, installer, appSupportURL)
     }
 
     private func makeSherpaModelFolder(
         for model: LocalSTTModel,
-        useMachORuntime: Bool,
+        useMachORuntime: Bool
     ) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("typeflux-tests-\(UUID().uuidString)", isDirectory: true)
@@ -1179,14 +1396,15 @@ final class LocalModelTranscriberTests: XCTestCase {
         try sherpaRuntimeFixtureData(useMachO: useMachORuntime).write(to: executableURL)
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o755))],
-            ofItemAtPath: executableURL.path,
+            ofItemAtPath: executableURL.path
         )
         try sherpaRuntimeFixtureData(useMachO: useMachORuntime)
             .write(to: runtimeLibURL.appendingPathComponent("libsherpa-onnx-c-api.dylib"))
         try sherpaRuntimeFixtureData(useMachO: useMachORuntime)
             .write(to: runtimeLibURL.appendingPathComponent("libonnxruntime.dylib"))
         try sherpaRuntimeFixtureData(useMachO: useMachORuntime)
-            .write(to: runtimeLibURL.appendingPathComponent(LocalModelDownloadCatalog.sherpaOnnxRuntimeVersionedLibraryName))
+            .write(to: runtimeLibURL
+                .appendingPathComponent(LocalModelDownloadCatalog.sherpaOnnxRuntimeVersionedLibraryName))
 
         let modelDirectory = root.appendingPathComponent(layout.modelRootDirectory, isDirectory: true)
         try FileManager.default.createDirectory(at: modelDirectory, withIntermediateDirectories: true)
@@ -1202,7 +1420,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             try Data("fixture".utf8).write(to: modelDirectory.appendingPathComponent("decoder.int8.onnx"))
             try FileManager.default.createDirectory(
                 at: modelDirectory.appendingPathComponent("tokenizer", isDirectory: true),
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
         case .funASR:
             try senseVoiceModelFixtureData().write(to: modelDirectory.appendingPathComponent("model.int8.onnx"))
@@ -1222,7 +1440,7 @@ final class LocalModelTranscriberTests: XCTestCase {
 
     private func makeDownloadedFileFixtures(
         for files: [SherpaOnnxModelFile],
-        outputDirectory: URL,
+        outputDirectory: URL
     ) throws -> [URL: URL] {
         var downloadMap: [URL: URL] = [:]
 
@@ -1232,7 +1450,7 @@ final class LocalModelTranscriberTests: XCTestCase {
                 .appendingPathComponent(file.relativePath, isDirectory: false)
             try FileManager.default.createDirectory(
                 at: sourceFileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
             try fixtureData(for: file.relativePath).write(to: sourceFileURL)
             downloadMap[file.url] = sourceFileURL
@@ -1244,7 +1462,7 @@ final class LocalModelTranscriberTests: XCTestCase {
     private func makeArchiveFixture(
         rootDirectoryName: String,
         requiredRelativePaths: [String],
-        outputDirectory: URL,
+        outputDirectory: URL
     ) async throws -> URL {
         let packageRoot = outputDirectory.appendingPathComponent(rootDirectoryName, isDirectory: true)
         try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
@@ -1253,13 +1471,13 @@ final class LocalModelTranscriberTests: XCTestCase {
             let fileURL = packageRoot.appendingPathComponent(relativePath)
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
             if fileURL.lastPathComponent == "sherpa-onnx-offline" {
                 try sherpaRuntimeFixtureData(useMachO: true).write(to: fileURL)
                 try FileManager.default.setAttributes(
                     [.posixPermissions: NSNumber(value: Int16(0o755))],
-                    ofItemAtPath: fileURL.path,
+                    ofItemAtPath: fileURL.path
                 )
             } else if fileURL.pathExtension == "dylib" {
                 try sherpaRuntimeFixtureData(useMachO: true).write(to: fileURL)
@@ -1278,10 +1496,10 @@ final class LocalModelTranscriberTests: XCTestCase {
             arguments: [
                 "-cjf",
                 archiveURL.path,
-                rootDirectoryName,
+                rootDirectoryName
             ],
             environment: nil,
-            currentDirectoryURL: outputDirectory,
+            currentDirectoryURL: outputDirectory
         )
         return archiveURL
     }
@@ -1318,7 +1536,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             <s> 1
             </s> 2
             ▁the 3
-            """.utf8,
+            """.utf8
         )
     }
 
@@ -1329,7 +1547,7 @@ final class LocalModelTranscriberTests: XCTestCase {
             <s> 1
             </s> 2
             <OOV> 3
-            """.utf8,
+            """.utf8
         )
     }
 
@@ -1341,7 +1559,7 @@ final class LocalModelTranscriberTests: XCTestCase {
                 .appendingPathComponent("weight.bin", isDirectory: false)
             try FileManager.default.createDirectory(
                 at: weightsURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
             try Data("fixture".utf8).write(to: weightsURL)
         }
@@ -1368,7 +1586,7 @@ private final class CapturingProcessRunner: ProcessCommandRunning {
         executablePath: String,
         arguments: [String],
         environment: [String: String]?,
-        currentDirectoryURL: URL?,
+        currentDirectoryURL: URL?
     ) async throws -> ProcessCommandResult {
         _ = currentDirectoryURL
         lastExecutablePath = executablePath
@@ -1378,7 +1596,7 @@ private final class CapturingProcessRunner: ProcessCommandRunning {
     }
 }
 
-private final class FakeSherpaOnnxInstaller: SherpaOnnxModelInstalling {
+final class FakeSherpaOnnxInstaller: SherpaOnnxModelInstalling {
     private let failingSources: Set<ModelDownloadSource>
     var lastPreparedModel: LocalSTTModel?
     var lastStorageURL: URL?
@@ -1392,7 +1610,7 @@ private final class FakeSherpaOnnxInstaller: SherpaOnnxModelInstalling {
         _ model: LocalSTTModel,
         at storageURL: URL,
         downloadSource: ModelDownloadSource,
-        onUpdate: (@Sendable (LocalSTTPreparationUpdate) -> Void)?,
+        onUpdate: (@Sendable (LocalSTTPreparationUpdate) -> Void)?
     ) async throws -> String {
         preparedSources.append(downloadSource)
         if failingSources.contains(downloadSource) {
@@ -1406,7 +1624,7 @@ private final class FakeSherpaOnnxInstaller: SherpaOnnxModelInstalling {
             message: "fake sherpa ready",
             progress: 0.9,
             storagePath: storageURL.path,
-            source: nil,
+            source: nil
         ))
 
         guard let layout = SherpaOnnxModelLayout.layout(for: model) else {
@@ -1417,19 +1635,19 @@ private final class FakeSherpaOnnxInstaller: SherpaOnnxModelInstalling {
             let fileURL = storageURL.appendingPathComponent(relativePath)
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
             if relativePath.hasSuffix("/tokenizer") {
                 try FileManager.default.createDirectory(
                     at: fileURL,
-                    withIntermediateDirectories: true,
+                    withIntermediateDirectories: true
                 )
             } else {
                 if fileURL.lastPathComponent == "sherpa-onnx-offline" {
                     try Data("#!/bin/sh\necho test\n".utf8).write(to: fileURL)
                     try FileManager.default.setAttributes(
                         [.posixPermissions: NSNumber(value: Int16(0o755))],
-                        ofItemAtPath: fileURL.path,
+                        ofItemAtPath: fileURL.path
                     )
                 } else if fileURL.lastPathComponent == "model.int8.onnx" {
                     try Data(repeating: 0x5A, count: 1_048_576).write(to: fileURL)
@@ -1440,7 +1658,7 @@ private final class FakeSherpaOnnxInstaller: SherpaOnnxModelInstalling {
                         <s> 1
                         </s> 2
                         ▁the 3
-                        """.utf8,
+                        """.utf8
                     ).write(to: fileURL)
                 } else {
                     let payload = fileURL.pathExtension == "dylib"
@@ -1464,7 +1682,7 @@ private final class FakeLocalSTTModelManager: LocalSTTModelManaging {
 
     func prepareModel(
         settingsStore _: SettingsStore,
-        onUpdate _: (@Sendable (LocalSTTPreparationUpdate) -> Void)?,
+        onUpdate _: (@Sendable (LocalSTTPreparationUpdate) -> Void)?
     ) async throws {}
 
     func preparedModelInfo(settingsStore _: SettingsStore) -> LocalSTTPreparedModelInfo? {
@@ -1495,6 +1713,7 @@ private final class FakeWhisperKitTranscriberFactory {
 private final class FakeWhisperKitTranscriber: LocalWhisperKitTranscribing {
     let modelName: String
     let modelFolder: String
+    private(set) var profiles: [TranscriptionProfile] = []
 
     init(modelName: String, modelFolder: String) {
         self.modelName = modelName
@@ -1503,8 +1722,11 @@ private final class FakeWhisperKitTranscriber: LocalWhisperKitTranscribing {
 
     func transcribeStream(
         audioFile _: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        profile: TranscriptionProfile,
+        prompt _: String?,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
+        profiles.append(profile)
         await onUpdate(TranscriptionSnapshot(text: "cached transcript", isFinal: true))
         return "cached transcript"
     }
@@ -1549,7 +1771,7 @@ private actor CapturingRemoteFileLoader {
                     "merges": []
                   }
                 }
-                """.utf8,
+                """.utf8
             )
         }
 
@@ -1562,7 +1784,7 @@ private actor CapturingRemoteFileLoader {
               "eos_token": "<|endoftext|>",
               "clean_up_tokenization_spaces": false
             }
-            """.utf8,
+            """.utf8
         )
     }
 
@@ -1624,7 +1846,7 @@ private actor CapturingWhisperFileDownloader {
         capturedDownloads.append(Download(source: sourceURL, destination: destinationURL))
         try FileManager.default.createDirectory(
             at: destinationURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try Data("fixture".utf8).write(to: destinationURL)
     }

@@ -8,7 +8,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .text("Hello, world!"),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertEqual(result.answerText, "Hello, world!")
     }
@@ -17,7 +17,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .text(""),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.answerText)
     }
@@ -27,7 +27,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "answer_text", argumentsJSON: json),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertEqual(result.answerText, "The answer is 42")
     }
@@ -37,7 +37,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "edit_text", argumentsJSON: json),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.answerText)
     }
@@ -46,7 +46,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "answer_text", argumentsJSON: "not json"),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.answerText)
     }
@@ -55,7 +55,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .maxStepsReached,
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.answerText)
     }
@@ -65,7 +65,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "answer_text", argumentsJSON: json),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.answerText)
     }
@@ -77,7 +77,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "edit_text", argumentsJSON: json),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertEqual(result.editedText, "improved text")
     }
@@ -87,7 +87,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "answer_text", argumentsJSON: json),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.editedText)
     }
@@ -96,7 +96,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .text("plain text"),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.editedText)
     }
@@ -105,7 +105,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "edit_text", argumentsJSON: "{bad json"),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.editedText)
     }
@@ -115,7 +115,7 @@ final class AgentResultTests: XCTestCase {
         let result = AgentResult(
             outcome: .terminationTool(name: "edit_text", argumentsJSON: json),
             steps: [],
-            totalDurationMs: 100,
+            totalDurationMs: 100
         )
         XCTAssertNil(result.editedText)
     }

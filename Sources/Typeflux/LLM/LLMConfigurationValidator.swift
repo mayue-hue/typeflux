@@ -10,7 +10,7 @@ enum LLMConfigurationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured(let reason):
+        case let .notConfigured(reason):
             reason.localizedMessage
         }
     }

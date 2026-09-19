@@ -25,7 +25,7 @@ struct AgentStep {
         assistantMessage: AgentAssistantMessage,
         toolResults: [AgentToolResult],
         durationMs: Int64,
-        tokenUsage: LLMTokenUsage? = nil,
+        tokenUsage: LLMTokenUsage? = nil
     ) {
         self.stepIndex = stepIndex
         self.assistantMessage = assistantMessage
@@ -56,7 +56,9 @@ final class AgentStepLogger: AgentStepMonitor {
     func agentDidCompleteStep(_ step: AgentStep) async {
         let toolNames = step.assistantMessage.toolCalls.map(\.name).joined(separator: ", ")
         let tokenInfo = step.tokenUsage.map { " tokens=\($0.totalTokens)" } ?? ""
-        print("[AgentStepLogger] Step \(step.stepIndex): tools=[\(toolNames)], duration=\(step.durationMs)ms\(tokenInfo)")
+        print(
+            "[AgentStepLogger] Step \(step.stepIndex): tools=[\(toolNames)], duration=\(step.durationMs)ms\(tokenInfo)"
+        )
     }
 
     func agentDidFinish(outcome: AgentOutcome, totalTokenUsage: LLMTokenUsage?) async {

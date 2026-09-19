@@ -29,7 +29,7 @@ final class PersonaProfileTests: XCTestCase {
         let json: [String: Any] = [
             "id": id.uuidString,
             "name": "Legacy Persona",
-            "prompt": "Old prompt",
+            "prompt": "Old prompt"
         ]
         let data = try JSONSerialization.data(withJSONObject: json)
         let decoded = try JSONDecoder().decode(PersonaProfile.self, from: data)

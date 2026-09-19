@@ -1,6 +1,6 @@
 import AuthenticationServices
-import XCTest
 @testable import Typeflux
+import XCTest
 
 @MainActor
 final class AppleSignInServiceTests: XCTestCase {
@@ -47,7 +47,7 @@ final class AppleSignInServiceTests: XCTestCase {
             )
         )
 
-        guard case .configurationIssue(let description) = mappedError as? AppleSignInError else {
+        guard case let .configurationIssue(description) = mappedError as? AppleSignInError else {
             return XCTFail("Expected a configuration issue error.")
         }
         XCTAssertTrue(description.contains("TYPEFLUX_DEV_PROVISIONING_PROFILE"))

@@ -221,7 +221,7 @@ final class UsageStatsStoreTests: XCTestCase {
     func testIsSuccessfulWithApplySucceeded() {
         let record = HistoryRecord(
             date: Date(),
-            applyStatus: .succeeded,
+            applyStatus: .succeeded
         )
         XCTAssertTrue(store.isSuccessful(record))
     }
@@ -230,7 +230,7 @@ final class UsageStatsStoreTests: XCTestCase {
         let record = HistoryRecord(
             date: Date(),
             transcriptionStatus: .succeeded,
-            applyStatus: .skipped,
+            applyStatus: .skipped
         )
         XCTAssertTrue(store.isSuccessful(record))
     }
@@ -259,7 +259,7 @@ final class UsageStatsStoreTests: XCTestCase {
         let failedRecord = HistoryRecord(
             date: Date(),
             recordingStatus: .failed,
-            applyStatus: .succeeded,
+            applyStatus: .succeeded
         )
         let contrib = store.contribution(for: failedRecord)
         XCTAssertEqual(contrib.sessions, 1)
@@ -304,7 +304,7 @@ extension UsageStatsStoreTests {
         // "testing" appends "ing" to "test"; the LCS-based diff captures the suffix
         let result = store.editedTextContribution(
             originalText: "test",
-            editedText: "testing",
+            editedText: "testing"
         )
         XCTAssertFalse(result.isEmpty)
         XCTAssertTrue(result.contains("ing"))
@@ -313,7 +313,7 @@ extension UsageStatsStoreTests {
     func testEditedTextContributionSimpleReplacement() {
         let result = store.editedTextContribution(
             originalText: "good morning",
-            editedText: "good evening",
+            editedText: "good evening"
         )
         XCTAssertFalse(result.isEmpty)
     }
@@ -400,7 +400,7 @@ extension UsageStatsStoreTests {
         let record = HistoryRecord(
             date: Date(),
             transcriptionStatus: .pending,
-            applyStatus: .pending,
+            applyStatus: .pending
         )
         XCTAssertFalse(store.isSuccessful(record))
     }
@@ -410,7 +410,7 @@ extension UsageStatsStoreTests {
         let record = HistoryRecord(
             date: Date(),
             transcriptionStatus: .failed,
-            applyStatus: .failed,
+            applyStatus: .failed
         )
         XCTAssertFalse(store.isSuccessful(record))
     }

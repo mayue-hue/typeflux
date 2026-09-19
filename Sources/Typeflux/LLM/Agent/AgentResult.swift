@@ -11,7 +11,7 @@ struct AgentResult {
         outcome: AgentOutcome,
         steps: [AgentStep],
         totalDurationMs: Int64,
-        totalTokenUsage: LLMTokenUsage? = nil,
+        totalTokenUsage: LLMTokenUsage? = nil
     ) {
         self.outcome = outcome
         self.steps = steps

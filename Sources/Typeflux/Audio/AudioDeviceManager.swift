@@ -10,13 +10,21 @@ protocol AudioDeviceManaging {
     func availableInputDevices() -> [AudioInputDevice]
     func resolveInputDeviceID(for uniqueID: String) -> AudioDeviceID?
     func defaultInputDeviceID() -> AudioDeviceID?
+    func observeDefaultInputDeviceChanges(
+        _ handler: @escaping @Sendable () -> Void
+    ) -> AudioInputDeviceChangeObservation?
+}
+
+protocol AudioInputDeviceChangeObservation: AnyObject {
+    func cancel()
 }
 
 final class AudioDeviceManager: AudioDeviceManaging {
     static let automaticDeviceID = ""
+    private let defaultInputObservationQueue = DispatchQueue(label: "typeflux.audio.default-input-observation")
 
     func availableInputDevices() -> [AudioInputDevice] {
-        return allAudioDeviceIDs()
+        allAudioDeviceIDs()
             .compactMap { deviceID in
                 guard
                     deviceSupportsInput(deviceID),
@@ -51,7 +59,7 @@ final class AudioDeviceManager: AudioDeviceManaging {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain,
+            mElement: kAudioObjectPropertyElementMain
         )
         var deviceID = AudioDeviceID(kAudioObjectUnknown)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
@@ -62,7 +70,7 @@ final class AudioDeviceManager: AudioDeviceManaging {
                 0,
                 nil,
                 &size,
-                pointer,
+                pointer
             )
         }
         guard status == noErr, deviceID != kAudioObjectUnknown, deviceSupportsInput(deviceID) else {
@@ -72,15 +80,45 @@ final class AudioDeviceManager: AudioDeviceManaging {
         return deviceID
     }
 
+    func observeDefaultInputDeviceChanges(
+        _ handler: @escaping @Sendable () -> Void
+    ) -> AudioInputDeviceChangeObservation? {
+        let objectID = AudioObjectID(kAudioObjectSystemObject)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let listener: AudioObjectPropertyListenerBlock = { _, _ in
+            handler()
+        }
+        let status = AudioObjectAddPropertyListenerBlock(
+            objectID,
+            &address,
+            defaultInputObservationQueue,
+            listener
+        )
+        guard status == noErr else {
+            return nil
+        }
+
+        return DefaultInputDeviceChangeObservation(
+            objectID: objectID,
+            address: address,
+            queue: defaultInputObservationQueue,
+            listener: listener
+        )
+    }
+
     private func allAudioDeviceIDs() -> [AudioDeviceID] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain,
+            mElement: kAudioObjectPropertyElementMain
         )
         guard let dataSize = propertyDataSize(
             objectID: AudioObjectID(kAudioObjectSystemObject),
-            address: &address,
+            address: &address
         ) else {
             return []
         }
@@ -96,7 +134,7 @@ final class AudioDeviceManager: AudioDeviceManaging {
                 0,
                 nil,
                 &size,
-                baseAddress,
+                baseAddress
             )
         }
         guard status == noErr else {
@@ -110,7 +148,7 @@ final class AudioDeviceManager: AudioDeviceManaging {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreams,
             mScope: kAudioDevicePropertyScopeInput,
-            mElement: kAudioObjectPropertyElementMain,
+            mElement: kAudioObjectPropertyElementMain
         )
 
         guard let size = propertyDataSize(objectID: deviceID, address: &address) else {
@@ -124,7 +162,7 @@ final class AudioDeviceManager: AudioDeviceManaging {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceUID,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain,
+            mElement: kAudioObjectPropertyElementMain
         )
         var value: Unmanaged<CFString>?
         var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
@@ -142,7 +180,7 @@ final class AudioDeviceManager: AudioDeviceManaging {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioObjectPropertyName,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain,
+            mElement: kAudioObjectPropertyElementMain
         )
         var value: Unmanaged<CFString>?
         var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
@@ -158,11 +196,53 @@ final class AudioDeviceManager: AudioDeviceManaging {
 
     private func propertyDataSize(
         objectID: AudioObjectID,
-        address: inout AudioObjectPropertyAddress,
+        address: inout AudioObjectPropertyAddress
     ) -> UInt32? {
         var size: UInt32 = 0
         let status = AudioObjectGetPropertyDataSize(objectID, &address, 0, nil, &size)
         guard status == noErr else { return nil }
         return size
+    }
+}
+
+private final class DefaultInputDeviceChangeObservation: AudioInputDeviceChangeObservation, @unchecked Sendable {
+    private let objectID: AudioObjectID
+    private var address: AudioObjectPropertyAddress
+    private let queue: DispatchQueue
+    private let listener: AudioObjectPropertyListenerBlock
+    private let lock = NSLock()
+    private var isActive = true
+
+    init(
+        objectID: AudioObjectID,
+        address: AudioObjectPropertyAddress,
+        queue: DispatchQueue,
+        listener: @escaping AudioObjectPropertyListenerBlock
+    ) {
+        self.objectID = objectID
+        self.address = address
+        self.queue = queue
+        self.listener = listener
+    }
+
+    deinit {
+        cancel()
+    }
+
+    func cancel() {
+        lock.lock()
+        guard isActive else {
+            lock.unlock()
+            return
+        }
+        isActive = false
+        lock.unlock()
+
+        AudioObjectRemovePropertyListenerBlock(
+            objectID,
+            &address,
+            queue,
+            listener
+        )
     }
 }

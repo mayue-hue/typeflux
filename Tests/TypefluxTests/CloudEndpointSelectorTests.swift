@@ -39,6 +39,42 @@ final class CloudEndpointSelectorTests: XCTestCase {
         XCTAssertEqual(ordered, [urlB, urlC, urlA])
     }
 
+    func testPreferredEndpointTakesPriorityOverFasterEndpoint() async {
+        let preferred = urlC
+        let selector = CloudEndpointSelector(
+            baseURLs: [urlA, urlB, urlC],
+            prober: StubProber(),
+            preferredEndpoint: { preferred }
+        )
+        await selector.reportSuccess(urlA, latencyMs: 40)
+        await selector.reportSuccess(urlB, latencyMs: 80)
+        await selector.reportSuccess(urlC, latencyMs: 200)
+
+        let ordered = await selector.orderedEndpoints()
+
+        XCTAssertEqual(ordered, [urlC, urlA, urlB])
+    }
+
+    func testPreferredEndpointFallsBackWhileInCooldown() async {
+        let preferred = urlC
+        var config = CloudEndpointSelectorConfig.default
+        config.failureThreshold = 1
+        config.baseCooldown = 60
+        let selector = CloudEndpointSelector(
+            baseURLs: [urlA, urlB, urlC],
+            prober: StubProber(),
+            config: config,
+            preferredEndpoint: { preferred }
+        )
+        await selector.reportSuccess(urlA, latencyMs: 40)
+        await selector.reportSuccess(urlB, latencyMs: 80)
+        await selector.reportFailure(urlC, error: SampleError.boom)
+
+        let ordered = await selector.orderedEndpoints()
+
+        XCTAssertEqual(ordered, [urlA, urlB, urlC])
+    }
+
     func testOrderedEndpointsPlacesUnknownLatencyAfterKnown() async {
         let selector = CloudEndpointSelector(
             baseURLs: [urlA, urlB, urlC],
@@ -80,6 +116,19 @@ final class CloudEndpointSelectorTests: XCTestCase {
 
         let ordered = await selector.primaryFirstEndpoints()
         XCTAssertEqual(ordered, [urlA, urlB, urlC])
+    }
+
+    func testPrimaryFirstEndpointsHonorsPreferredEndpoint() async {
+        let preferred = urlC
+        let selector = CloudEndpointSelector(
+            baseURLs: [urlA, urlB, urlC],
+            prober: StubProber(),
+            preferredEndpoint: { preferred }
+        )
+
+        let ordered = await selector.primaryFirstEndpoints()
+
+        XCTAssertEqual(ordered, [urlC, urlA, urlB])
     }
 
     func testPrimaryFirstEndpointsMovesCooldownPrimaryBehindHealthyBackups() async {
@@ -221,7 +270,12 @@ final class CloudEndpointSelectorTests: XCTestCase {
         let prober = StubProber()
         await prober.setResponse(
             for: urlA,
-            response: .success(CloudEndpointProbeResult(latencyMs: 42, serverID: "s1", serverVersion: "1.0", nonceMatches: true))
+            response: .success(CloudEndpointProbeResult(
+                latencyMs: 42,
+                serverID: "s1",
+                serverVersion: "1.0",
+                nonceMatches: true
+            ))
         )
         await prober.setResponse(
             for: urlB,
@@ -242,6 +296,18 @@ final class CloudEndpointSelectorTests: XCTestCase {
         XCTAssertEqual(snapshot[1].consecutiveFailures, 1)
         XCTAssertNil(snapshot[1].latencyMs)
         XCTAssertNotNil(snapshot[1].lastError)
+    }
+
+    func testProbeAllUsesMedianLatencyToIgnoreTransientSpike() async {
+        let prober = SequencedProber(latencies: [100, 900, 120])
+        let selector = CloudEndpointSelector(baseURLs: [urlA], prober: prober)
+
+        await selector.probeAll()
+
+        let snapshot = await selector.snapshot()
+        XCTAssertEqual(snapshot[0].latencyMs, 120)
+        let callCount = await prober.callCount
+        XCTAssertEqual(callCount, 3)
     }
 
     // MARK: - primaryEndpoint fallback
@@ -280,15 +346,35 @@ private actor StubProber: CloudEndpointProbing {
         responses[url] = response
     }
 
-    func probe(baseURL: URL, nonce: String, timeout: TimeInterval) async throws -> CloudEndpointProbeResult {
+    func probe(baseURL: URL, nonce _: String, timeout _: TimeInterval) async throws -> CloudEndpointProbeResult {
         switch responses[baseURL] {
-        case .success(let result):
+        case let .success(result):
             return result
-        case .failure(let error):
+        case let .failure(error):
             throw error
         case .none:
             throw CloudEndpointProbeError.timedOut
         }
+    }
+}
+
+private actor SequencedProber: CloudEndpointProbing {
+    private var latencies: [Double]
+    private(set) var callCount = 0
+
+    init(latencies: [Double]) {
+        self.latencies = latencies
+    }
+
+    func probe(baseURL _: URL, nonce _: String, timeout _: TimeInterval) async throws -> CloudEndpointProbeResult {
+        let index = min(callCount, latencies.count - 1)
+        callCount += 1
+        return CloudEndpointProbeResult(
+            latencyMs: latencies[index],
+            serverID: nil,
+            serverVersion: nil,
+            nonceMatches: true
+        )
     }
 }
 
@@ -297,7 +383,7 @@ private final class ClockStub: @unchecked Sendable {
     private var _current: Date
 
     init(start: Date) {
-        self._current = start
+        _current = start
     }
 
     var current: Date {

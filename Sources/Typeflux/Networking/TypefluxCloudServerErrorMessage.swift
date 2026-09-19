@@ -37,8 +37,23 @@ enum TypefluxCloudServerErrorMessage {
              "INSUFFICIENT_CREDITS",
              "CREDIT_EXHAUSTED":
             return "cloud.error.quotaExceeded"
-        case "PLAN_REQUIRED", "SUBSCRIPTION_REQUIRED":
+        case "PLAN_REQUIRED",
+             "SUBSCRIPTION_REQUIRED",
+             "PAYMENT_REQUIRED",
+             "BILLING_PAST_DUE",
+             "INVOICE_PAST_DUE",
+             "INVOICE_UNPAID",
+             "SUBSCRIPTION_PAST_DUE",
+             "SUBSCRIPTION_UNPAID":
             return "cloud.error.planRequired"
+        case "BILLING_SUBSCRIPTION_EXISTS":
+            return "cloud.error.subscriptionExists"
+        case "BILLING_CONNECTION_UNAVAILABLE":
+            return "cloud.error.billingConnectionUnavailable"
+        case "BILLING_SERVICE_UNAVAILABLE", "BILLING_NOT_CONFIGURED":
+            return "cloud.error.billingServiceUnavailable"
+        case "BILLING_PAGE_UNAVAILABLE":
+            return "cloud.error.billingPageUnavailable"
         case "SERVER_ERROR", "INTERNAL", "INTERNAL_SERVER_ERROR":
             return "cloud.error.server"
         default:

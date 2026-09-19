@@ -16,7 +16,7 @@ struct LocalModelDownloadSourceCandidate: Equatable {
         source: ModelDownloadSource,
         latency: TimeInterval?,
         isReachable: Bool,
-        probeResults: [LocalModelDownloadURLProbeResult] = [],
+        probeResults: [LocalModelDownloadURLProbeResult] = []
     ) {
         self.source = source
         self.latency = latency
@@ -46,7 +46,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
 
     init(
         urlSession: URLSession = .shared,
-        fallbackSources: [ModelDownloadSource] = ModelDownloadSource.allCases,
+        fallbackSources: [ModelDownloadSource] = ModelDownloadSource.allCases
     ) {
         self.fallbackSources = fallbackSources
         probe = { url in
@@ -56,7 +56,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
 
     init(
         fallbackSources: [ModelDownloadSource] = ModelDownloadSource.allCases,
-        probe: @escaping Probe,
+        probe: @escaping Probe
     ) {
         self.fallbackSources = fallbackSources
         self.probe = probe
@@ -67,7 +67,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
         let probeURLsBySource = Dictionary(
             uniqueKeysWithValues: sources.map {
                 ($0, LocalModelDownloadCatalog.probeURLs(for: configuration.model, source: $0))
-            },
+            }
         )
 
         let candidates = await withTaskGroup(of: LocalModelDownloadSourceCandidate?.self) { group in
@@ -103,7 +103,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
             sources: sources,
             candidates: candidates,
             probeURLsBySource: probeURLsBySource,
-            rankedSources: rankedSources,
+            rankedSources: rankedSources
         )
         return rankedSources
     }
@@ -116,20 +116,20 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
                 probeResults.append(LocalModelDownloadURLProbeResult(
                     url: url,
                     latency: nil,
-                    isReachable: false,
+                    isReachable: false
                 ))
                 return LocalModelDownloadSourceCandidate(
                     source: source,
                     latency: nil,
                     isReachable: false,
-                    probeResults: probeResults,
+                    probeResults: probeResults
                 )
             }
             latencies.append(latency)
             probeResults.append(LocalModelDownloadURLProbeResult(
                 url: url,
                 latency: latency,
-                isReachable: true,
+                isReachable: true
             ))
         }
 
@@ -137,7 +137,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
             source: source,
             latency: latencies.reduce(0, +),
             isReachable: true,
-            probeResults: probeResults,
+            probeResults: probeResults
         )
     }
 
@@ -146,7 +146,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
         sources: [ModelDownloadSource],
         candidates: [LocalModelDownloadSourceCandidate],
         probeURLsBySource: [ModelDownloadSource: [URL]],
-        rankedSources: [ModelDownloadSource],
+        rankedSources: [ModelDownloadSource]
     ) {
         let candidateBySource = Dictionary(uniqueKeysWithValues: candidates.map { ($0.source, $0) })
         let selectedSource = rankedSources.first?.displayName ?? "<none>"
@@ -155,7 +155,8 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
             let candidate = candidateBySource[source]
             let reachable = candidate?.isReachable == true ? "reachable" : "unreachable"
             let latency = Self.formatLatency(candidate?.latency)
-            let probeDetails = (candidate?.probeResults ?? makeMissingProbeResults(for: probeURLsBySource[source] ?? []))
+            let probeDetails = (candidate?
+                .probeResults ?? makeMissingProbeResults(for: probeURLsBySource[source] ?? []))
                 .map { result in
                     "\(result.url.absoluteString) status=\(result.isReachable ? "reachable" : "unreachable") latency=\(Self.formatLatency(result.latency))"
                 }
@@ -177,7 +178,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
         guard let latency else {
             return "n/a"
         }
-        return "\(Int((latency * 1_000).rounded()))ms"
+        return "\(Int((latency * 1000).rounded()))ms"
     }
 
     private static func probe(url: URL, urlSession: URLSession) async -> LocalModelDownloadSourceCandidate? {
@@ -186,7 +187,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
             return LocalModelDownloadSourceCandidate(
                 source: .huggingFace,
                 latency: Date().timeIntervalSince(start),
-                isReachable: true,
+                isReachable: true
             )
         }
 
@@ -195,7 +196,7 @@ final class NetworkLocalModelDownloadSourceResolver: LocalModelDownloadSourceRes
             return LocalModelDownloadSourceCandidate(
                 source: .huggingFace,
                 latency: Date().timeIntervalSince(rangedStart),
-                isReachable: true,
+                isReachable: true
             )
         }
 

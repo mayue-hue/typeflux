@@ -9,7 +9,8 @@ struct NoopLocalNotificationService: LocalNotificationSending {
     func sendLocalNotification(title _: String, body _: String, identifier _: String) async {}
 }
 
-final class SystemLocalNotificationService: NSObject, LocalNotificationSending, UNUserNotificationCenterDelegate, @unchecked Sendable {
+final class SystemLocalNotificationService: NSObject, LocalNotificationSending, UNUserNotificationCenterDelegate,
+    @unchecked Sendable {
     static let shared = SystemLocalNotificationService()
 
     private let notificationCenter: UNUserNotificationCenter
@@ -33,7 +34,7 @@ final class SystemLocalNotificationService: NSObject, LocalNotificationSending, 
             let request = UNNotificationRequest(
                 identifier: identifier,
                 content: content,
-                trigger: nil,
+                trigger: nil
             )
             try await add(request)
         } catch {
@@ -43,7 +44,7 @@ final class SystemLocalNotificationService: NSObject, LocalNotificationSending, 
 
     func userNotificationCenter(
         _: UNUserNotificationCenter,
-        willPresent _: UNNotification,
+        willPresent _: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
     }

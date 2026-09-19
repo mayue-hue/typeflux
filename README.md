@@ -1,6 +1,6 @@
 <div align="center">
 
-# Typeflux - Talk. We'll Type.
+# [Typeflux](https://typeflux.app) - Talk. We'll Type.
 
 Hold `Fn` to dictate, or double-press `Fn` to ask anything. Typeflux delivers lightning-fast, accurate voice-to-text directly into any macOS application. Free, open-source, and supports local models — your voice never has to leave your Mac.
 
@@ -8,6 +8,8 @@ Hold `Fn` to dictate, or double-press `Fn` to ask anything. Typeflux delivers li
 [![codecov](https://codecov.io/gh/mylxsw/typeflux/graph/badge.svg)](https://codecov.io/gh/mylxsw/typeflux)
 
 English | [简体中文](./README.zh-CN.md)
+
+[![观看视频](https://img.youtube.com/vi/ZxWWUOEgaJ4/maxresdefault.jpg)](https://youtu.be/ZxWWUOEgaJ4)
 
 ![product-image](./assets/product-image.png)
 
@@ -122,6 +124,9 @@ make release-continue # resume an interrupted local release
 swift test        # run tests
 ```
 
+CI tests are opt-in. On an open pull request, a repository owner, member, or
+collaborator can comment `@autotest` to run the test workflow.
+
 > ⚠️ If you skip `setup_dev_cert.sh`, `make run` still works but macOS will re-prompt for permissions on each build (ad-hoc signing).
 
 See [CLAUDE.md](./CLAUDE.md) for the full development guide.
@@ -141,7 +146,7 @@ Join the community to share feedback, ask questions, and follow development upda
 - [X](https://x.com/mylxsw)
 - WeChat group:
 
-  <img src="./assets/wechat-group-20260506.jpg" alt="Typeflux WeChat group QR code" width="260">
+  <img src="./assets/wechat-group-20260527.jpg" alt="Typeflux WeChat group QR code" width="260">
 
 ## Contributing
 

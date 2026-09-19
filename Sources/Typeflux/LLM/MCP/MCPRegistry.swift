@@ -68,7 +68,7 @@ actor MCPRegistry {
             return StdioMCPClient(config: MCPStdioConfig(
                 command: stdioConfig.command,
                 args: stdioConfig.args,
-                env: stdioConfig.env,
+                env: stdioConfig.env
             ))
         case let .http(httpConfig):
             let url = URL(string: httpConfig.url) ?? URL(string: "http://localhost")!

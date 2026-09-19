@@ -8,6 +8,12 @@ protocol RealtimeTranscriptionSession: AnyObject {
     func cancel() async
 }
 
+/// Exposes the optimize value actually used to create a realtime ASR session.
+/// A nil value means the provider does not support this request option.
+protocol RealtimeASROptimizeProviding: AnyObject {
+    var asrOptimize: Bool? { get }
+}
+
 protocol PCM16RealtimeTranscriptionSession: AnyObject {
     func start() async throws
     func appendPCM16(_ data: Data) async throws
@@ -15,7 +21,8 @@ protocol PCM16RealtimeTranscriptionSession: AnyObject {
     func cancel() async
 }
 
-actor DeferredPCM16RealtimeTranscriptionSession: PCM16RealtimeTranscriptionSession {
+actor DeferredPCM16RealtimeTranscriptionSession: PCM16RealtimeTranscriptionSession,
+    RealtimeTransportDiagnosticsProviding {
     private let makeUpstream: @Sendable () async throws -> any PCM16RealtimeTranscriptionSession
     private var startingUpstream: (any PCM16RealtimeTranscriptionSession)?
     private var upstream: (any PCM16RealtimeTranscriptionSession)?
@@ -60,6 +67,12 @@ actor DeferredPCM16RealtimeTranscriptionSession: PCM16RealtimeTranscriptionSessi
         await upstream?.cancel()
         upstream = nil
     }
+
+    func transportDiagnosticsSnapshot() async -> NetworkTransportDiagnosticsSnapshot? {
+        let resolved = upstream ?? startingUpstream
+        guard let provider = resolved as? any RealtimeTransportDiagnosticsProviding else { return nil }
+        return await provider.transportDiagnosticsSnapshot()
+    }
 }
 
 final class RealtimeAudioBufferPump {
@@ -91,11 +104,12 @@ final class RealtimeAudioBufferPump {
     }
 }
 
-actor BufferedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
+actor BufferedRealtimeTranscriptionSession: RealtimeTranscriptionSession,
+    RealtimeTranscriptionConnectionAwaiting,
+    RealtimeTransportDiagnosticsProviding {
     private enum State {
         case idle
-        case starting
-        case running
+        case active
         case finishing
         case cancelled
     }
@@ -103,112 +117,101 @@ actor BufferedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     private let upstream: any PCM16RealtimeTranscriptionSession
     private let encoder = RealtimePCM16AudioEncoder()
     private var chunker = PCM16FrameChunker(chunkSize: CloudASRAudioConverter.chunkSize)
-    private var pendingChunks: [Data] = []
     private var state: State = .idle
+    private var continuation: AsyncStream<Data>.Continuation?
     private var startTask: Task<Void, Error>?
+    private var writerTask: Task<String, Error>?
     private var firstError: Error?
 
     init(upstream: any PCM16RealtimeTranscriptionSession) {
         self.upstream = upstream
     }
 
+    deinit {
+        continuation?.finish()
+        writerTask?.cancel()
+        startTask?.cancel()
+    }
+
     func start() {
         guard state == .idle else { return }
-        state = .starting
-        startTask = Task { [upstream] in
-            try await upstream.start()
+        state = .active
+        let (stream, continuation) = AsyncStream<Data>.makeStream()
+        self.continuation = continuation
+        let connecting = Task { [upstream] in try await upstream.start() }
+        startTask = connecting
+        // Exactly one task owns all writes, including the buffered prefix and stop.
+        // Actor isolation alone does not preserve order across awaited network writes.
+        let writer = Task { [upstream] in
+            do {
+                try await connecting.value
+                for await chunk in stream {
+                    try Task.checkCancellation()
+                    try await upstream.appendPCM16(chunk)
+                }
+                try Task.checkCancellation()
+                return try await upstream.finish()
+            } catch {
+                await upstream.cancel()
+                throw error
+            }
         }
-        Task { await completeStart() }
+        writerTask = writer
+        Task { [weak self] in
+            do { _ = try await writer.value }
+            catch { await self?.fail(error) }
+        }
+    }
+
+    func waitUntilConnectionReady() async throws {
+        try await startTask?.value
     }
 
     func append(_ buffer: AVAudioPCMBuffer) async {
         guard state != .cancelled, state != .finishing else { return }
+        if state == .idle { start() }
         do {
             let pcmData = try encoder.encode(buffer: buffer)
-            let chunks = chunker.append(pcmData)
-            try await enqueueOrSend(chunks)
+            for chunk in chunker.append(pcmData) { continuation?.yield(chunk) }
         } catch {
             await fail(error)
         }
     }
 
     func finish() async throws -> String {
-        if state == .idle {
-            start()
+        if let firstError { throw firstError }
+        guard state != .cancelled else { throw CancellationError() }
+        if state == .idle { start() }
+        if state != .finishing {
+            state = .finishing
+            for chunk in chunker.flush() { continuation?.yield(chunk) }
+            continuation?.finish()
         }
-        state = .finishing
-
-        do {
-            try await startTask?.value
-        } catch {
-            firstError = firstError ?? error
-        }
-
-        if let firstError {
-            await upstream.cancel()
-            throw firstError
-        }
-
-        do {
-            let finalChunks = chunker.flush()
-            try await sendPendingAnd(finalChunks)
-            return try await upstream.finish()
-        } catch {
-            await upstream.cancel()
-            throw error
-        }
+        guard let writerTask else { throw CancellationError() }
+        let result = try await writerTask.value
+        guard state != .cancelled else { throw firstError ?? CancellationError() }
+        return result
     }
 
     func cancel() async {
         state = .cancelled
+        continuation?.finish()
+        continuation = nil
+        writerTask?.cancel()
         startTask?.cancel()
-        pendingChunks.removeAll()
         chunker.reset()
         await upstream.cancel()
     }
 
-    private func completeStart() async {
-        do {
-            try await startTask?.value
-            guard state == .starting else { return }
-            state = .running
-            try await sendPendingAnd([])
-        } catch {
-            await fail(error)
-        }
-    }
-
-    private func enqueueOrSend(_ chunks: [Data]) async throws {
-        guard !chunks.isEmpty else { return }
-        switch state {
-        case .idle, .starting:
-            pendingChunks.append(contentsOf: chunks)
-        case .running:
-            try await send(chunks)
-        case .finishing, .cancelled:
-            break
-        }
-    }
-
-    private func sendPendingAnd(_ chunks: [Data]) async throws {
-        let allChunks = pendingChunks + chunks
-        pendingChunks.removeAll(keepingCapacity: true)
-        try await send(allChunks)
-    }
-
-    private func send(_ chunks: [Data]) async throws {
-        for chunk in chunks where !chunk.isEmpty {
-            try await upstream.appendPCM16(chunk)
-        }
+    func transportDiagnosticsSnapshot() async -> NetworkTransportDiagnosticsSnapshot? {
+        guard let provider = upstream as? any RealtimeTransportDiagnosticsProviding else { return nil }
+        return await provider.transportDiagnosticsSnapshot()
     }
 
     private func fail(_ error: Error) async {
+        guard state != .cancelled else { return }
         firstError = firstError ?? error
-        state = .cancelled
-        startTask?.cancel()
-        pendingChunks.removeAll()
-        chunker.reset()
-        await upstream.cancel()
+        await cancel()
         NetworkDebugLogger.logError(context: "Realtime transcription session failed", error: error)
     }
 }
@@ -266,12 +269,12 @@ final class RealtimePCM16AudioEncoder {
             commonFormat: .pcmFormatInt16,
             sampleRate: targetSampleRate,
             channels: 1,
-            interleaved: true,
+            interleaved: true
         ) else {
             throw NSError(
                 domain: "RealtimePCM16AudioEncoder",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime target audio format."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime target audio format."]
             )
         }
 
@@ -280,7 +283,7 @@ final class RealtimePCM16AudioEncoder {
             throw NSError(
                 domain: "RealtimePCM16AudioEncoder",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Source audio format has an invalid sample rate."],
+                userInfo: [NSLocalizedDescriptionKey: "Source audio format has an invalid sample rate."]
             )
         }
 
@@ -291,7 +294,7 @@ final class RealtimePCM16AudioEncoder {
             throw NSError(
                 domain: "RealtimePCM16AudioEncoder",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate realtime target audio buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate realtime target audio buffer."]
             )
         }
 
@@ -312,7 +315,7 @@ final class RealtimePCM16AudioEncoder {
             throw NSError(
                 domain: "RealtimePCM16AudioEncoder",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Realtime audio conversion failed."],
+                userInfo: [NSLocalizedDescriptionKey: "Realtime audio conversion failed."]
             )
         }
 
@@ -330,7 +333,7 @@ final class RealtimePCM16AudioEncoder {
             throw NSError(
                 domain: "RealtimePCM16AudioEncoder",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime audio converter."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime audio converter."]
             )
         }
         converter = newConverter

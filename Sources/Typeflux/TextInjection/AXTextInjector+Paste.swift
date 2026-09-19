@@ -3,533 +3,206 @@ import ApplicationServices
 import Foundation
 
 // swiftlint:disable closure_parameter_position file_length function_body_length
-// swiftlint:disable identifier_name line_length opening_brace trailing_comma
+// swiftlint:disable identifier_name line_length
 extension AXTextInjector {
-    func setText(_ text: String, replaceSelection: Bool) throws {
-        if try insertIntoTypefluxNativeTextTarget(text, replaceSelection: replaceSelection) {
-            return
-        }
-
-        if TypefluxWindowIdentity.isAskAnswerWindow(typefluxFrontmostWindow()) {
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] blocked Typeflux Ask Answer window before AX write",
-            )
-            throw NSError(
-                domain: "AXTextInjector",
-                code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "Refusing to inject text into Typeflux result windows"],
-            )
-        }
-
-        if !AXIsProcessTrusted() {
-            if !Self.didRequestAccessibility {
-                Self.didRequestAccessibility = true
-                if let url = URL(
-                    string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-                ) {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            throw NSError(
-                domain: "AXTextInjector",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Accessibility permission required"],
-            )
-        }
-
-        let processID = frontmostProcessID()
-        let bundleIdentifier = frontmostApplicationBundleIdentifier()
-        if isTypefluxOwnedTarget(processID: processID, bundleIdentifier: bundleIdentifier) {
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] blocked Typeflux non-text frontmost target before AX write",
-            )
-            throw NSError(
-                domain: "AXTextInjector",
-                code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "No editable Typeflux text target is focused"],
-            )
-        }
-
-        var contextRestored = false
-        let beforeSnapshot = readCurrentInputTextSnapshot()
-        NetworkDebugLogger.logMessage(
-            """
-            [Text Injection] start
-            replaceSelection: \(replaceSelection)
-            textLength: \(text.count)
-            textPreview: \(String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)))
-            beforeSnapshot: \(snapshotSummary(beforeSnapshot))
-            activeSelectionContext: \(selectionContextSummary(activeSelectionContext()))
-            """,
-        )
-
-        if replaceSelection, let context = activeSelectionContext() {
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] restoring selection context before replace | \(selectionContextSummary(context))",
-            )
-            restoreSelectionContext(context)
-            contextRestored = true
-            if context.range != nil,
-               try insertTextViaAX(
-                   text,
-                   into: context.element,
-                   replaceSelection: true,
-                   selectionRange: context.range,
-                   beforeSnapshot: beforeSnapshot,
-               )
-            {
-                NetworkDebugLogger.logMessage(
-                    "[Text Injection] replace completed via AX selected-text write",
-                )
-                latestSelectionContext = nil
-                return
-            }
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] AX selected-text write unavailable or unverified, falling back",
-            )
-        }
-
-        if let element = focusedElement(),
-           try insertTextViaAX(
-               text,
-               into: element,
-               replaceSelection: replaceSelection,
-               selectionRange: nil,
-               beforeSnapshot: beforeSnapshot,
-           )
-        {
-            NetworkDebugLogger.logMessage("[Text Injection] completed via focused AX path")
-            if replaceSelection {
-                latestSelectionContext = nil
-            }
-            return
-        }
-
-        NetworkDebugLogger.logMessage("[Text Injection] falling back to paste path")
-        try setTextViaPaste(
-            text,
-            replaceSelection: replaceSelection,
-            contextAlreadyRestored: contextRestored,
-        )
-        if replaceSelection {
-            latestSelectionContext = nil
-        }
-        NetworkDebugLogger.logMessage("[Text Injection] paste path completed")
-    }
-
-    func insertTextViaAX(
-        _ text: String,
-        into element: AXUIElement,
-        replaceSelection: Bool,
-        selectionRange: CFRange?,
-        beforeSnapshot: CurrentInputTextSnapshot,
-    ) throws -> Bool {
-        if replaceSelection {
-            if let selectionRange {
-                _ = setSelectedTextRange(selectionRange, on: element)
-            }
-            let replaceSelectedText = AXUIElementSetAttributeValue(
-                element,
-                kAXSelectedTextAttribute as CFString,
-                text as CFTypeRef,
-            )
-            if replaceSelectedText == .success {
-                if verifyAXWriteApplied(
-                    insertedText: text,
-                    replaceSelection: true,
-                    targetProcessID: frontmostProcessID(),
-                    beforeSnapshot: beforeSnapshot,
-                ) {
-                    return true
-                }
-                let afterSnapshot = readCurrentInputTextSnapshot()
-                logger.debug(
-                    "AX selected text write reported success but could not be verified; falling back",
-                )
-                NetworkDebugLogger.logMessage(
-                    """
-                    [Text Injection] AX write verification failed
-                    replaceSelection: \(replaceSelection)
-                    beforeSnapshot: \(snapshotSummary(beforeSnapshot))
-                    afterSnapshot: \(snapshotSummary(afterSnapshot))
-                    """,
-                )
-            }
-        }
-
-        return false
-    }
-
-    func verifyAXWriteApplied(
-        insertedText: String,
-        replaceSelection: Bool,
-        targetProcessID: pid_t?,
-        beforeSnapshot: CurrentInputTextSnapshot,
-    ) -> Bool {
-        for attempt in 0 ..< Self.axWriteVerificationAttempts {
-            usleep(Self.axWriteVerificationPollIntervalMicroseconds)
-            let afterSnapshot = readCurrentInputTextSnapshot()
-            let verification = Self.evaluatePasteVerification(
-                insertedText: insertedText,
-                replaceSelection: replaceSelection,
-                targetProcessID: targetProcessID,
-                before: beforeSnapshot.isEditable ? beforeSnapshot : nil,
-                after: afterSnapshot,
-            )
-            NetworkDebugLogger.logMessage(
-                """
-                [Text Injection] AX verification attempt \(attempt + 1)
-                result: \(String(describing: verification))
-                beforeSnapshot: \(snapshotSummary(beforeSnapshot))
-                afterSnapshot: \(snapshotSummary(afterSnapshot))
-                """,
-            )
-
-            switch verification {
-            case .success:
-                return true
-            case .failure:
-                return false
-            case .indeterminate:
-                continue
-            }
-        }
-
-        return false
-    }
-
-    func setTextViaPaste(
-        _ text: String,
-        replaceSelection: Bool,
-        contextAlreadyRestored: Bool = false,
-    ) throws {
-        let pasteboard = NSPasteboard.general
-        let previousSnapshot = capturePasteboardSnapshot(from: pasteboard)
-        let strictFallbackEnabled = settingsStore?.strictEditApplyFallbackEnabled ?? false
-        let stubbornPasteFallbackEnabled = settingsStore?.stubbornPasteFallbackEnabled ?? false
-        let replacementContext = replaceSelection ? activeSelectionContext() : nil
-
-        let targetPID: pid_t?
-        if let context = replacementContext {
-            targetPID = context.processID
-            if !contextAlreadyRestored {
-                restoreSelectionContext(context)
-            }
-        } else {
-            targetPID = frontmostProcessID()
-        }
-
-        if Self.shouldActivateTargetBeforePaste(
-            flagEnabled: stubbornPasteFallbackEnabled,
-            targetProcessID: targetPID,
-            frontmostProcessID: frontmostProcessID(),
-        ) {
-            activateTargetProcess(targetPID)
-        }
-
-        let dispatchMethod = Self.pasteEventDispatchMethod(
-            flagEnabled: stubbornPasteFallbackEnabled,
-            targetProcessID: targetPID,
-        )
-
-        let initialSnapshot = readCurrentInputTextSnapshot()
-        let beforeSnapshot = initialSnapshot.isEditable ? initialSnapshot : nil
-        let allowClipboardSelectionFallback =
-            Self.shouldAllowClipboardSelectionReplacementWithoutAXBaseline(
-                replaceSelection: replaceSelection,
-                selectionSource: replacementContext?.source,
-                focusMatched: replacementContext?.isFocusedTarget ?? false,
-                baselineAvailable: beforeSnapshot != nil,
-            )
-
-        NetworkDebugLogger.logMessage(
-            """
-            [Text Injection] paste start
-            replaceSelection: \(replaceSelection)
-            strictFallbackEnabled: \(strictFallbackEnabled)
-            stubbornPasteFallbackEnabled: \(stubbornPasteFallbackEnabled)
-            dispatchMethod: \(dispatchMethod)
-            targetPID: \(targetPID.map(String.init) ?? "nil")
-            contextAlreadyRestored: \(contextAlreadyRestored)
-            initialSnapshot: \(snapshotSummary(initialSnapshot))
-            verificationBaseline: \(beforeSnapshot.map(snapshotSummary) ?? "<nil>")
-            allowClipboardSelectionReplacementWithoutAXBaseline: \(allowClipboardSelectionFallback)
-            """,
-        )
-
-        if replaceSelection,
-           strictFallbackEnabled,
-           beforeSnapshot == nil,
-           !allowClipboardSelectionFallback
-        {
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] paste aborted because replacement target is not verifiable",
-            )
-            throw NSError(
-                domain: "AXTextInjector",
-                code: 3,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Replacement target is not a verifiable editable input.",
-                ],
-            )
-        }
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let vDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-        vDown?.flags = .maskCommand
-        let vUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
-        vUp?.flags = .maskCommand
-
-        switch dispatchMethod {
-        case .postToPid:
-            if let targetPID {
-                vDown?.postToPid(targetPID)
-                vUp?.postToPid(targetPID)
-            } else {
-                vDown?.post(tap: .cghidEventTap)
-                vUp?.post(tap: .cghidEventTap)
-            }
-        case .hidTap:
-            vDown?.post(tap: .cghidEventTap)
-            vUp?.post(tap: .cghidEventTap)
-        }
-
-        if allowClipboardSelectionFallback {
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] paste verification skipped because clipboard-backed selection cannot provide AX baseline",
-            )
-            restorePasteboardAfterPaste(
-                previousSnapshot,
-                delayNanoseconds: Self.unverifiedPasteRestoreDelayNanoseconds,
-            )
-            return
-        }
-
-        guard Self.shouldPerformStrictPasteVerification(
-            replaceSelection: replaceSelection,
-            strictFallbackEnabled: strictFallbackEnabled,
-        ) else {
-            NetworkDebugLogger.logMessage(
-                "[Text Injection] paste verification skipped (replaceSelection=\(replaceSelection), strictFallbackEnabled=\(strictFallbackEnabled))",
-            )
-            restorePasteboardAfterPaste(
-                previousSnapshot,
-                delayNanoseconds: Self.unverifiedPasteRestoreDelayNanoseconds,
-            )
-            return
-        }
-
-        try verifyPasteInsertion(
-            text: text,
-            replaceSelection: replaceSelection,
-            targetPID: targetPID,
-            beforeSnapshot: beforeSnapshot,
-            previousSnapshot: previousSnapshot,
-        )
-    }
-
-    private func verifyPasteInsertion(
-        text: String,
-        replaceSelection: Bool,
-        targetPID: pid_t?,
-        beforeSnapshot: CurrentInputTextSnapshot?,
-        previousSnapshot: PasteboardSnapshot,
-    ) throws {
-        var lastFailureReason: String?
-        for attempt in 0 ..< Self.pasteVerificationAttempts {
-            usleep(Self.pasteVerificationPollIntervalMicroseconds)
-            let afterSnapshot = readCurrentInputTextSnapshot()
-            let verification = Self.evaluatePasteVerification(
-                insertedText: text,
-                replaceSelection: replaceSelection,
-                targetProcessID: targetPID,
-                before: beforeSnapshot,
-                after: afterSnapshot,
-            )
-            NetworkDebugLogger.logMessage(
-                """
-                [Text Injection] paste verification attempt \(attempt + 1)
-                result: \(String(describing: verification))
-                baseline: \(beforeSnapshot.map(snapshotSummary) ?? "<nil>")
-                afterSnapshot: \(snapshotSummary(afterSnapshot))
-                """,
-            )
-
-            switch verification {
-            case .success:
-                restorePasteboardAfterPaste(
-                    previousSnapshot,
-                    delayNanoseconds: Self.verifiedPasteRestoreDelayNanoseconds,
-                )
-                return
-            case let .failure(reason):
-                lastFailureReason = reason
-                logger.debug(
-                    "paste verification failed on attempt \(attempt + 1, privacy: .public): \(reason, privacy: .public)",
-                )
-            case .indeterminate:
-                logger.debug("paste verification indeterminate on attempt \(attempt + 1, privacy: .public)")
-            }
-        }
-
-        restorePasteboardAfterPaste(
-            previousSnapshot,
-            delayNanoseconds: Self.unverifiedPasteRestoreDelayNanoseconds,
-        )
-
-        if let lastFailureReason {
-            let finalSnapshot = readCurrentInputTextSnapshot()
-            NetworkDebugLogger.logMessage(
-                """
-                [Text Injection] paste verification exhausted
-                lastFailureReason: \(lastFailureReason)
-                finalSnapshot: \(snapshotSummary(finalSnapshot))
-                """,
-            )
-            throw NSError(
-                domain: "AXTextInjector",
-                code: 2,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "Paste insertion could not be verified: \(lastFailureReason)",
-                ],
-            )
-        }
-    }
-
-    static func evaluatePasteVerification(
-        insertedText: String,
-        replaceSelection: Bool,
-        targetProcessID: pid_t?,
-        before: CurrentInputTextSnapshot?,
-        after: CurrentInputTextSnapshot,
-    ) -> PasteVerificationResult {
-        let normalizedInsertedText = insertedText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let targetProcessID, let afterProcessID = after.processID, targetProcessID != afterProcessID {
-            return .failure("focused-process-changed")
-        }
-
-        if let reason = after.failureReason, reason == "no-focused-element" {
-            return .failure(reason)
-        }
-
-        if let afterText = after.text {
-            let normalizedAfterText = afterText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if !normalizedInsertedText.isEmpty, normalizedAfterText.contains(normalizedInsertedText) {
-                return .success
-            }
-
-            if let beforeText = before?.text {
-                let normalizedBeforeText = beforeText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if normalizedBeforeText == normalizedAfterText {
-                    if !after.isFocusedTarget || before?.isFocusedTarget == false {
-                        return .indeterminate
-                    }
-                    return .failure("input-text-unchanged")
-                }
-            } else if replaceSelection,
-                      !normalizedInsertedText.isEmpty,
-                      normalizedAfterText != normalizedInsertedText
-            {
-                return .indeterminate
-            }
-        }
-
-        if let reason = after.failureReason,
-           reason == "focused-element-not-editable" || reason == "accessibility-not-trusted"
-        {
-            if !replaceSelection, before == nil {
-                return .indeterminate
-            }
-            return .failure(reason)
-        }
-
-        return .indeterminate
-    }
-
     func readSelectedTextViaCopy(processID: pid_t?, milliseconds: Int) -> String? {
-        let pasteboard = NSPasteboard.general
-        let previousSnapshot = capturePasteboardSnapshot(from: pasteboard)
-        let previousChangeCount = pasteboard.changeCount
+        let processScopedResult = readSelectedTextViaCopy(
+            milliseconds: milliseconds,
+            pasteboard: .general,
+            sendCopy: { sendCopyShortcut(to: processID) }
+        )
+        if let processScopedResult {
+            return processScopedResult
+        }
 
-        sendCopyShortcut(to: processID)
+        guard let processID, frontmostProcessID() == processID else { return nil }
+        NetworkDebugLogger.logMessage(
+            "[Text Selection] process-scoped copy did not respond; retrying through HID event tap"
+        )
+        return readSelectedTextViaCopy(
+            milliseconds: milliseconds,
+            pasteboard: .general,
+            sendCopy: { sendCopyShortcutViaHID() }
+        )
+    }
+
+    func readSelectedTextViaCopy(
+        milliseconds: Int,
+        pasteboard: NSPasteboard,
+        sendCopy: () -> Void
+    ) -> String? {
+        guard let previousSnapshot = capturePasteboardSnapshotWithTimeout(from: pasteboard) else {
+            NetworkDebugLogger.logMessage(
+                "[Text Selection] clipboard-copy skipped because the clipboard could not be preserved"
+            )
+            return nil
+        }
+        guard pasteboard.changeCount == previousSnapshot.changeCount else {
+            NetworkDebugLogger.logMessage(
+                "[Text Selection] clipboard-copy skipped because the clipboard changed before probing"
+            )
+            return nil
+        }
+
+        let probeType = NSPasteboard.PasteboardType("ai.gulu.app.typeflux.selection-probe")
+        pasteboard.clearContents()
+        guard pasteboard.setData(Data(UUID().uuidString.utf8), forType: probeType) else {
+            restorePasteboardIfUnchanged(
+                previousSnapshot,
+                to: pasteboard,
+                expectedChangeCount: pasteboard.changeCount
+            )
+            return nil
+        }
+
+        var transactionChangeCount = pasteboard.changeCount
+        defer {
+            restorePasteboardIfUnchanged(
+                previousSnapshot,
+                to: pasteboard,
+                expectedChangeCount: transactionChangeCount
+            )
+        }
+
+        sendCopy()
 
         let timeout = Date().addingTimeInterval(Double(milliseconds) / 1000.0)
         while Date() < timeout {
-            if pasteboard.changeCount != previousChangeCount {
-                let copiedText = pasteboard.string(forType: .string)
-                restorePasteboardAfterPaste(
-                    previousSnapshot,
-                    delayNanoseconds: Self.legacyPasteRestoreDelayNanoseconds,
-                )
+            if pasteboard.changeCount != transactionChangeCount {
+                transactionChangeCount = pasteboard.changeCount
+                let copiedText = readPasteboardStringWithTimeout(from: pasteboard)
                 let trimmed = copiedText?.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed?.isEmpty == false ? trimmed : nil
+                return trimmed?.isEmpty == false ? copiedText : nil
             }
             usleep(10000)
         }
 
-        restorePasteboardAfterPaste(
-            previousSnapshot,
-            delayNanoseconds: Self.legacyPasteRestoreDelayNanoseconds,
-        )
         return nil
     }
 
-    func activateTargetProcess(_ processID: pid_t?) {
-        guard let processID,
-              let app = NSRunningApplication(processIdentifier: processID)
-        else { return }
+    func restorePasteboardIfUnchanged(
+        _ snapshot: PasteboardSnapshot,
+        to pasteboard: NSPasteboard,
+        expectedChangeCount: Int
+    ) {
+        guard pasteboard.changeCount == expectedChangeCount else {
+            NetworkDebugLogger.logMessage(
+                "[Text Selection] clipboard restore skipped because it changed after probing"
+            )
+            return
+        }
+        restorePasteboard(snapshot, to: pasteboard)
+    }
 
-        app.activate(options: [.activateIgnoringOtherApps])
+    /// Pasteboard owners can provide data lazily and may block indefinitely. Read on a
+    /// dedicated serial queue so a broken provider cannot freeze Typeflux's main thread.
+    /// Once that queue is wedged, later reads still time out without creating more workers.
+    func readPasteboardStringWithTimeout(from pasteboard: NSPasteboard) -> String? {
+        let result = LockedPasteboardStringResult()
+        let completed = DispatchSemaphore(value: 0)
+        let pasteboardReference = UncheckedSendableReference(pasteboard)
+        pasteboardReadQueue.async {
+            result.store(pasteboardReference.value.string(forType: .string))
+            completed.signal()
+        }
+        guard completed.wait(
+            timeout: .now() + .milliseconds(Self.pasteboardReadTimeoutMilliseconds)
+        ) == .success else {
+            NetworkDebugLogger.logMessage("[Text Injection] pasteboard string read timed out")
+            return nil
+        }
+        return result.load()
+    }
 
-        let deadline = Date().addingTimeInterval(0.6)
-        while Date() < deadline {
-            usleep(50_000)
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == processID {
-                return
+    func sendCopyShortcut(to processID: pid_t?) {
+        postCopyShortcut { event in
+            if let processID {
+                event.postToPid(processID)
+            } else {
+                event.post(tap: .cghidEventTap)
             }
         }
     }
 
-    func sendCopyShortcut(to processID: pid_t?) {
+    func sendCopyShortcutViaHID() {
+        postCopyShortcut { $0.post(tap: .cghidEventTap) }
+    }
+
+    private func postCopyShortcut(post: (CGEvent) -> Void) {
         let source = CGEventSource(stateID: .combinedSessionState)
         let down = CGEvent(
             keyboardEventSource: source,
             virtualKey: Self.copyShortcutKeyCode,
-            keyDown: true,
+            keyDown: true
         )
         down?.flags = .maskCommand
         let up = CGEvent(
             keyboardEventSource: source,
             virtualKey: Self.copyShortcutKeyCode,
-            keyDown: false,
+            keyDown: false
         )
         up?.flags = .maskCommand
 
-        if let processID {
-            down?.postToPid(processID)
-            up?.postToPid(processID)
-        } else {
-            down?.post(tap: .cghidEventTap)
-            up?.post(tap: .cghidEventTap)
-        }
+        if let down { post(down) }
+        if let up { post(up) }
     }
 
-    func capturePasteboardSnapshot(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
-        let items = (pasteboard.pasteboardItems ?? []).map { item in
-            let representations = item.types.compactMap {
-                type -> (type: NSPasteboard.PasteboardType, data: Data)? in
-                guard let data = item.data(forType: type) else { return nil }
-                return (type: type, data: data)
-            }
-            return PasteboardItemSnapshot(representations: representations)
+    func capturePasteboardSnapshotWithTimeout(from pasteboard: NSPasteboard) -> PasteboardSnapshot? {
+        let result = LockedPasteboardSnapshotResult()
+        let completed = DispatchSemaphore(value: 0)
+        let pasteboardReference = UncheckedSendableReference(pasteboard)
+        pasteboardSnapshotQueue.async {
+            result.store(Self.capturePasteboardSnapshot(
+                from: pasteboardReference.value,
+                maximumBytes: Self.maximumPasteboardSnapshotBytes
+            ))
+            completed.signal()
         }
-        return PasteboardSnapshot(items: items)
+        guard completed.wait(
+            timeout: .now() + .milliseconds(Self.pasteboardSnapshotTimeoutMilliseconds)
+        ) == .success else {
+            NetworkDebugLogger.logMessage("[Text Injection] pasteboard snapshot timed out")
+            return nil
+        }
+        guard let snapshot = result.load() else {
+            NetworkDebugLogger.logMessage("[Text Injection] pasteboard snapshot exceeded size limit")
+            return nil
+        }
+        return snapshot
+    }
+
+    static func capturePasteboardSnapshot(
+        from pasteboard: NSPasteboard,
+        maximumBytes: Int
+    ) -> PasteboardSnapshot? {
+        guard maximumBytes >= 0 else { return nil }
+        let initialChangeCount = pasteboard.changeCount
+        var totalBytes = 0
+        var capturedItems: [PasteboardItemSnapshot] = []
+
+        for item in pasteboard.pasteboardItems ?? [] {
+            var representations: [(type: NSPasteboard.PasteboardType, data: Data)] = []
+            for type in item.types {
+                guard let data = item.data(forType: type) else { return nil }
+                guard data.count <= maximumBytes - totalBytes else { return nil }
+                totalBytes += data.count
+                representations.append((type: type, data: data))
+            }
+            capturedItems.append(PasteboardItemSnapshot(representations: representations))
+        }
+
+        guard pasteboard.changeCount == initialChangeCount else { return nil }
+        return PasteboardSnapshot(changeCount: initialChangeCount, items: capturedItems)
+    }
+
+    func writeTransientPasteboardString(_ text: String, to pasteboard: NSPasteboard) -> Bool {
+        let item = NSPasteboardItem()
+        guard item.setString(text, forType: .string),
+              item.setData(Data(), forType: Self.transientPasteboardType)
+        else { return false }
+
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([item])
     }
 
     func restorePasteboard(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) {
@@ -547,30 +220,4 @@ extension AXTextInjector {
         pasteboard.writeObjects(restoredItems)
     }
 
-    func restorePasteboardAfterPaste(
-        _ previousSnapshot: PasteboardSnapshot,
-        delayNanoseconds: UInt64,
-    ) {
-        let capturedChangeCount = NSPasteboard.general.changeCount
-        Task.detached {
-            try? await Task.sleep(nanoseconds: delayNanoseconds)
-            await MainActor.run {
-                let pasteboard = NSPasteboard.general
-                let currentChangeCount = pasteboard.changeCount
-                guard Self.shouldRestoreCapturedPasteboard(
-                    capturedChangeCount: capturedChangeCount,
-                    currentChangeCount: currentChangeCount,
-                ) else {
-                    NetworkDebugLogger.logMessage(
-                        "[Text Injection] pasteboard restore skipped; changeCount moved \(capturedChangeCount) → \(currentChangeCount)",
-                    )
-                    return
-                }
-                self.restorePasteboard(previousSnapshot, to: pasteboard)
-            }
-        }
-    }
 }
-
-// swiftlint:enable identifier_name line_length opening_brace trailing_comma
-// swiftlint:enable closure_parameter_position file_length function_body_length

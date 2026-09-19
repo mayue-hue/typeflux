@@ -1,7 +1,5 @@
 import Foundation
 
-// swiftlint:disable opening_brace trailing_comma
-
 /// Prompt catalog dedicated to the agent.
 enum AgentPromptCatalog {
     // MARK: - Phase 1: Router prompts
@@ -32,12 +30,11 @@ enum AgentPromptCatalog {
             - When you choose run_agent, write a detailed_instruction that: restates the goal precisely, resolves any
               implicit assumptions, and specifies the expected output format if relevant.
             """,
-            PromptCatalog.languageConsistencyRule(for: "user's request"),
+            PromptCatalog.languageConsistencyRule(for: "user's request")
         ]
 
         if let persona = personaPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !persona.isEmpty
-        {
+           !persona.isEmpty {
             parts.append(PromptCatalog.xmlSection(tag: "persona_definition", content: persona))
         }
 
@@ -49,14 +46,13 @@ enum AgentPromptCatalog {
         var parts: [String] = []
 
         if let selected = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !selected.isEmpty
-        {
+           !selected.isEmpty {
             parts.append(PromptCatalog.xmlSection(tag: "selected_text", content: selected))
         }
 
         parts.append(PromptCatalog.xmlSection(
             tag: "spoken_request",
-            content: instruction.trimmingCharacters(in: .whitespacesAndNewlines),
+            content: instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
 
         return parts.joined(separator: "\n\n")
@@ -89,12 +85,11 @@ enum AgentPromptCatalog {
               the current input field.
             - If unsure, prefer answer_text over edit_text.
             """,
-            PromptCatalog.languageConsistencyRule(for: "task_instruction and original_request"),
+            PromptCatalog.languageConsistencyRule(for: "task_instruction and original_request")
         ]
 
         if let persona = personaPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !persona.isEmpty
-        {
+           !persona.isEmpty {
             parts.append(PromptCatalog.xmlSection(tag: "persona_definition", content: persona))
         }
 
@@ -109,28 +104,25 @@ enum AgentPromptCatalog {
     static func agentUserPrompt(
         selectedText: String?,
         spokenInstruction: String,
-        detailedInstruction: String,
+        detailedInstruction: String
     ) -> String {
         var parts: [String] = []
 
         parts.append(PromptCatalog.xmlSection(
             tag: "task_instruction",
-            content: detailedInstruction.trimmingCharacters(in: .whitespacesAndNewlines),
+            content: detailedInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
 
         parts.append(PromptCatalog.xmlSection(
             tag: "original_request",
-            content: spokenInstruction.trimmingCharacters(in: .whitespacesAndNewlines),
+            content: spokenInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
 
         if let selected = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !selected.isEmpty
-        {
+           !selected.isEmpty {
             parts.append(PromptCatalog.xmlSection(tag: "selected_text", content: selected))
         }
 
         return parts.joined(separator: "\n\n")
     }
 }
-
-// swiftlint:enable opening_brace trailing_comma

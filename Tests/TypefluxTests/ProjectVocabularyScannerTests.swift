@@ -10,11 +10,11 @@ final class ProjectVocabularyScannerTests: XCTestCase {
 
         try FileManager.default.createDirectory(
             at: codexRoot.appendingPathComponent("projects/typeflux", isDirectory: true),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try FileManager.default.createDirectory(
             at: claudeRoot.appendingPathComponent("projects/whisperkit", isDirectory: true),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
 
         defer {
@@ -49,11 +49,11 @@ final class ProjectVocabularyScannerTests: XCTestCase {
     func testCandidateTermsAllowsPathBasedLowercaseIdentifiersButFiltersPlainLowercaseText() {
         let pathTerms = ProjectVocabularyScanner.candidateTerms(
             in: "projects/typeflux/workspace-config",
-            allowPlainLowercase: true,
+            allowPlainLowercase: true
         )
         let contentTerms = ProjectVocabularyScanner.candidateTerms(
             in: "plain lowercase words should stay out",
-            allowPlainLowercase: false,
+            allowPlainLowercase: false
         )
 
         XCTAssertTrue(pathTerms.contains("typeflux"))

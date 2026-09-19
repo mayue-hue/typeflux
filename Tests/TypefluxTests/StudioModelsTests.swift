@@ -50,12 +50,12 @@ final class StudioModelsTests: XCTestCase {
 
     func testSidebarUpperCases() {
         let upper = StudioSection.sidebarUpperCases
-        XCTAssertEqual(upper, [.home, .vocabulary, .history])
+        XCTAssertEqual(upper, [.home, .vocabulary, .history, .models, .personas, .agent])
     }
 
     func testSidebarLowerCases() {
         let lower = StudioSection.sidebarLowerCases
-        XCTAssertEqual(lower, [.models, .personas])
+        XCTAssertTrue(lower.isEmpty)
     }
 
     func testSubheadingNilForCertainSections() {
@@ -121,7 +121,7 @@ final class StudioModelsTests: XCTestCase {
     func testSTTProvidersDomain() {
         let sttProviders: [StudioModelProviderID] = [
             .appleSpeech, .localSTT, .freeSTT, .whisperAPI, .multimodalLLM, .aliCloud, .doubaoRealtime,
-            .googleCloud,
+            .googleCloud
         ]
         for provider in sttProviders {
             XCTAssertEqual(provider.domain, .stt, "\(provider) should be in STT domain")
@@ -131,7 +131,7 @@ final class StudioModelsTests: XCTestCase {
     func testLLMProvidersDomain() {
         let llmProviders: [StudioModelProviderID] = [
             .ollama, .freeModel, .customLLM, .openRouter, .openAI, .anthropic, .gemini,
-            .deepSeek, .kimi, .qwen, .zhipu, .minimax, .grok, .xiaomi,
+            .deepSeek, .kimi, .qwen, .zhipu, .minimax, .grok, .xiaomi
         ]
         for provider in llmProviders {
             XCTAssertEqual(provider.domain, .llm, "\(provider) should be in LLM domain")
@@ -178,7 +178,7 @@ final class StudioModelsTests: XCTestCase {
             id: "test",
             title: "Latency",
             value: "120ms",
-            style: .duration,
+            style: .duration
         )
         XCTAssertEqual(item.id, "test")
         XCTAssertEqual(item.title, "Latency")
@@ -196,7 +196,7 @@ final class StudioModelsTests: XCTestCase {
             metadata: "v3",
             isSelected: true,
             isMuted: false,
-            actionTitle: "Select",
+            actionTitle: "Select"
         )
         XCTAssertEqual(card.id, "whisper")
         XCTAssertTrue(card.isSelected)
@@ -232,7 +232,7 @@ extension StudioModelsTests {
     func testSTTProvidersDomainIsSTT() {
         let sttProviders: [StudioModelProviderID] = [
             .whisperAPI, .appleSpeech, .localSTT, .doubaoRealtime, .aliCloud, .freeSTT, .multimodalLLM,
-            .googleCloud,
+            .googleCloud
         ]
         for provider in sttProviders {
             XCTAssertEqual(provider.domain, .stt, "\(provider) should be in STT domain")
@@ -241,7 +241,7 @@ extension StudioModelsTests {
 
     func testLLMProvidersDomainIsLLM() {
         let llmProviders: [StudioModelProviderID] = [
-            .openAI, .anthropic, .gemini, .deepSeek, .kimi,
+            .openAI, .anthropic, .gemini, .deepSeek, .kimi
         ]
         for provider in llmProviders {
             XCTAssertEqual(provider.domain, .llm, "\(provider) should be in LLM domain")
@@ -252,10 +252,10 @@ extension StudioModelsTests {
 
     func testPipelineStatItemEquality() {
         let item1 = HistoryPipelineStatPresentationItem(
-            id: "latency", title: "Latency", value: "100ms", style: .duration,
+            id: "latency", title: "Latency", value: "100ms", style: .duration
         )
         let item2 = HistoryPipelineStatPresentationItem(
-            id: "latency", title: "Latency", value: "100ms", style: .duration,
+            id: "latency", title: "Latency", value: "100ms", style: .duration
         )
         XCTAssertEqual(item1.id, item2.id)
         XCTAssertEqual(item1.title, item2.title)
@@ -264,10 +264,10 @@ extension StudioModelsTests {
 
     func testPipelineStatItemStyles() {
         let durationItem = HistoryPipelineStatPresentationItem(
-            id: "d", title: "Duration", value: "500ms", style: .duration,
+            id: "d", title: "Duration", value: "500ms", style: .duration
         )
         let timestampItem = HistoryPipelineStatPresentationItem(
-            id: "t", title: "Timestamp", value: "12:00", style: .timestamp,
+            id: "t", title: "Timestamp", value: "12:00", style: .timestamp
         )
         XCTAssertEqual(durationItem.style, .duration)
         XCTAssertEqual(timestampItem.style, .timestamp)
@@ -284,7 +284,7 @@ extension StudioModelsTests {
             metadata: "",
             isSelected: false,
             isMuted: false,
-            actionTitle: "Use",
+            actionTitle: "Use"
         )
         XCTAssertFalse(card.isSelected)
         XCTAssertFalse(card.isMuted)
@@ -301,7 +301,7 @@ extension StudioModelsTests {
             metadata: "",
             isSelected: false,
             isMuted: true,
-            actionTitle: "Configure",
+            actionTitle: "Configure"
         )
         XCTAssertTrue(card.isMuted)
         XCTAssertTrue(card.badge.isEmpty)

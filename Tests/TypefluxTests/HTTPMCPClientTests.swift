@@ -14,13 +14,13 @@ final class HTTPMCPClientTests: XCTestCase {
         MockMCPURLProtocol.requestHandler = { request in
             let headers = [
                 "Content-Type": "application/json",
-                "MCP-Session-Id": "session-123",
+                "MCP-Session-Id": "session-123"
             ]
             let response = try HTTPURLResponse(
                 url: XCTUnwrap(request.url),
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: headers,
+                headerFields: headers
             )!
             let body = """
             {"jsonrpc":"2.0","id":"1","result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"Mock MCP","version":"1.0.0"}}}
@@ -30,7 +30,7 @@ final class HTTPMCPClientTests: XCTestCase {
 
         let client = try HTTPMCPClient(config: MCPHTTPConfig(
             url: XCTUnwrap(URL(string: "https://example.com/mcp")),
-            urlSession: makeMockSession(),
+            urlSession: makeMockSession()
         ))
 
         try await client.connect()
@@ -53,8 +53,8 @@ final class HTTPMCPClientTests: XCTestCase {
                     httpVersion: nil,
                     headerFields: [
                         "Content-Type": "application/json",
-                        "MCP-Session-Id": "session-456",
-                    ],
+                        "MCP-Session-Id": "session-456"
+                    ]
                 )!
                 body = """
                 {"jsonrpc":"2.0","id":"1","result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"Mock MCP","version":"1.0.0"}}}
@@ -64,7 +64,7 @@ final class HTTPMCPClientTests: XCTestCase {
                     url: XCTUnwrap(request.url),
                     statusCode: 200,
                     httpVersion: nil,
-                    headerFields: ["Content-Type": "application/json"],
+                    headerFields: ["Content-Type": "application/json"]
                 )!
                 body = """
                 {"jsonrpc":"2.0","id":"2","result":{"tools":[]}}
@@ -75,7 +75,7 @@ final class HTTPMCPClientTests: XCTestCase {
 
         let client = try HTTPMCPClient(config: MCPHTTPConfig(
             url: XCTUnwrap(URL(string: "https://example.com/mcp")),
-            urlSession: makeMockSession(),
+            urlSession: makeMockSession()
         ))
 
         try await client.connect()
@@ -96,8 +96,8 @@ final class HTTPMCPClientTests: XCTestCase {
                 httpVersion: nil,
                 headerFields: [
                     "Content-Type": "text/event-stream",
-                    "MCP-Session-Id": "session-sse",
-                ],
+                    "MCP-Session-Id": "session-sse"
+                ]
             )!
             let body = """
             event: message
@@ -110,7 +110,7 @@ final class HTTPMCPClientTests: XCTestCase {
 
         let client = try HTTPMCPClient(config: MCPHTTPConfig(
             url: XCTUnwrap(URL(string: "https://example.com/mcp")),
-            urlSession: makeMockSession(),
+            urlSession: makeMockSession()
         ))
 
         try await client.connect()

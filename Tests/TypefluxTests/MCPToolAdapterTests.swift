@@ -12,7 +12,7 @@ actor MockMCPClient: MCPClient {
     var mockTools: [MCPToolDefinition] = []
     var mockCallResult: MCPToolsCallResult = .init(
         content: [MCPContentBlock(type: "text", text: "mock result")],
-        isError: false,
+        isError: false
     )
     var shouldFailConnect = false
     var connected = false
@@ -21,7 +21,7 @@ actor MockMCPClient: MCPClient {
         connected ? MCPConnectionInfo(
             name: "MockServer",
             protocolVersion: "2024-11-05",
-            capabilities: MCPServerCapabilities(tools: nil),
+            capabilities: MCPServerCapabilities(tools: nil)
         ) : nil
     }
 
@@ -75,8 +75,8 @@ final class MCPToolAdapterTests: XCTestCase {
                 properties: ["query": AnyCodable(["type": "string"])],
                 required: ["query"],
                 description: nil,
-                additionalProperties: nil,
-            ),
+                additionalProperties: nil
+            )
         )
     }
 
@@ -114,7 +114,7 @@ final class MCPToolAdapterTests: XCTestCase {
         try await client.connect()
         await client.setMockCallResult(MCPToolsCallResult(
             content: [MCPContentBlock(type: "text", text: "something failed")],
-            isError: true,
+            isError: true
         ))
         let toolDef = makeMockTool()
         let adapter = MCPToolAdapter(client: client, toolDef: toolDef)

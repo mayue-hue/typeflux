@@ -164,9 +164,10 @@ final class FeedbackAPIServiceTests: XCTestCase {
             XCTAssertEqual(request.url?.absoluteString, "https://s3.example/upload")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.value(forHTTPHeaderField: "x-amz-meta-purpose"), "feedback")
-            XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data; boundary=") == true)
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?
+                .contains("multipart/form-data; boundary=") == true)
 
-            let body = String(data: try XCTUnwrap(request.httpBody), encoding: .utf8)
+            let body = try String(data: XCTUnwrap(request.httpBody), encoding: .utf8)
             XCTAssertTrue(body?.contains("name=\"key\"") == true)
             XCTAssertTrue(body?.contains("feedback/screen.jpg") == true)
             XCTAssertTrue(body?.contains("name=\"file\"; filename=\"screen.jpg\"") == true)
@@ -205,7 +206,8 @@ final class FeedbackAPIServiceTests: XCTestCase {
             XCTAssertEqual(request.httpMethod, "PUT")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "image/jpeg")
             XCTAssertEqual(request.httpBody, Data("image-data".utf8))
-            XCTAssertFalse(String(data: try XCTUnwrap(request.httpBody), encoding: .utf8)?.contains("multipart/form-data") == true)
+            XCTAssertFalse(try String(data: XCTUnwrap(request.httpBody), encoding: .utf8)?
+                .contains("multipart/form-data") == true)
 
             return (Data(), Self.httpResponse(url: request.url!, status: 200))
         }
@@ -396,7 +398,7 @@ final class FeedbackAPIServiceTests: XCTestCase {
             _ = try await FeedbackAPIService.submit(content: "Please fix this", contact: nil, executor: executor)
             XCTFail("Expected network error")
         } catch let error as FeedbackAPIError {
-            guard case .networkError(let message) = error else {
+            guard case let .networkError(message) = error else {
                 XCTFail("Expected network error, got \(error)")
                 return
             }
@@ -405,7 +407,7 @@ final class FeedbackAPIServiceTests: XCTestCase {
     }
 
     func testSubmitFailsOverAfterHTTP500() async throws {
-        let fallbackURL = URL(string: "https://api-fallback.example")!
+        let fallbackURL = try XCTUnwrap(URL(string: "https://api-fallback.example"))
         let session = FeedbackStubSession()
         await session.setHandler { request in
             if request.url?.host == "api.example" {
@@ -462,7 +464,7 @@ private actor FeedbackStubSession: CloudHTTPSession {
 }
 
 private struct FeedbackNoOpProber: CloudEndpointProbing {
-    func probe(baseURL: URL, nonce: String, timeout: TimeInterval) async throws -> CloudEndpointProbeResult {
+    func probe(baseURL _: URL, nonce _: String, timeout _: TimeInterval) async throws -> CloudEndpointProbeResult {
         CloudEndpointProbeResult(latencyMs: 1, serverID: nil, serverVersion: nil, nonceMatches: true)
     }
 }

@@ -66,8 +66,69 @@ struct LoginResponse: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
+        case accessTokenCamel = "accessToken"
         case expiresAt = "expires_at"
+        case expiresAtCamel = "expiresAt"
+        case expiresIn = "expires_in"
+        case expiresInCamel = "expiresIn"
         case refreshToken = "refresh_token"
+        case refreshTokenCamel = "refreshToken"
+    }
+
+    init(accessToken: String, expiresAt: Int, refreshToken: String?) {
+        self.accessToken = accessToken
+        self.expiresAt = expiresAt
+        self.refreshToken = refreshToken
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accessToken = try container.decodeFirstString(for: [.accessToken, .accessTokenCamel])
+        expiresAt = try container.decodeFirstInt(for: [.expiresAt, .expiresAtCamel, .expiresIn, .expiresInCamel])
+        refreshToken = try container.decodeFirstStringIfPresent(for: [.refreshToken, .refreshTokenCamel])
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFirstString(for keys: [Key]) throws -> String {
+        for key in keys where contains(key) {
+            return try decode(String.self, forKey: key)
+        }
+        throw DecodingError.keyNotFound(
+            keys[0],
+            DecodingError.Context(
+                codingPath: codingPath,
+                debugDescription: "Expected one of \(keys.map(\.stringValue))"
+            )
+        )
+    }
+
+    func decodeFirstStringIfPresent(for keys: [Key]) throws -> String? {
+        for key in keys where contains(key) {
+            return try decodeIfPresent(String.self, forKey: key)
+        }
+        return nil
+    }
+
+    func decodeFirstInt(for keys: [Key]) throws -> Int {
+        for key in keys where contains(key) {
+            if let value = try? decode(Int.self, forKey: key) {
+                return value
+            }
+            if let value = try? decode(Double.self, forKey: key) {
+                return Int(value)
+            }
+            if let value = try? decode(String.self, forKey: key), let intValue = Int(value) {
+                return intValue
+            }
+        }
+        throw DecodingError.keyNotFound(
+            keys[0],
+            DecodingError.Context(
+                codingPath: codingPath,
+                debugDescription: "Expected one of \(keys.map(\.stringValue))"
+            )
+        )
     }
 }
 
@@ -195,9 +256,9 @@ enum AuthError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .networkError(let error):
+        case let .networkError(error):
             error.localizedDescription
-        case .serverError(let code, let message):
+        case let .serverError(code, message):
             TypefluxCloudServerErrorMessage.userMessage(
                 code: code,
                 message: message,
@@ -212,7 +273,7 @@ enum AuthError: LocalizedError {
 
     var authErrorCode: String? {
         switch self {
-        case .serverError(let code, _):
+        case let .serverError(code, _):
             code
         default:
             nil

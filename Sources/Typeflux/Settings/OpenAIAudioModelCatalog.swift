@@ -6,33 +6,33 @@ enum OpenAIAudioModelCatalog {
     static let xAIWhisperModel = "whisper-1"
 
     static let whisperEndpoints = [
-        defaultWhisperEndpoint,
+        defaultWhisperEndpoint
     ]
 
     static let whisperModels = [
         defaultWhisperModel,
         "gpt-4o-mini-transcribe",
-        "whisper-1",
+        "whisper-1"
     ]
 
     static let xAIWhisperModels = [
-        xAIWhisperModel,
+        xAIWhisperModel
     ]
 
     static let groqWhisperModels = [
         "whisper-large-v3-turbo",
-        "whisper-large-v3",
+        "whisper-large-v3"
     ]
 
     static let multimodalEndpoints = [
         "https://api.openai.com/v1/chat/completions",
-        "https://api.xiaomimimo.com/v1/chat/completions",
+        "https://api.xiaomimimo.com/v1/chat/completions"
     ]
 
     static let multimodalModels = [
         "gpt-4o-audio-preview",
         "gpt-4o-mini-audio-preview",
-        "mimo-v2-omni",
+        "mimo-v2-omni"
     ]
 
     static func resolvedWhisperEndpoint(_ value: String) -> String {

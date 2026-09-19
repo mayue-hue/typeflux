@@ -10,18 +10,21 @@ final class LLMRewriteRequestTests: XCTestCase {
         XCTAssertFalse(editSelection == rewriteTranscript)
     }
 
-    func testCanCreateRequestWithAllParameters() {
+    func testCanCreateRequestWithAllParameters() throws {
+        let personaID = try XCTUnwrap(UUID(uuidString: "2A7A4A74-A8AC-4F3C-9FB1-5A433EDFA001"))
         let request = LLMRewriteRequest(
             mode: .editSelection,
             sourceText: "source",
             spokenInstruction: "make it better",
             personaPrompt: "formal tone",
-            vocabularyTerms: ["Typeflux"],
+            personaID: personaID,
+            vocabularyTerms: ["Typeflux"]
         )
 
         XCTAssertEqual(request.sourceText, "source")
         XCTAssertEqual(request.spokenInstruction, "make it better")
         XCTAssertEqual(request.personaPrompt, "formal tone")
+        XCTAssertEqual(request.personaID, personaID)
         XCTAssertEqual(request.vocabularyTerms, ["Typeflux"])
     }
 
@@ -30,12 +33,13 @@ final class LLMRewriteRequestTests: XCTestCase {
             mode: .rewriteTranscript,
             sourceText: "raw text",
             spokenInstruction: nil,
-            personaPrompt: nil,
+            personaPrompt: nil
         )
 
         XCTAssertEqual(request.sourceText, "raw text")
         XCTAssertNil(request.spokenInstruction)
         XCTAssertNil(request.personaPrompt)
+        XCTAssertNil(request.personaID)
         XCTAssertTrue(request.vocabularyTerms.isEmpty)
     }
 
@@ -48,14 +52,14 @@ final class LLMRewriteRequestTests: XCTestCase {
             isFocusedTarget: true,
             prefix: "Project Apollo will ship",
             suffix: "after QA signs off",
-            selectedText: nil,
+            selectedText: nil
         )
         let request = LLMRewriteRequest(
             mode: .rewriteTranscript,
             sourceText: "next Friday",
             spokenInstruction: nil,
             personaPrompt: nil,
-            inputContext: inputContext,
+            inputContext: inputContext
         )
 
         let prompts = PromptCatalog.rewritePrompts(for: request)
@@ -65,9 +69,11 @@ final class LLMRewriteRequestTests: XCTestCase {
         XCTAssertTrue(prompts.user.contains("<metadata>"))
         XCTAssertTrue(prompts.user.contains("<app_name>\nNotes\n</app_name>"))
         XCTAssertTrue(prompts.user.contains("<active_text>"))
-        XCTAssertTrue(prompts.user.contains("<text_before_cursor><![CDATA[\nProject Apollo will ship\n]]></text_before_cursor>"))
+        XCTAssertTrue(prompts.user
+            .contains("<text_before_cursor><![CDATA[\nProject Apollo will ship\n]]></text_before_cursor>"))
         XCTAssertTrue(prompts.user.contains("<cursor />"))
-        XCTAssertTrue(prompts.user.contains("<text_after_cursor><![CDATA[\nafter QA signs off\n]]></text_after_cursor>"))
+        XCTAssertTrue(prompts.user
+            .contains("<text_after_cursor><![CDATA[\nafter QA signs off\n]]></text_after_cursor>"))
         XCTAssertTrue(prompts.user.contains("Project Apollo will ship"))
         XCTAssertTrue(prompts.user.contains("after QA signs off"))
     }
@@ -81,14 +87,14 @@ final class LLMRewriteRequestTests: XCTestCase {
             isFocusedTarget: true,
             prefix: "before",
             suffix: "after",
-            selectedText: "selected",
+            selectedText: "selected"
         )
         let request = LLMRewriteRequest(
             mode: .rewriteTranscript,
             sourceText: "replacement",
             spokenInstruction: nil,
             personaPrompt: nil,
-            inputContext: inputContext,
+            inputContext: inputContext
         )
 
         let prompts = PromptCatalog.rewritePrompts(for: request)

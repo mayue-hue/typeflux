@@ -6,3 +6,6 @@ coverage.lcov
 .xcode-derived/
 .xcode-app-derived/
 *.local
+.agents
+.github/agents/
+.n8nac/

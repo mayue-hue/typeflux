@@ -18,7 +18,7 @@ enum StudioTheme {
         static let contentInset: CGFloat = 24
         static let settingsWindowWidth: CGFloat = 1100
         static let settingsWindowHeight: CGFloat = 800
-        static let settingsWindowMinWidth: CGFloat = 1080
+        static let settingsWindowMinWidth: CGFloat = 1100
         static let settingsWindowMinHeight: CGFloat = 620
         static let overlayWidth: CGFloat = 320
         static let overlayHeight: CGFloat = 92
@@ -270,45 +270,143 @@ enum StudioTheme {
     static let contentMaxWidth = Layout.contentMaxWidth
     static let contentInset = Layout.contentInset
 
-    static let sidebarSelection = dynamic(light: NSColor(calibratedWhite: 0.92, alpha: 0.72), dark: NSColor(calibratedWhite: 1.0, alpha: 0.11))
-    static let accent = dynamic(light: NSColor(calibratedRed: 0.18, green: 0.43, blue: 0.94, alpha: 1), dark: NSColor(calibratedRed: 0.09, green: 0.55, blue: 1.00, alpha: 1))
-    static let accentSoft = dynamic(light: NSColor(calibratedRed: 0.89, green: 0.94, blue: 1.0, alpha: 0.92), dark: NSColor(calibratedWhite: 0.175, alpha: 0.78))
-    static let windowBackground = dynamic(light: NSColor(calibratedWhite: 0.96, alpha: 0.34), dark: NSColor(calibratedWhite: 0.058, alpha: 0.76))
-    static let background = dynamic(light: NSColor(calibratedWhite: 0.96, alpha: 0.34), dark: NSColor(calibratedWhite: 0.058, alpha: 0.76))
-    static let modalSurface = dynamic(light: NSColor(calibratedWhite: 0.94, alpha: 0.96), dark: NSColor(calibratedWhite: 0.086, alpha: 0.94))
-    static let shellSurface = dynamic(light: NSColor(calibratedWhite: 0.99, alpha: 0.72), dark: NSColor(calibratedWhite: 0.118, alpha: 0.70))
+    static let sidebarSelection = dynamic(
+        light: NSColor(calibratedWhite: 0.92, alpha: 0.72),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.11)
+    )
+    static let accent = dynamic(
+        light: NSColor(calibratedRed: 0.18, green: 0.43, blue: 0.94, alpha: 1),
+        dark: NSColor(calibratedRed: 0.09, green: 0.55, blue: 1.00, alpha: 1)
+    )
+    static let accentSoft = dynamic(
+        light: NSColor(calibratedRed: 0.89, green: 0.94, blue: 1.0, alpha: 0.92),
+        dark: NSColor(calibratedWhite: 0.175, alpha: 0.78)
+    )
+    static let windowBackground = dynamic(
+        light: NSColor(calibratedWhite: 0.96, alpha: 0.34),
+        dark: NSColor(calibratedWhite: 0.058, alpha: 0.76)
+    )
+    static let background = dynamic(
+        light: NSColor(calibratedWhite: 0.96, alpha: 0.34),
+        dark: NSColor(calibratedWhite: 0.058, alpha: 0.76)
+    )
+    static let modalSurface = dynamic(
+        light: NSColor(calibratedWhite: 0.94, alpha: 0.96),
+        dark: NSColor(calibratedWhite: 0.086, alpha: 0.94)
+    )
+    static let shellSurface = dynamic(
+        light: NSColor(calibratedWhite: 0.99, alpha: 0.72),
+        dark: NSColor(calibratedWhite: 0.118, alpha: 0.70)
+    )
     static let sidebar = windowBackground
-    static let surface = dynamic(light: NSColor(calibratedWhite: 0.995, alpha: 0.94), dark: NSColor(calibratedWhite: 0.128, alpha: 0.62))
-    static let cardSurface = dynamic(light: NSColor(calibratedWhite: 0.985, alpha: 0.94), dark: NSColor(calibratedWhite: 0.162, alpha: 0.50))
-    static let surfaceMuted = dynamic(light: NSColor(calibratedRed: 0.955, green: 0.965, blue: 0.982, alpha: 0.84), dark: NSColor(calibratedWhite: 0.180, alpha: 0.52))
-    static let controlSurface = dynamic(light: NSColor(calibratedWhite: 0.965, alpha: 0.90), dark: NSColor(calibratedWhite: 0.214, alpha: 0.58))
-    static let rowSurface = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.92), dark: NSColor(calibratedWhite: 0.148, alpha: 0.72))
-    static let selectionSurface = dynamic(light: NSColor(calibratedRed: 0.95, green: 0.965, blue: 0.988, alpha: 0.94), dark: NSColor(calibratedWhite: 0.212, alpha: 0.76))
-    static let selectionSurfaceRaised = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.96), dark: NSColor(calibratedWhite: 0.310, alpha: 0.90))
-    static let localModelOptionSurface = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.86), dark: NSColor(calibratedWhite: 0.198, alpha: 0.62))
-    static let segmentedTrack = dynamic(light: NSColor(calibratedWhite: 0.94, alpha: 0.84), dark: NSColor(calibratedWhite: 1.0, alpha: 0.075))
-    static let iconTileSurface = dynamic(light: NSColor(calibratedRed: 0.90, green: 0.94, blue: 1.0, alpha: 0.74), dark: NSColor(calibratedWhite: 0.245, alpha: 0.62))
-    static let border = dynamic(light: NSColor(calibratedRed: 0.38, green: 0.45, blue: 0.56, alpha: 0.14), dark: NSColor(calibratedWhite: 1.0, alpha: 0.115))
-    static let textPrimary = dynamic(light: NSColor(calibratedWhite: 0.08, alpha: 1), dark: NSColor(calibratedWhite: 0.935, alpha: 1))
-    static let textSecondary = dynamic(light: NSColor(calibratedWhite: 0.28, alpha: 1), dark: NSColor(calibratedWhite: 0.720, alpha: 1))
-    static let textTertiary = dynamic(light: NSColor(calibratedWhite: 0.40, alpha: 1), dark: NSColor(calibratedWhite: 0.560, alpha: 1))
-    static let success = dynamic(light: NSColor(calibratedRed: 0.12, green: 0.67, blue: 0.39, alpha: 1), dark: NSColor(calibratedRed: 0.16, green: 0.78, blue: 0.43, alpha: 1))
-    static let warning = dynamic(light: NSColor(calibratedRed: 0.93, green: 0.36, blue: 0.18, alpha: 1), dark: NSColor(calibratedRed: 0.92, green: 0.50, blue: 0.24, alpha: 1))
-    static let danger = dynamic(light: NSColor(calibratedRed: 0.85, green: 0.22, blue: 0.22, alpha: 1), dark: NSColor(calibratedRed: 0.86, green: 0.32, blue: 0.32, alpha: 1))
-    static let tooltipBackground = dynamic(light: NSColor(calibratedWhite: 0.12, alpha: 1), dark: NSColor(calibratedRed: 0.139, green: 0.143, blue: 0.147, alpha: 1))
-    static let glassTint = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.40), dark: NSColor(calibratedWhite: 1.0, alpha: 0.075))
-    static let glassScrim = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.36), dark: NSColor(calibratedWhite: 0.086, alpha: 0.62))
-    static let glassStrokeHighlight = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.86), dark: NSColor(calibratedWhite: 1.0, alpha: 0.18))
-    static let glassStrokeShadow = dynamic(light: NSColor(calibratedRed: 0.50, green: 0.58, blue: 0.70, alpha: 0.10), dark: NSColor(calibratedWhite: 0.0, alpha: 0.34))
-    static let glassInnerHighlight = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.62), dark: NSColor(calibratedWhite: 1.0, alpha: 0.12))
-    static let windowHighlight = dynamic(light: NSColor(calibratedWhite: 1.0, alpha: 0.38), dark: NSColor(calibratedWhite: 1.0, alpha: 0.035))
-    static let shadow = dynamic(light: NSColor(calibratedRed: 0.36, green: 0.43, blue: 0.56, alpha: 0.18), dark: NSColor(calibratedWhite: 0.0, alpha: 0.34))
+    static let surface = dynamic(
+        light: NSColor(calibratedWhite: 0.995, alpha: 0.94),
+        dark: NSColor(calibratedWhite: 0.128, alpha: 0.62)
+    )
+    static let cardSurface = dynamic(
+        light: NSColor(calibratedWhite: 0.985, alpha: 0.94),
+        dark: NSColor(calibratedWhite: 0.162, alpha: 0.50)
+    )
+    static let surfaceMuted = dynamic(
+        light: NSColor(calibratedRed: 0.955, green: 0.965, blue: 0.982, alpha: 0.84),
+        dark: NSColor(calibratedWhite: 0.180, alpha: 0.52)
+    )
+    static let controlSurface = dynamic(
+        light: NSColor(calibratedWhite: 0.965, alpha: 0.90),
+        dark: NSColor(calibratedWhite: 0.214, alpha: 0.58)
+    )
+    static let rowSurface = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.92),
+        dark: NSColor(calibratedWhite: 0.148, alpha: 0.72)
+    )
+    static let selectionSurface = dynamic(
+        light: NSColor(calibratedRed: 0.95, green: 0.965, blue: 0.988, alpha: 0.94),
+        dark: NSColor(calibratedWhite: 0.212, alpha: 0.76)
+    )
+    static let selectionSurfaceRaised = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.96),
+        dark: NSColor(calibratedWhite: 0.310, alpha: 0.90)
+    )
+    static let localModelOptionSurface = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.86),
+        dark: NSColor(calibratedWhite: 0.198, alpha: 0.62)
+    )
+    static let segmentedTrack = dynamic(
+        light: NSColor(calibratedWhite: 0.94, alpha: 0.84),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.075)
+    )
+    static let iconTileSurface = dynamic(
+        light: NSColor(calibratedRed: 0.90, green: 0.94, blue: 1.0, alpha: 0.74),
+        dark: NSColor(calibratedWhite: 0.245, alpha: 0.62)
+    )
+    static let modelProviderIconPlate = Color.white
+    static let modelProviderFallbackSymbol = Color.black.opacity(0.72)
+    static let border = dynamic(
+        light: NSColor(calibratedRed: 0.38, green: 0.45, blue: 0.56, alpha: 0.14),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.115)
+    )
+    static let textPrimary = dynamic(
+        light: NSColor(calibratedWhite: 0.08, alpha: 1),
+        dark: NSColor(calibratedWhite: 0.935, alpha: 1)
+    )
+    static let textSecondary = dynamic(
+        light: NSColor(calibratedWhite: 0.28, alpha: 1),
+        dark: NSColor(calibratedWhite: 0.720, alpha: 1)
+    )
+    static let textTertiary = dynamic(
+        light: NSColor(calibratedWhite: 0.40, alpha: 1),
+        dark: NSColor(calibratedWhite: 0.560, alpha: 1)
+    )
+    static let success = dynamic(
+        light: NSColor(calibratedRed: 0.12, green: 0.67, blue: 0.39, alpha: 1),
+        dark: NSColor(calibratedRed: 0.16, green: 0.78, blue: 0.43, alpha: 1)
+    )
+    static let warning = dynamic(
+        light: NSColor(calibratedRed: 0.93, green: 0.36, blue: 0.18, alpha: 1),
+        dark: NSColor(calibratedRed: 0.92, green: 0.50, blue: 0.24, alpha: 1)
+    )
+    static let danger = dynamic(
+        light: NSColor(calibratedRed: 0.85, green: 0.22, blue: 0.22, alpha: 1),
+        dark: NSColor(calibratedRed: 0.86, green: 0.32, blue: 0.32, alpha: 1)
+    )
+    static let tooltipBackground = dynamic(
+        light: NSColor(calibratedWhite: 0.12, alpha: 1),
+        dark: NSColor(calibratedRed: 0.139, green: 0.143, blue: 0.147, alpha: 1)
+    )
+    static let glassTint = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.40),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.075)
+    )
+    static let glassScrim = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.36),
+        dark: NSColor(calibratedWhite: 0.086, alpha: 0.62)
+    )
+    static let glassStrokeHighlight = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.86),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.18)
+    )
+    static let glassStrokeShadow = dynamic(
+        light: NSColor(calibratedRed: 0.50, green: 0.58, blue: 0.70, alpha: 0.10),
+        dark: NSColor(calibratedWhite: 0.0, alpha: 0.34)
+    )
+    static let glassInnerHighlight = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.62),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.12)
+    )
+    static let windowHighlight = dynamic(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.38),
+        dark: NSColor(calibratedWhite: 1.0, alpha: 0.035)
+    )
+    static let shadow = dynamic(
+        light: NSColor(calibratedRed: 0.36, green: 0.43, blue: 0.56, alpha: 0.18),
+        dark: NSColor(calibratedWhite: 0.0, alpha: 0.34)
+    )
 
     static func dynamic(light: NSColor, dark: NSColor) -> Color {
         Color(
             nsColor: NSColor(name: nil) { appearance in
                 appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-            },
+            }
         )
     }
 }

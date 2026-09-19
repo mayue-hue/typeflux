@@ -3,15 +3,319 @@ import XCTest
 
 @MainActor
 final class SettingsViewModelHistoryAudioTests: XCTestCase {
+    func testHistoryPresentationShowsRaceLanesAndCompactOutcomeBadges() throws {
+        let base = Date(timeIntervalSince1970: 900)
+        let recordID = UUID()
+        let race = ASRRaceDiagnostics(
+            startedAt: base,
+            selectedAt: base.addingTimeInterval(3),
+            priorityWindowMilliseconds: 3_000,
+            decisionDurationMilliseconds: 3_000,
+            selectedSource: .local,
+            selectionReason: .localAtPriorityDeadline,
+            cloudPriorityWindowExceeded: true,
+            cloudAttempt: ASRAttemptDiagnostics(outcome: .cancelled, durationMilliseconds: 3_000),
+            localAttempt: ASRAttemptDiagnostics(
+                outcome: .succeeded,
+                durationMilliseconds: 800,
+                completedAt: base.addingTimeInterval(0.8)
+            )
+        )
+        let llmOutcome = LLMProcessingOutcomeDiagnostics(
+            startedAt: base.addingTimeInterval(3),
+            completedAt: base.addingTimeInterval(6),
+            timeoutMilliseconds: 3_000,
+            outcome: .timedOutFallback,
+            usedTranscriptFallback: true
+        )
+        let record = HistoryRecord(
+            id: recordID,
+            date: base,
+            transcriptText: "hello",
+            pipelineTiming: HistoryPipelineTiming(
+                recordingStoppedAt: base,
+                transcriptionStartedAt: base,
+                transcriptionCompletedAt: base.addingTimeInterval(3),
+                asrRace: race,
+                llmProcessingStartedAt: base.addingTimeInterval(3),
+                llmProcessingCompletedAt: base.addingTimeInterval(6),
+                llmOutcome: llmOutcome,
+                applyStartedAt: base.addingTimeInterval(6),
+                applyCompletedAt: base.addingTimeInterval(6.2)
+            )
+        )
+        let viewModel = makeViewModel(
+            records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true)
+        )
+        waitForHistoryRecord(recordID, in: viewModel)
+
+        let timeline = try XCTUnwrap(viewModel.displayedHistory.first?.pipelineTimeline)
+        XCTAssertNotNil(timeline.lanes.first { $0.id == "race-cloud" })
+        XCTAssertNotNil(timeline.lanes.first { $0.id == "race-local" })
+        XCTAssertEqual(
+            timeline.summaryBadges.map(\.id),
+            ["total", "race-selected", "race-cloud", "race-local", "llm-outcome"]
+        )
+        XCTAssertEqual(
+            timeline.summaryBadges.first { $0.id == "race-selected" }?.value,
+            "Local · ready at 3s deadline"
+        )
+        XCTAssertEqual(
+            timeline.summaryBadges.first { $0.id == "race-cloud" }?.value,
+            "≥3.00 s · Past 3s · cancelled"
+        )
+        XCTAssertEqual(
+            timeline.summaryBadges.first { $0.id == "race-local" }?.value,
+            "800 ms · Succeeded"
+        )
+        XCTAssertEqual(
+            timeline.summaryBadges.first { $0.id == "llm-outcome" }?.value,
+            "3.00 s · Timed out · transcript fallback"
+        )
+    }
+
+    func testHistoryPresentationShowsFailedRewriteAsTranscriptFallback() throws {
+        let base = Date(timeIntervalSince1970: 900)
+        let record = HistoryRecord(
+            date: base,
+            transcriptText: "Local transcript",
+            pipelineTiming: HistoryPipelineTiming(
+                llmOutcome: LLMProcessingOutcomeDiagnostics(
+                    startedAt: base,
+                    completedAt: base.addingTimeInterval(1),
+                    timeoutMilliseconds: 3_000,
+                    outcome: .requestFailedFallback,
+                    usedTranscriptFallback: true
+                )
+            )
+        )
+        let viewModel = makeViewModel(
+            records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true)
+        )
+        waitForHistoryRecord(record.id, in: viewModel)
+
+        let badge = try XCTUnwrap(viewModel.displayedHistory.first?.pipelineTimeline?.summaryBadges.first {
+            $0.id == "llm-outcome"
+        })
+        XCTAssertEqual(badge.value, "1.00 s · Request failed · transcript fallback")
+        XCTAssertEqual(badge.tone, .warning)
+    }
+
+    func testHistoryPipelineTimelinePreservesStageOffsetsAndHighlightsSlowestLane() {
+        let base = Date(timeIntervalSince1970: 1000)
+        let recordID = UUID()
+        let record = HistoryRecord(
+            id: recordID,
+            date: base,
+            audioFilePath: "/tmp/timeline.wav",
+            transcriptText: "hello",
+            pipelineTiming: HistoryPipelineTiming(
+                recordingStoppedAt: base,
+                audioFileReadyAt: base.addingTimeInterval(0.1),
+                transcriptionStartedAt: base.addingTimeInterval(0.1),
+                transcriptionCompletedAt: base.addingTimeInterval(0.8),
+                llmProcessingStartedAt: base.addingTimeInterval(0.8),
+                llmProcessingCompletedAt: base.addingTimeInterval(2.8),
+                applyStartedAt: base.addingTimeInterval(2.8),
+                applyCompletedAt: base.addingTimeInterval(3.0)
+            )
+        )
+        let viewModel = makeViewModel(
+            records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true)
+        )
+        waitForHistoryRecord(recordID, in: viewModel)
+
+        let timeline = viewModel.displayedHistory.first?.pipelineTimeline
+        let llmLane = timeline?.lanes.first { $0.id == "llm" }
+
+        XCTAssertEqual(timeline?.lanes.count, 4)
+        XCTAssertEqual(llmLane?.offsetFraction ?? -1, 0.8 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(llmLane?.widthFraction ?? -1, 2.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(llmLane?.isSlowest, true)
+        XCTAssertNotNil(timeline?.totalDurationText)
+    }
+
+    func testHistoryPipelineTimelineIncludesRecordingStartupAndUserKeyPressMetric() {
+        let base = Date(timeIntervalSince1970: 1000)
+        let recordID = UUID()
+        let record = HistoryRecord(
+            id: recordID,
+            date: base,
+            pipelineTiming: HistoryPipelineTiming(
+                hotkeyDetectedAt: base,
+                recordingWorkflowStartedAt: base.addingTimeInterval(0.01),
+                audioEngineStartedAt: base.addingTimeInterval(0.08),
+                firstAudioBufferAt: base.addingTimeInterval(0.12),
+                recordingStoppedAt: base.addingTimeInterval(1.12),
+                audioFileReadyAt: base.addingTimeInterval(1.2)
+            )
+        )
+        let viewModel = makeViewModel(
+            records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true)
+        )
+        waitForHistoryRecord(recordID, in: viewModel)
+
+        let timeline = viewModel.displayedHistory.first?.pipelineTimeline
+
+        XCTAssertEqual(timeline?.lanes.first(where: { $0.id == "recording-startup" })?.durationMilliseconds, 120)
+        XCTAssertEqual(timeline?.lanes.first(where: { $0.id == "recording" })?.durationMilliseconds, 1000)
+        XCTAssertEqual(
+            timeline?.keyMetrics.first(where: { $0.id == "hotkey-to-first-audio" })?.value,
+            "120 ms"
+        )
+        XCTAssertEqual(timeline?.timelineSpanDurationText, "1.20 s")
+    }
+
+    func testStartupTimelineIncludesDigitalZeroPrefixUntilRealSignalArrives() throws {
+        let base = Date(timeIntervalSince1970: 1000)
+        let timing = HistoryPipelineTiming(
+            hotkeyDetectedAt: base,
+            firstAudioBufferAt: base.addingTimeInterval(0.03),
+            firstAudioSignalAt: base.addingTimeInterval(0.83),
+            leadingZeroDuration: 0.8,
+            recordingStoppedAt: base.addingTimeInterval(1.83)
+        )
+        let decoded = try JSONDecoder().decode(HistoryPipelineTiming.self, from: JSONEncoder().encode(timing))
+        XCTAssertEqual(decoded, timing)
+        let record = HistoryRecord(date: base, pipelineTiming: decoded)
+        let viewModel = makeViewModel(records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true))
+        waitForHistoryRecord(record.id, in: viewModel)
+        let timeline = viewModel.displayedHistory.first?.pipelineTimeline
+        XCTAssertEqual(timeline?.lanes.first { $0.id == "recording-startup" }?.durationMilliseconds, 830)
+        XCTAssertEqual(timeline?.lanes.first { $0.id == "recording" }?.durationMilliseconds, 1000)
+        XCTAssertEqual(timeline?.keyMetrics.first { $0.id == "hotkey-to-first-signal" }?.value, "830 ms")
+        XCTAssertEqual(timeline?.keyMetrics.first { $0.id == "input-zero-prefix" }?.value, "800 ms")
+    }
+
+    func testAllZeroRecordingDoesNotReportSuccessfulSignalStartup() {
+        let base = Date(timeIntervalSince1970: 1000)
+        let record = HistoryRecord(date: base, pipelineTiming: HistoryPipelineTiming(
+            hotkeyDetectedAt: base, firstAudioBufferAt: base.addingTimeInterval(0.03),
+            leadingZeroDuration: 1.0, recordingStoppedAt: base.addingTimeInterval(1.03)))
+        let viewModel = makeViewModel(records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true))
+        waitForHistoryRecord(record.id, in: viewModel)
+        let timeline = viewModel.displayedHistory.first?.pipelineTimeline
+        XCTAssertEqual(timeline?.lanes.first { $0.id == "recording-startup" }?.durationMilliseconds, 1030)
+        XCTAssertNil(timeline?.lanes.first { $0.id == "recording" })
+    }
+
+    func testHistoryPipelineTimelineIncludesASRAndLLMNetworkStages() {
+        let base = Date(timeIntervalSince1970: 2_000)
+        let recordID = UUID()
+        var transport = NetworkTransportDiagnosticsSnapshot(endpoint: "wss://asr.example.com/realtime")
+        transport.credentialLookupStartedAt = base.addingTimeInterval(-5.0)
+        transport.credentialLookupCompletedAt = base.addingTimeInterval(-4.95)
+        transport.routeLookupStartedAt = base.addingTimeInterval(-4.95)
+        transport.routeLookupCompletedAt = base.addingTimeInterval(-4.10)
+        transport.serverSelectionStartedAt = base.addingTimeInterval(-4.10)
+        transport.serverSelectionCompletedAt = base.addingTimeInterval(-4.05)
+        transport.webSocketTaskResumedAt = base.addingTimeInterval(-4.01)
+        transport.domainLookupStartedAt = base.addingTimeInterval(-4.0)
+        transport.domainLookupCompletedAt = base.addingTimeInterval(-3.99)
+        transport.connectionStartedAt = base.addingTimeInterval(-3.99)
+        transport.secureConnectionStartedAt = base.addingTimeInterval(-3.96)
+        transport.secureConnectionCompletedAt = base.addingTimeInterval(-3.90)
+        transport.connectionCompletedAt = base.addingTimeInterval(-3.90)
+        transport.requestStartedAt = base.addingTimeInterval(-3.899)
+        transport.requestCompletedAt = base.addingTimeInterval(-3.89)
+        transport.firstResponseByteAt = base.addingTimeInterval(-3.82)
+
+        var attempt = LLMRequestAttemptDiagnostics(
+            id: UUID(),
+            provider: "typefluxCloud",
+            endpoint: "https://api.example.com/chat/completions",
+            model: "default",
+            requestStartedAt: base.addingTimeInterval(0.8)
+        )
+        attempt.domainLookupStartedAt = base.addingTimeInterval(0.80)
+        attempt.domainLookupCompletedAt = base.addingTimeInterval(0.82)
+        attempt.connectionStartedAt = base.addingTimeInterval(0.82)
+        attempt.secureConnectionStartedAt = base.addingTimeInterval(0.86)
+        attempt.secureConnectionCompletedAt = base.addingTimeInterval(0.94)
+        attempt.connectionCompletedAt = base.addingTimeInterval(0.94)
+        attempt.requestUploadStartedAt = base.addingTimeInterval(0.95)
+        attempt.requestUploadCompletedAt = base.addingTimeInterval(0.97)
+        attempt.firstResponseByteAt = base.addingTimeInterval(1.27)
+        attempt.networkResponseCompletedAt = base.addingTimeInterval(1.77)
+
+        let record = HistoryRecord(
+            id: recordID,
+            date: base,
+            transcriptText: "hello",
+            pipelineTiming: HistoryPipelineTiming(
+                recordingStoppedAt: base,
+                audioFileReadyAt: base.addingTimeInterval(0.1),
+                transcriptionStartedAt: base,
+                transcriptionCompletedAt: base.addingTimeInterval(0.8),
+                realtimeSessionStartedAt: base.addingTimeInterval(-5.0),
+                realtimeConnectionReadyAt: base.addingTimeInterval(-3.8),
+                realtimeFirstAudioSubmittedAt: base.addingTimeInterval(-4.8),
+                realtimeFinalResultReceivedAt: base.addingTimeInterval(0.79),
+                realtimeFinishStartedAt: base,
+                realtimeFinishCompletedAt: base.addingTimeInterval(0.8),
+                realtimeTransport: transport,
+                llmProcessingStartedAt: base.addingTimeInterval(0.8),
+                llmProcessingCompletedAt: base.addingTimeInterval(1.8),
+                llmRequestAttempts: [attempt]
+            )
+        )
+        let viewModel = makeViewModel(
+            records: [record],
+            audioPreviewPlayer: FakeHistoryAudioPreviewPlayer(playResult: true)
+        )
+        waitForHistoryRecord(recordID, in: viewModel)
+
+        let timeline = viewModel.displayedHistory.first?.pipelineTimeline
+        let laneIDs = Set(timeline?.lanes.map(\.id) ?? [])
+        XCTAssertTrue(laneIDs.contains("asr-dns"))
+        XCTAssertTrue(laneIDs.contains("asr-tls"))
+        XCTAssertTrue(laneIDs.contains("asr-route"))
+        XCTAssertTrue(laneIDs.contains("asr-server-selection"))
+        XCTAssertTrue(laneIDs.contains("asr-socket-preparation"))
+        XCTAssertTrue(laneIDs.contains("asr-network-queue"))
+        XCTAssertTrue(laneIDs.contains("asr-first-audio-queue"))
+        XCTAssertTrue(laneIDs.contains("asr-upload"))
+        XCTAssertTrue(laneIDs.contains("asr-streaming"))
+        XCTAssertTrue(laneIDs.contains("asr-final-wait"))
+        XCTAssertTrue(laneIDs.contains("asr-cleanup"))
+        XCTAssertTrue(laneIDs.contains("llm-request-\(attempt.id.uuidString)-upload"))
+        XCTAssertTrue(laneIDs.contains("llm-request-\(attempt.id.uuidString)-wait"))
+        XCTAssertTrue(laneIDs.contains("llm-request-\(attempt.id.uuidString)-download"))
+        XCTAssertEqual(timeline?.lanes.first(where: { $0.id == "asr-first-audio-queue" })?.isSlowest, true)
+        XCTAssertEqual(timeline?.lanes.first(where: { $0.id == "asr-streaming" })?.isSlowest, false)
+        XCTAssertEqual(timeline?.lanes.first(where: { $0.id == "llm" })?.isSlowest, false)
+        XCTAssertEqual(timeline?.lanes.first(where: { $0.id == "realtime" })?.offsetFraction ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            timeline?.lanes.first(where: { $0.id == "asr-dns" })?.offsetFraction ?? -1,
+            1.0 / 6.8,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(timeline?.totalDurationText, "1.80 s")
+        XCTAssertEqual(timeline?.timelineSpanDurationText, "6.80 s")
+        XCTAssertEqual(
+            timeline?.keyMetrics.first(where: { $0.id == "asr-first-audio-queue" })?.value,
+            "1.00 s"
+        )
+        XCTAssertEqual(timeline?.requestDetails.map(\.id), ["asr-request", "llm-request-\(attempt.id.uuidString)"])
+        XCTAssertFalse(timeline?.keyMetrics.contains(where: { $0.id.hasSuffix("-endpoint") }) ?? true)
+        XCTAssertFalse(timeline?.keyMetrics.contains(where: { $0.id.hasSuffix("-connection-metadata") }) ?? true)
+    }
+
     func testPlayAudioStartsPreviewForExistingHistoryFile() throws {
         let audioURL = try makeTemporaryAudioPlaceholder()
         let recordID = UUID()
         let audioPreviewPlayer = FakeHistoryAudioPreviewPlayer(playResult: true)
         let viewModel = makeViewModel(
             records: [
-                makeRecord(id: recordID, audioFilePath: audioURL.path),
+                makeRecord(id: recordID, audioFilePath: audioURL.path)
             ],
-            audioPreviewPlayer: audioPreviewPlayer,
+            audioPreviewPlayer: audioPreviewPlayer
         )
         waitForHistoryRecord(recordID, in: viewModel)
 
@@ -28,9 +332,9 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
         let audioPreviewPlayer = FakeHistoryAudioPreviewPlayer(playResult: true)
         let viewModel = makeViewModel(
             records: [
-                makeRecord(id: recordID, audioFilePath: audioURL.path),
+                makeRecord(id: recordID, audioFilePath: audioURL.path)
             ],
-            audioPreviewPlayer: audioPreviewPlayer,
+            audioPreviewPlayer: audioPreviewPlayer
         )
         waitForHistoryRecord(recordID, in: viewModel)
 
@@ -48,9 +352,9 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
         let audioPreviewPlayer = FakeHistoryAudioPreviewPlayer(playResult: true)
         let viewModel = makeViewModel(
             records: [
-                makeRecord(id: recordID, audioFilePath: audioURL.path),
+                makeRecord(id: recordID, audioFilePath: audioURL.path)
             ],
-            audioPreviewPlayer: audioPreviewPlayer,
+            audioPreviewPlayer: audioPreviewPlayer
         )
         waitForHistoryRecord(recordID, in: viewModel)
 
@@ -68,9 +372,9 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
         let audioPreviewPlayer = FakeHistoryAudioPreviewPlayer(playResult: true)
         let viewModel = makeViewModel(
             records: [
-                makeRecord(id: recordID, audioFilePath: missingURL.path),
+                makeRecord(id: recordID, audioFilePath: missingURL.path)
             ],
-            audioPreviewPlayer: audioPreviewPlayer,
+            audioPreviewPlayer: audioPreviewPlayer
         )
         waitForHistoryRecord(recordID, in: viewModel)
 
@@ -86,9 +390,9 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
         let audioPreviewPlayer = FakeHistoryAudioPreviewPlayer(playResult: false)
         let viewModel = makeViewModel(
             records: [
-                makeRecord(id: recordID, audioFilePath: audioURL.path),
+                makeRecord(id: recordID, audioFilePath: audioURL.path)
             ],
-            audioPreviewPlayer: audioPreviewPlayer,
+            audioPreviewPlayer: audioPreviewPlayer
         )
         waitForHistoryRecord(recordID, in: viewModel)
 
@@ -101,7 +405,7 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
 
     private func makeViewModel(
         records: [HistoryRecord],
-        audioPreviewPlayer: HistoryAudioPreviewPlaying,
+        audioPreviewPlayer: HistoryAudioPreviewPlaying
     ) -> StudioViewModel {
         let suiteName = "SettingsViewModelHistoryAudioTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -109,7 +413,7 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
             settingsStore: SettingsStore(defaults: defaults),
             historyStore: FixedHistoryStore(records: records),
             initialSection: .history,
-            audioPreviewPlayer: audioPreviewPlayer,
+            audioPreviewPlayer: audioPreviewPlayer
         )
     }
 
@@ -118,7 +422,7 @@ final class SettingsViewModelHistoryAudioTests: XCTestCase {
             id: id,
             date: Date(),
             audioFilePath: audioFilePath,
-            transcriptText: "hello",
+            transcriptText: "hello"
         )
     }
 

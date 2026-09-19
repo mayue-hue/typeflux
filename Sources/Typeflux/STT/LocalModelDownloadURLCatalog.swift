@@ -131,6 +131,6 @@ enum LocalModelDownloadURLCatalog {
         // Token vocabulary file from the China mirror.
         .funASRChinaMirrorTokens: URL(
             string: "https://hf-mirror.com/csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09/resolve/main/tokens.txt"
-        )!,
+        )!
     ]
 }

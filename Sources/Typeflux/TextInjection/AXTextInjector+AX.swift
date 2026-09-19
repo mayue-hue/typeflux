@@ -4,6 +4,7 @@ import Foundation
 
 extension AXTextInjector {
     func copyStringAttribute(_ attribute: String, from element: AXUIElement) -> String? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success else { return nil }
@@ -11,24 +12,31 @@ extension AXTextInjector {
     }
 
     func copyElementAttribute(_ attribute: String, from element: AXUIElement) -> AXUIElement? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success, let value else { return nil }
         guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return unsafeBitCast(value, to: AXUIElement.self)
+        let child = unsafeBitCast(value, to: AXUIElement.self)
+        AXUIElementSetMessagingTimeout(child, Self.replacementAXMessagingTimeout)
+        return child
     }
 
     func copyElementArrayAttribute(_ attribute: String, from element: AXUIElement) -> [AXUIElement] {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success, let array = value as? [AnyObject] else { return [] }
         return array.compactMap { item in
             guard CFGetTypeID(item) == AXUIElementGetTypeID() else { return nil }
-            return unsafeBitCast(item, to: AXUIElement.self)
+            let child = unsafeBitCast(item, to: AXUIElement.self)
+            AXUIElementSetMessagingTimeout(child, Self.replacementAXMessagingTimeout)
+            return child
         }
     }
 
     func copyTextAttribute(_ attribute: String, from element: AXUIElement) -> String? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success, let value else { return nil }
@@ -45,11 +53,12 @@ extension AXTextInjector {
     }
 
     func copySelectedTextRange(from element: AXUIElement) -> CFRange? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(
             element,
             kAXSelectedTextRangeAttribute as CFString,
-            &value,
+            &value
         )
         guard result == .success, let axValue = value else { return nil }
         guard CFGetTypeID(axValue) == AXValueGetTypeID() else { return nil }
@@ -63,28 +72,6 @@ extension AXTextInjector {
     }
 
     @discardableResult
-    func setSelectedTextRange(_ range: CFRange, on element: AXUIElement) -> Bool {
-        var mutableRange = range
-        guard let axRange = AXValueCreate(.cfRange, &mutableRange) else { return false }
-        let result = AXUIElementSetAttributeValue(
-            element,
-            kAXSelectedTextRangeAttribute as CFString,
-            axRange,
-        )
-        return result == .success
-    }
-
-    @discardableResult
-    func setFocused(_ focused: Bool, on element: AXUIElement) -> Bool {
-        let value: CFBoolean = focused ? true as CFBoolean : false as CFBoolean
-        let result = AXUIElementSetAttributeValue(
-            element,
-            kAXFocusedAttribute as CFString,
-            value,
-        )
-        return result == .success
-    }
-
     func frontmostProcessID() -> pid_t? {
         NSWorkspace.shared.frontmostApplication?.processIdentifier
     }
@@ -98,6 +85,7 @@ extension AXTextInjector {
     }
 
     func copyBooleanAttribute(_ attribute: String, from element: AXUIElement) -> Bool? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success, let number = value as? NSNumber else { return nil }
@@ -105,6 +93,7 @@ extension AXTextInjector {
     }
 
     func copyCGPointAttribute(_ attribute: String, from element: AXUIElement) -> CGPoint? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success, let axValue = value else { return nil }
@@ -119,6 +108,7 @@ extension AXTextInjector {
     }
 
     func copyCGSizeAttribute(_ attribute: String, from element: AXUIElement) -> CGSize? {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard result == .success, let axValue = value else { return nil }

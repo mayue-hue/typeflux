@@ -22,53 +22,31 @@ final class SettingsStoreFeatureFlagTests: XCTestCase {
         super.tearDown()
     }
 
-    func testStrictEditApplyFallbackEnabledDefaultsToFalse() {
-        XCTAssertFalse(store.strictEditApplyFallbackEnabled)
+    func testLocalOptimizationEnabledDefaultsToFalse() {
+        XCTAssertFalse(store.localOptimizationEnabled)
     }
 
-    func testStrictEditApplyFallbackEnabledCanBeEnabledAndDisabled() {
-        store.strictEditApplyFallbackEnabled = true
-        XCTAssertTrue(store.strictEditApplyFallbackEnabled)
+    func testLocalOptimizationEnabledCanBeEnabledAndDisabled() {
+        store.localOptimizationEnabled = true
+        XCTAssertTrue(store.localOptimizationEnabled)
 
-        store.strictEditApplyFallbackEnabled = false
-        XCTAssertFalse(store.strictEditApplyFallbackEnabled)
-    }
-
-    func testStubbornPasteFallbackEnabledDefaultsToTrue() {
-        XCTAssertTrue(store.stubbornPasteFallbackEnabled)
-    }
-
-    func testStubbornPasteFallbackEnabledCanBeEnabledAndDisabled() {
-        store.stubbornPasteFallbackEnabled = true
-        XCTAssertTrue(store.stubbornPasteFallbackEnabled)
-
-        store.stubbornPasteFallbackEnabled = false
-        XCTAssertFalse(store.stubbornPasteFallbackEnabled)
-    }
-
-    func testStubbornPasteFallbackEnabledPersistsExplicitFalse() {
-        store.stubbornPasteFallbackEnabled = false
-
-        let reloaded = SettingsStore(defaults: defaults)
-        XCTAssertFalse(reloaded.stubbornPasteFallbackEnabled)
+        store.localOptimizationEnabled = false
+        XCTAssertFalse(store.localOptimizationEnabled)
     }
 
     func testInputContextOptimizationEnabledDefaultsToTrue() {
         XCTAssertTrue(store.inputContextOptimizationEnabled)
     }
 
-    func testInputContextOptimizationEnabledCanBeEnabledAndDisabled() {
-        store.inputContextOptimizationEnabled = true
-        XCTAssertTrue(store.inputContextOptimizationEnabled)
-
+    func testInputContextOptimizationEnabledCannotBeDisabled() {
         store.inputContextOptimizationEnabled = false
-        XCTAssertFalse(store.inputContextOptimizationEnabled)
+        XCTAssertTrue(store.inputContextOptimizationEnabled)
     }
 
-    func testInputContextOptimizationEnabledPersistsExplicitFalse() {
-        store.inputContextOptimizationEnabled = false
+    func testInputContextOptimizationEnabledOverridesPersistedFalse() {
+        defaults.set(false, forKey: "inputContext.optimization.enabled")
 
         let reloaded = SettingsStore(defaults: defaults)
-        XCTAssertFalse(reloaded.inputContextOptimizationEnabled)
+        XCTAssertTrue(reloaded.inputContextOptimizationEnabled)
     }
 }

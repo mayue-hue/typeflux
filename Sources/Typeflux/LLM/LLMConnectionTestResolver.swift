@@ -5,7 +5,7 @@ enum LLMConnectionTestResolver {
         provider: LLMRemoteProvider,
         baseURL: String,
         model: String,
-        apiKey: String,
+        apiKey: String
     ) async throws -> ResolvedLLMConnection {
         if provider == .typefluxCloud {
             let token = await MainActor.run { AuthState.shared.accessToken }
@@ -16,7 +16,7 @@ enum LLMConnectionTestResolver {
                 provider: provider,
                 baseURL: "",
                 model: model,
-                apiKey: token,
+                apiKey: token
             )
         }
 
@@ -24,7 +24,7 @@ enum LLMConnectionTestResolver {
             provider: provider,
             baseURL: baseURL,
             model: model,
-            apiKey: apiKey,
+            apiKey: apiKey
         )
     }
 }

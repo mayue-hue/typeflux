@@ -9,8 +9,8 @@ final class NetworkDebugLoggerTests: XCTestCase {
             userInfo: [
                 NSLocalizedDescriptionKey: "The operation couldn't be completed.",
                 NSLocalizedFailureReasonErrorKey: "Connection refused",
-                NSURLErrorFailingURLErrorKey: XCTUnwrap(URL(string: "https://api.openai.com/v1/audio/transcriptions")),
-            ],
+                NSURLErrorFailingURLErrorKey: XCTUnwrap(URL(string: "https://api.openai.com/v1/audio/transcriptions"))
+            ]
         )
 
         let description = NetworkDebugLogger.describe(error: error)
@@ -25,15 +25,15 @@ final class NetworkDebugLoggerTests: XCTestCase {
         let underlying = NSError(
             domain: NSPOSIXErrorDomain,
             code: 61,
-            userInfo: [NSLocalizedDescriptionKey: "Connection refused"],
+            userInfo: [NSLocalizedDescriptionKey: "Connection refused"]
         )
         let error = NSError(
             domain: NSURLErrorDomain,
             code: NSURLErrorCannotConnectToHost,
             userInfo: [
                 NSLocalizedDescriptionKey: "The operation couldn't be completed.",
-                NSUnderlyingErrorKey: underlying,
-            ],
+                NSUnderlyingErrorKey: underlying
+            ]
         )
 
         let description = NetworkDebugLogger.describe(error: error)
@@ -54,7 +54,7 @@ final class NetworkDebugLoggerTests: XCTestCase {
         let error = NSError(
             domain: "com.test",
             code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Something went wrong"],
+            userInfo: [NSLocalizedDescriptionKey: "Something went wrong"]
         )
         let description = NetworkDebugLogger.describe(error: error)
         XCTAssertTrue(description.contains("Something went wrong"))
@@ -66,8 +66,8 @@ final class NetworkDebugLoggerTests: XCTestCase {
             code: 1,
             userInfo: [
                 NSLocalizedDescriptionKey: "Error occurred",
-                NSLocalizedRecoverySuggestionErrorKey: "Try again later",
-            ],
+                NSLocalizedRecoverySuggestionErrorKey: "Try again later"
+            ]
         )
         let description = NetworkDebugLogger.describe(error: error)
         XCTAssertTrue(description.contains("suggestion=Try again later"))
@@ -79,8 +79,8 @@ final class NetworkDebugLoggerTests: XCTestCase {
             code: 1,
             userInfo: [
                 NSLocalizedDescriptionKey: "Error",
-                NSURLErrorFailingURLStringErrorKey: "https://excluded.example.com",
-            ],
+                NSURLErrorFailingURLStringErrorKey: "https://excluded.example.com"
+            ]
         )
         let description = NetworkDebugLogger.describe(error: error)
         // NSURLErrorFailingURLStringErrorKey should be excluded from userInfo output
@@ -150,7 +150,7 @@ final class NetworkDebugLoggerTests: XCTestCase {
             url: url,
             statusCode: 200,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"],
+            headerFields: ["Content-Type": "application/json"]
         )
         let body = try JSONSerialization.data(withJSONObject: ["result": "ok"])
         NetworkDebugLogger.logResponse(response, data: body)

@@ -4,7 +4,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
     func complete(
         messages: [AgentMessage],
         tools: [LLMAgentTool],
-        config: LLMCallConfig,
+        config: LLMCallConfig
     ) async throws -> AgentTurnResult {
         let llmConfig = settingsStore.textLLMConfiguration()
         let connection = try await resolveConnection(for: llmConfig)
@@ -14,13 +14,14 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
             switch connection.provider.apiStyle {
             case .openAICompatible:
                 try await self.multiTurnOpenAI(
+                    provider: connection.provider,
                     baseURL: connection.baseURL,
                     model: connection.model,
                     apiKey: connection.apiKey,
                     additionalHeaders: additionalHeaders,
                     messages: messages,
                     tools: tools,
-                    config: config,
+                    config: config
                 )
             case .anthropic:
                 try await self.multiTurnAnthropic(
@@ -30,7 +31,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
                     additionalHeaders: additionalHeaders,
                     messages: messages,
                     tools: tools,
-                    config: config,
+                    config: config
                 )
             case .gemini:
                 try await self.multiTurnGemini(
@@ -40,7 +41,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
                     additionalHeaders: additionalHeaders,
                     messages: messages,
                     tools: tools,
-                    config: config,
+                    config: config
                 )
             }
         }
@@ -49,13 +50,14 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
     // MARK: - OpenAI Compatible
 
     private func multiTurnOpenAI(
+        provider: LLMRemoteProvider,
         baseURL: URL,
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
         messages: [AgentMessage],
         tools: [LLMAgentTool],
-        config: LLMCallConfig,
+        config: LLMCallConfig
     ) async throws -> AgentTurnResult {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "chat/completions")
         var request = URLRequest(url: url)
@@ -70,18 +72,46 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
         }
 
         var body = buildOpenAIBody(model: model, messages: messages, tools: tools, config: config)
-        OpenAICompatibleResponseSupport.applyProviderTuning(body: &body, baseURL: baseURL, model: model)
+        OpenAICompatibleResponseSupport.applyProviderTuning(
+            body: &body,
+            baseURL: baseURL,
+            model: model,
+            provider: provider
+        )
+        let baseBody = body
+        let tuningCandidate = RemoteLLMClient.applyCustomThinkingTuning(
+            body: &body,
+            provider: provider,
+            baseURL: baseURL
+        )
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let data = try await RemoteLLMClient.performJSONRequest(request)
-        return parseOpenAITurnResult(from: data)
+        let result = try await RemoteLLMClient.performJSONRequestWithCustomThinkingAdaptation(
+            request,
+            baseBody: baseBody,
+            provider: provider,
+            baseURL: baseURL,
+            candidate: tuningCandidate
+        )
+        let rawText = LLMAgentResponseSupport.extractOpenAICompatibleText(from: result.data) ?? ""
+        let containsThinking = OpenAICompatibleResponseSupport.containsLeadingThinkingTags(rawText)
+        let turnResult = parseOpenAITurnResult(from: result.data)
+        if !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            RemoteLLMClient.recordCustomThinkingTuningSuccess(
+                provider: provider,
+                baseURL: baseURL,
+                candidate: result.candidate,
+                containsThinking: containsThinking
+            )
+        }
+        return turnResult
     }
 
     func buildOpenAIBody(
         model: String,
         messages: [AgentMessage],
         tools: [LLMAgentTool],
-        config: LLMCallConfig,
+        config: LLMCallConfig
     ) -> [String: Any] {
         var body: [String: Any] = [
             "model": model,
@@ -94,16 +124,16 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
                     "function": [
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": tool.inputSchema.jsonObject,
-                    ],
+                        "parameters": tool.inputSchema.jsonObject
+                    ]
                 ] as [String: Any]
-            },
+            }
         ]
 
         if let forcedTool = config.forcedToolName {
             body["tool_choice"] = [
                 "type": "function",
-                "function": ["name": forcedTool],
+                "function": ["name": forcedTool]
             ]
         }
 
@@ -122,7 +152,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
             return AgentTurnResult(turn: .text(""), tokenUsage: nil)
         }
 
-        let rawText = message["content"] as? String ?? ""
+        let rawText = OpenAICompatibleResponseSupport.extractTextDelta(from: data) ?? ""
         let text = OpenAICompatibleResponseSupport.stripLeadingThinkingTags(rawText)
         let toolCallsRaw = message["tool_calls"] as? [[String: Any]] ?? []
 
@@ -168,7 +198,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
         return LLMTokenUsage(
             promptTokens: promptTokens,
             completionTokens: completionTokens,
-            totalTokens: totalTokens,
+            totalTokens: totalTokens
         )
     }
 
@@ -181,7 +211,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
         additionalHeaders: [String: String],
         messages: [AgentMessage],
         tools: [LLMAgentTool],
-        config: LLMCallConfig,
+        config: LLMCallConfig
     ) async throws -> AgentTurnResult {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "messages")
         var request = URLRequest(url: url)
@@ -205,9 +235,9 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
                 [
                     "name": tool.name,
                     "description": tool.description,
-                    "input_schema": tool.inputSchema.jsonObject,
+                    "input_schema": tool.inputSchema.jsonObject
                 ] as [String: Any]
-            },
+            }
         ]
 
         if let system = systemPrompt {
@@ -282,7 +312,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
         return LLMTokenUsage(
             promptTokens: inputTokens,
             completionTokens: outputTokens,
-            totalTokens: inputTokens + outputTokens,
+            totalTokens: inputTokens + outputTokens
         )
     }
 
@@ -295,11 +325,11 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
         additionalHeaders: [String: String],
         messages: [AgentMessage],
         tools: [LLMAgentTool],
-        config: LLMCallConfig,
+        config: LLMCallConfig
     ) async throws -> AgentTurnResult {
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent("models/\(model):generateContent"),
-            resolvingAgainstBaseURL: false,
+            resolvingAgainstBaseURL: false
         ) else {
             throw AgentError.llmConnectionFailed(reason: "Invalid Gemini endpoint.")
         }
@@ -318,7 +348,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
 
         var generationConfig: [String: Any] = [
             "candidateCount": 1,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 4096
         ]
         if let temp = config.temperature {
             generationConfig["temperature"] = temp
@@ -334,11 +364,11 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
                         [
                             "name": tool.name,
                             "description": tool.description,
-                            "parameters": tool.inputSchema.jsonObject,
+                            "parameters": tool.inputSchema.jsonObject
                         ] as [String: Any]
-                    },
-                ],
-            ],
+                    }
+                ]
+            ]
         ]
 
         if let systemInstruction = AgentMessage.extractGeminiSystemInstruction(messages) {
@@ -349,8 +379,8 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
             body["toolConfig"] = [
                 "functionCallingConfig": [
                     "mode": "ANY",
-                    "allowedFunctionNames": [forcedTool],
-                ],
+                    "allowedFunctionNames": [forcedTool]
+                ]
             ]
         }
 
@@ -375,13 +405,11 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
             if let textContent = part["text"] as? String {
                 text += textContent
             } else if let functionCall = part["functionCall"] as? [String: Any],
-                      let name = functionCall["name"] as? String
-            {
+                      let name = functionCall["name"] as? String {
                 let args = functionCall["args"] ?? [:]
                 let argsJSON: String = if JSONSerialization.isValidJSONObject(args),
                                           let argsData = try? JSONSerialization.data(withJSONObject: args),
-                                          let str = String(data: argsData, encoding: .utf8)
-                {
+                                          let str = String(data: argsData, encoding: .utf8) {
                     str
                 } else {
                     "{}"
@@ -418,7 +446,7 @@ extension OpenAICompatibleAgentService: LLMMultiTurnService {
         return LLMTokenUsage(
             promptTokens: promptTokens,
             completionTokens: completionTokens,
-            totalTokens: totalTokens,
+            totalTokens: totalTokens
         )
     }
 }

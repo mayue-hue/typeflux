@@ -1,5 +1,5 @@
-import XCTest
 @testable import Typeflux
+import XCTest
 
 final class LLMConfigurationReminderPolicyTests: XCTestCase {
     private func makeSettingsStore() -> SettingsStore {
@@ -14,7 +14,7 @@ final class LLMConfigurationReminderPolicyTests: XCTestCase {
 
     func testFirstTypefluxCloudLoginReminderShowsActionDialogAndStoresTimestamp() {
         let store = makeSettingsStore()
-        let now = Date(timeIntervalSince1970: 1_000)
+        let now = Date(timeIntervalSince1970: 1000)
         let policy = LLMConfigurationReminderPolicy(settingsStore: store, now: { now })
 
         let presentation = policy.presentation(for: .notConfigured(reason: .cloudNotLoggedIn))
@@ -25,11 +25,31 @@ final class LLMConfigurationReminderPolicyTests: XCTestCase {
 
     func testTypefluxCloudLoginReminderUsesPassiveNoticeWithinThreeHours() {
         let store = makeSettingsStore()
-        let lastShownAt = Date(timeIntervalSince1970: 1_000)
+        let lastShownAt = Date(timeIntervalSince1970: 1000)
         store.lastTypefluxCloudLoginReminderAt = lastShownAt
         let policy = LLMConfigurationReminderPolicy(
             settingsStore: store,
-            now: { lastShownAt.addingTimeInterval(LLMConfigurationReminderPolicy.typefluxCloudLoginReminderInterval - 1) },
+            now: {
+                lastShownAt.addingTimeInterval(LLMConfigurationReminderPolicy.typefluxCloudLoginReminderInterval - 1)
+            }
+        )
+
+        let presentation = policy.presentation(for: .notConfigured(reason: .cloudNotLoggedIn))
+
+        XCTAssertEqual(presentation, .passiveNotice)
+        XCTAssertEqual(store.lastTypefluxCloudLoginReminderAt, lastShownAt)
+    }
+
+    func testTypefluxCloudLoginReminderAppliesWhenCloudASRFallsBackLocally() {
+        let store = makeSettingsStore()
+        store.llmRemoteProvider = .openAI
+        let lastShownAt = Date(timeIntervalSince1970: 1000)
+        store.lastTypefluxCloudLoginReminderAt = lastShownAt
+        let policy = LLMConfigurationReminderPolicy(
+            settingsStore: store,
+            now: {
+                lastShownAt.addingTimeInterval(LLMConfigurationReminderPolicy.typefluxCloudLoginReminderInterval - 1)
+            }
         )
 
         let presentation = policy.presentation(for: .notConfigured(reason: .cloudNotLoggedIn))
@@ -40,7 +60,7 @@ final class LLMConfigurationReminderPolicyTests: XCTestCase {
 
     func testTypefluxCloudLoginReminderShowsActionDialogAfterThreeHours() {
         let store = makeSettingsStore()
-        let lastShownAt = Date(timeIntervalSince1970: 1_000)
+        let lastShownAt = Date(timeIntervalSince1970: 1000)
         let now = lastShownAt.addingTimeInterval(LLMConfigurationReminderPolicy.typefluxCloudLoginReminderInterval)
         store.lastTypefluxCloudLoginReminderAt = lastShownAt
         let policy = LLMConfigurationReminderPolicy(settingsStore: store, now: { now })
@@ -54,7 +74,7 @@ final class LLMConfigurationReminderPolicyTests: XCTestCase {
     func testNonCloudLoginFailuresStillUseActionDialog() {
         let store = makeSettingsStore()
         store.llmRemoteProvider = .openAI
-        let policy = LLMConfigurationReminderPolicy(settingsStore: store, now: { Date(timeIntervalSince1970: 1_000) })
+        let policy = LLMConfigurationReminderPolicy(settingsStore: store, now: { Date(timeIntervalSince1970: 1000) })
 
         let presentation = policy.presentation(for: .notConfigured(reason: .missingAPIKey))
 

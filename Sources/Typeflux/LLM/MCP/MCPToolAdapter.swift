@@ -9,14 +9,13 @@ struct MCPToolAdapter: AgentTool {
         LLMAgentTool(
             name: toolDef.name,
             description: toolDef.description ?? "",
-            inputSchema: convertSchema(toolDef.inputSchema),
+            inputSchema: convertSchema(toolDef.inputSchema)
         )
     }
 
     func execute(arguments: String) async throws -> String {
         let args: [String: Any] = if let data = arguments.data(using: .utf8),
-                                     let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        {
+                                     let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             dict
         } else {
             [:]
@@ -38,7 +37,7 @@ struct MCPToolAdapter: AgentTool {
 
     private func convertSchema(_ mcpSchema: MCPObjectSchema) -> LLMJSONSchema {
         var schema: [String: AnySendable] = [
-            "type": .string("object"),
+            "type": .string("object")
         ]
 
         if let properties = mcpSchema.properties {

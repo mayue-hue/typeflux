@@ -16,12 +16,12 @@ enum StudioSection: String, CaseIterable, Identifiable {
 
     /// Sections that appear in the upper sidebar group.
     static var sidebarUpperCases: [StudioSection] {
-        [.home, .vocabulary, .history]
+        [.home, .vocabulary, .history, .models, .personas, .agent]
     }
 
     /// Sections that appear in the lower sidebar group.
     static var sidebarLowerCases: [StudioSection] {
-        [.models, .personas]
+        []
     }
 
     var title: String {
@@ -169,6 +169,7 @@ enum StudioModelProviderID: String, CaseIterable, Identifiable {
     case doubaoRealtime
     case googleCloud
     case groqSTT
+    case soniox
     case typefluxOfficial
     case typefluxCloud
     case ollama
@@ -196,7 +197,7 @@ enum StudioModelProviderID: String, CaseIterable, Identifiable {
     var domain: StudioModelDomain {
         switch self {
         case .appleSpeech, .localSTT, .freeSTT, .whisperAPI, .multimodalLLM, .aliCloud, .doubaoRealtime,
-             .googleCloud, .groqSTT, .typefluxOfficial:
+             .googleCloud, .groqSTT, .soniox, .typefluxOfficial:
             .stt
         case .typefluxCloud, .ollama, .freeModel, .customLLM, .openRouter, .openAI, .anthropic, .gemini, .deepSeek,
              .kimi, .qwen, .zhipu, .minimax, .grok, .xiaomi, .groq, .openCodeZen, .openCodeGo:
@@ -266,6 +267,59 @@ struct HistoryPipelineStatPresentationItem: Identifiable {
     let style: ValueStyle
 }
 
+struct HistoryPipelineRequestPresentationItem: Identifiable {
+    let id: String
+    let title: String
+    let endpoint: String
+    let badges: [String]
+}
+
+struct HistoryPipelineBadgePresentationItem: Identifiable {
+    enum Tone {
+        case neutral
+        case selected
+        case warning
+        case failure
+    }
+
+    let id: String
+    let title: String
+    let value: String
+    let tone: Tone
+}
+
+enum HistoryPipelineTimelineTone {
+    case audio
+    case realtime
+    case transcription
+    case cloud
+    case local
+    case llm
+    case apply
+}
+
+struct HistoryPipelineTimelinePresentation {
+    struct Lane: Identifiable {
+        let id: String
+        let title: String
+        let durationMilliseconds: Int
+        let durationText: String
+        let offsetFraction: Double
+        let widthFraction: Double
+        let tone: HistoryPipelineTimelineTone
+        let isDetail: Bool
+        let isSlowest: Bool
+    }
+
+    let totalDurationText: String?
+    let timelineSpanDurationText: String?
+    let slowestStageText: String?
+    let lanes: [Lane]
+    let keyMetrics: [HistoryPipelineStatPresentationItem]
+    let requestDetails: [HistoryPipelineRequestPresentationItem]
+    let summaryBadges: [HistoryPipelineBadgePresentationItem]
+}
+
 struct HistoryPresentationRecord: Identifiable {
     let id: UUID
     let date: Date
@@ -276,9 +330,12 @@ struct HistoryPresentationRecord: Identifiable {
     let transcriptText: String?
     let personaPrompt: String?
     let personaResultText: String?
+    let openCCResultText: String?
+    let openCCConfig: String?
+    let postProcessedText: String?
     let selectionOriginalText: String?
     let selectionEditedText: String?
-    let pipelineStatItems: [HistoryPipelineStatPresentationItem]
+    let pipelineTimeline: HistoryPipelineTimelinePresentation?
     let errorMessage: String?
     let applyMessage: String?
     let hasTranscriptToCopy: Bool

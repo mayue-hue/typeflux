@@ -43,22 +43,22 @@ struct AboutView: View {
                                 LinearGradient(
                                     colors: [
                                         Color(red: 0.92, green: 0.96, blue: 1.00),
-                                        Color(red: 0.84, green: 0.91, blue: 1.00),
+                                        Color(red: 0.84, green: 0.91, blue: 1.00)
                                     ],
                                     startPoint: .topLeading,
-                                    endPoint: .bottomTrailing,
-                                ),
+                                    endPoint: .bottomTrailing
+                                )
                             )
                             .overlay(
                                 Image(systemName: "waveform.badge.mic")
                                     .font(.system(size: 32, weight: .semibold))
-                                    .foregroundStyle(StudioTheme.accent),
+                                    .foregroundStyle(StudioTheme.accent)
                             )
                     }
                 }
                 .frame(width: 84, height: 84)
                 .clipShape(
-                    RoundedRectangle(cornerRadius: StudioTheme.CornerRadius.hero, style: .continuous),
+                    RoundedRectangle(cornerRadius: StudioTheme.CornerRadius.hero, style: .continuous)
                 )
 
                 VStack(alignment: .leading, spacing: StudioTheme.Spacing.small) {
@@ -85,7 +85,7 @@ struct AboutView: View {
                 title: L("about.developer"),
                 value: "@mylxsw",
                 subtitle: developerURL.absoluteString,
-                url: developerURL,
+                url: developerURL
             )
 
             divider
@@ -95,7 +95,7 @@ struct AboutView: View {
                 title: L("about.website"),
                 value: "typeflux.app",
                 subtitle: websiteURL.absoluteString,
-                url: websiteURL,
+                url: websiteURL
             )
 
             divider
@@ -105,7 +105,7 @@ struct AboutView: View {
                 title: L("about.privacy"),
                 value: L("about.privacy.value"),
                 subtitle: privacyURL.absoluteString,
-                url: privacyURL,
+                url: privacyURL
             )
 
             divider
@@ -115,7 +115,7 @@ struct AboutView: View {
                 title: L("about.project"),
                 value: "Typeflux",
                 subtitle: L("about.project.subtitle"),
-                url: projectURL,
+                url: projectURL
             )
 
             divider
@@ -124,7 +124,7 @@ struct AboutView: View {
                 icon: "number",
                 title: L("about.build"),
                 value: versionDescription,
-                subtitle: L("about.build.subtitle"),
+                subtitle: L("about.build.subtitle")
             )
         }
     }
@@ -186,7 +186,7 @@ struct AboutView: View {
             .overlay(
                 Image(systemName: icon)
                     .font(.system(size: StudioTheme.Typography.iconRegular, weight: .semibold))
-                    .foregroundStyle(StudioTheme.accent),
+                    .foregroundStyle(StudioTheme.accent)
             )
     }
 

@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         languageObserver = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { _ in
             Task { @MainActor in
                 AppMenuController.install()
@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { _ in
             Task { @MainActor in
                 AppAppearance.apply(settingsStore.appearanceMode)

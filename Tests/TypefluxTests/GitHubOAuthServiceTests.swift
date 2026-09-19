@@ -1,5 +1,5 @@
-import XCTest
 @testable import Typeflux
+import XCTest
 
 @MainActor
 final class GitHubOAuthServiceTests: XCTestCase {
@@ -14,7 +14,10 @@ final class GitHubOAuthServiceTests: XCTestCase {
         let queryItems = components.queryItems ?? []
 
         XCTAssertEqual(queryItems.first(where: { $0.name == "client_id" })?.value, "client-id")
-        XCTAssertEqual(queryItems.first(where: { $0.name == "redirect_uri" })?.value, "ai.gulu.app.typeflux://oauth/github")
+        XCTAssertEqual(
+            queryItems.first(where: { $0.name == "redirect_uri" })?.value,
+            "ai.gulu.app.typeflux://oauth/github"
+        )
         XCTAssertEqual(queryItems.first(where: { $0.name == "scope" })?.value, "read:user user:email")
         XCTAssertEqual(queryItems.first(where: { $0.name == "state" })?.value, "state-123")
         XCTAssertEqual(queryItems.first(where: { $0.name == "code_challenge" })?.value, "challenge-456")

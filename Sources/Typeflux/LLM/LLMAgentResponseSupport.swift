@@ -11,14 +11,14 @@ enum LLMAgentResponseSupport {
         systemPrompt: String,
         userPrompt: String,
         tools: [LLMAgentTool],
-        forcedToolName: String?,
+        forcedToolName: String?
     ) -> [String: Any] {
         var body: [String: Any] = [
             "model": model,
             "stream": false,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userPrompt],
+                ["role": "user", "content": userPrompt]
             ],
             "parallel_tool_calls": false,
             "tools": tools.map { tool in
@@ -27,16 +27,16 @@ enum LLMAgentResponseSupport {
                     "function": [
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": tool.inputSchema.jsonObject,
-                    ],
+                        "parameters": tool.inputSchema.jsonObject
+                    ]
                 ]
-            },
+            }
         ]
 
         if let forcedToolName {
             body["tool_choice"] = [
                 "type": "function",
-                "function": ["name": forcedToolName],
+                "function": ["name": forcedToolName]
             ]
         }
 
@@ -48,7 +48,7 @@ enum LLMAgentResponseSupport {
         systemPrompt: String,
         userPrompt: String,
         tools: [LLMAgentTool],
-        forcedToolName: String?,
+        forcedToolName: String?
     ) -> [String: Any] {
         var body: [String: Any] = [
             "model": model,
@@ -58,23 +58,23 @@ enum LLMAgentResponseSupport {
                 [
                     "role": "user",
                     "content": [
-                        ["type": "text", "text": userPrompt],
-                    ],
-                ],
+                        ["type": "text", "text": userPrompt]
+                    ]
+                ]
             ],
             "tools": tools.map { tool in
                 [
                     "name": tool.name,
                     "description": tool.description,
-                    "input_schema": tool.inputSchema.jsonObject,
+                    "input_schema": tool.inputSchema.jsonObject
                 ]
-            },
+            }
         ]
 
         if let forcedToolName {
             body["tool_choice"] = [
                 "type": "tool",
-                "name": forcedToolName,
+                "name": forcedToolName
             ]
         }
 
@@ -87,21 +87,21 @@ enum LLMAgentResponseSupport {
         systemPrompt: String,
         userPrompt: String,
         tools: [LLMAgentTool],
-        forcedToolName: String?,
+        forcedToolName: String?
     ) -> [String: Any] {
         var body: [String: Any] = [
             "systemInstruction": [
-                "parts": [["text": systemPrompt]],
+                "parts": [["text": systemPrompt]]
             ],
             "contents": [
                 [
                     "role": "user",
-                    "parts": [["text": userPrompt]],
-                ],
+                    "parts": [["text": userPrompt]]
+                ]
             ],
             "generationConfig": [
                 "candidateCount": 1,
-                "maxOutputTokens": 4096,
+                "maxOutputTokens": 4096
             ],
             "tools": [
                 [
@@ -109,19 +109,19 @@ enum LLMAgentResponseSupport {
                         [
                             "name": tool.name,
                             "description": tool.description,
-                            "parameters": tool.inputSchema.jsonObject,
+                            "parameters": tool.inputSchema.jsonObject
                         ]
-                    },
-                ],
-            ],
+                    }
+                ]
+            ]
         ]
 
         if let forcedToolName {
             body["toolConfig"] = [
                 "functionCallingConfig": [
                     "mode": "ANY",
-                    "allowedFunctionNames": [forcedToolName],
-                ],
+                    "allowedFunctionNames": [forcedToolName]
+                ]
             ]
         }
 
@@ -197,14 +197,8 @@ enum LLMAgentResponseSupport {
     // MARK: - Text content extraction (for when model responds with text instead of a tool call)
 
     static func extractOpenAICompatibleText(from data: Data) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choice = (object["choices"] as? [[String: Any]])?.first,
-              let message = choice["message"] as? [String: Any],
-              let content = message["content"] as? String
-        else {
-            return nil
-        }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let text = OpenAICompatibleResponseSupport.extractTextDelta(from: data) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 

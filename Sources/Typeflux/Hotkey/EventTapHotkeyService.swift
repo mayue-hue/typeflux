@@ -1,30 +1,177 @@
 import AppKit
+import Carbon.HIToolbox
 import Foundation
+
+private let historySystemHotkeyID = EventHotKeyID(signature: 0x5459_4853, id: 1) // TYHS
 
 private func hotkeyEventTapCallback(
     proxy _: CGEventTapProxy,
     type: CGEventType,
     event: CGEvent,
-    refcon: UnsafeMutableRawPointer?,
+    refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     guard let refcon else { return Unmanaged.passUnretained(event) }
     let service = Unmanaged<EventTapHotkeyService>.fromOpaque(refcon).takeUnretainedValue()
     return service.handleEventTapEvent(type: type, event: event)
 }
 
-final class EventTapHotkeyService: HotkeyService {
-    private static let modifierActivationHoldDelay: TimeInterval = 0.22
+private func systemHotkeyCallback(
+    nextHandler _: EventHandlerCallRef?,
+    event: EventRef?,
+    userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let event, let userData else { return noErr }
 
-    var onActivationTap: (() -> Void)?
-    var onActivationPressBegan: (() -> Void)?
-    var onActivationPressEnded: (() -> Void)?
+    var hotkeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotkeyID
+    )
+    guard status == noErr, hotkeyID.signature == historySystemHotkeyID.signature,
+          hotkeyID.id == historySystemHotkeyID.id
+    else {
+        return noErr
+    }
+
+    let registrar = Unmanaged<SystemHotkeyRegistrar>.fromOpaque(userData).takeUnretainedValue()
+    registrar.handlePressed()
+    return noErr
+}
+
+private final class SystemHotkeyRegistrar {
+    private var hotkeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
+
+    var onPressed: (() -> Void)?
+
+    var isRegistered: Bool {
+        hotkeyRef != nil
+    }
+
+    init() {
+        installEventHandler()
+    }
+
+    deinit {
+        unregister()
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+        }
+    }
+
+    func register(_ binding: HotkeyBinding?) {
+        unregister()
+
+        guard let binding, (binding.pressCount ?? 1) == 1, !binding.isModifierOnlyTrigger else {
+            return
+        }
+
+        let hotkeyID = historySystemHotkeyID
+        var newHotkeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            UInt32(binding.keyCode),
+            carbonModifierFlags(from: binding.modifierFlags),
+            hotkeyID,
+            GetApplicationEventTarget(),
+            0,
+            &newHotkeyRef
+        )
+        guard status == noErr else {
+            ErrorLogStore.shared.log("Hotkey: failed to register History system hotkey, status \(status)")
+            return
+        }
+
+        hotkeyRef = newHotkeyRef
+    }
+
+    func unregister() {
+        if let hotkeyRef {
+            UnregisterEventHotKey(hotkeyRef)
+        }
+        hotkeyRef = nil
+    }
+
+    fileprivate func handlePressed() {
+        DispatchQueue.main.async { [weak self] in
+            self?.onPressed?()
+        }
+    }
+
+    private func installEventHandler() {
+        guard eventHandlerRef == nil else { return }
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let userData = Unmanaged.passUnretained(self).toOpaque()
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            systemHotkeyCallback,
+            1,
+            &eventType,
+            userData,
+            &eventHandlerRef
+        )
+        if status != noErr {
+            ErrorLogStore.shared.log("Hotkey: failed to install History system hotkey handler, status \(status)")
+        }
+    }
+
+    private func carbonModifierFlags(from flags: UInt) -> UInt32 {
+        let modifierFlags = NSEvent.ModifierFlags(rawValue: flags)
+        var result: UInt32 = 0
+        if modifierFlags.contains(.command) { result |= UInt32(cmdKey) }
+        if modifierFlags.contains(.option) { result |= UInt32(optionKey) }
+        if modifierFlags.contains(.control) { result |= UInt32(controlKey) }
+        if modifierFlags.contains(.shift) { result |= UInt32(shiftKey) }
+        return result
+    }
+}
+
+final class EventTapHotkeyService: HotkeyService {
+    /// Allows competing modifier shortcuts to win without delaying recording start.
+    /// Recording mode is decided by `WorkflowController`, not by this timer.
+    private static let modifierShortcutArbitrationDelay: TimeInterval = 0.22
+    private static let duplicateHistoryRequestSuppression: TimeInterval = 0.18
+
+    var recordingStopEnabled: (() -> Bool)?
+    var onRecordingStop: (() -> Void)?
+    private var recordingStopGesture = RecordingStopGesture()
+
+    var onAuxiliaryPressBegan: ((HotkeyEventContext) -> Void)?
+    var onAuxiliaryPressEnded: ((HotkeyEventContext) -> Void)?
+    var onAuxiliaryPromoted: ((HotkeyEventContext) -> Void)?
+    var onActivationTap: ((HotkeyEventContext) -> Void)?
+    var onActivationPressBegan: ((HotkeyEventContext) -> Void)?
+    var onActivationPressEnded: ((HotkeyEventContext) -> Void)?
     var onActivationCancelled: (() -> Void)?
-    var onAskPressBegan: (() -> Void)?
+    var onAskPressBegan: ((HotkeyEventContext) -> Void)?
     var onAskPressEnded: (() -> Void)?
     var onPersonaPickerRequested: (() -> Void)?
+    var onHistoryRequested: (() -> Void)?
     var onError: ((String) -> Void)?
 
     private let settingsStore: SettingsStore
+
+    private var activationBinding: HotkeyBinding?
+    private var auxiliaryBinding: HotkeyBinding?
+    private var askBinding: HotkeyBinding?
+    private var personaBinding: HotkeyBinding?
+    private var historyBinding: HotkeyBinding?
+
+    private func refreshBindings() {
+        activationBinding = settingsStore.activationHotkey
+        auxiliaryBinding = settingsStore.auxiliaryHotkey
+        askBinding = settingsStore.askHotkey
+        personaBinding = settingsStore.personaHotkey
+        historyBinding = settingsStore.historyHotkey
+    }
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -33,9 +180,16 @@ final class EventTapHotkeyService: HotkeyService {
     private var arbiter = HotkeyGestureArbiter()
     private var pendingModifierActivationWorkItem: DispatchWorkItem?
     private var accessibilityRetryWorkItem: DispatchWorkItem?
+    private let historySystemHotkey = SystemHotkeyRegistrar()
+    private var hotkeySettingsObserver: NSObjectProtocol?
+    private var lastHistoryRequestAt: Date?
 
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
+        historySystemHotkey.onPressed = { [weak self] in
+            ErrorLogStore.shared.log("Hotkey(System): history")
+            self?.requestHistoryPicker()
+        }
     }
 
     func start() {
@@ -44,7 +198,21 @@ final class EventTapHotkeyService: HotkeyService {
         NSLog("[Hotkey] Starting event tap service...")
         ErrorLogStore.shared.log("Hotkey: starting")
 
+        refreshBindings()
+        registerHistorySystemHotkey()
+        hotkeySettingsObserver = NotificationCenter.default.addObserver(
+            forName: .hotkeySettingsDidChange,
+            object: settingsStore,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshBindings()
+            self?.registerHistorySystemHotkey()
+        }
         installEventTapIfPossible()
+    }
+
+    func settleActivationGesture() {
+        arbiter.settleActivationGesture()
     }
 
     func stop() {
@@ -69,7 +237,17 @@ final class EventTapHotkeyService: HotkeyService {
         pendingModifierActivationWorkItem = nil
         accessibilityRetryWorkItem?.cancel()
         accessibilityRetryWorkItem = nil
+        if let hotkeySettingsObserver {
+            NotificationCenter.default.removeObserver(hotkeySettingsObserver)
+        }
+        hotkeySettingsObserver = nil
+        historySystemHotkey.unregister()
         arbiter = HotkeyGestureArbiter()
+        recordingStopGesture = RecordingStopGesture()
+    }
+
+    private func registerHistorySystemHotkey() {
+        historySystemHotkey.register(settingsStore.historyHotkey)
     }
 
     private func installEventTapIfPossible() {
@@ -85,7 +263,7 @@ final class EventTapHotkeyService: HotkeyService {
             options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
             callback: hotkeyEventTapCallback,
-            userInfo: selfPointer,
+            userInfo: selfPointer
         ) else {
             ErrorLogStore.shared.log("Hotkey: failed to create CGEventTap, using NSEvent fallback")
             installNSEventMonitorFallback()
@@ -103,10 +281,18 @@ final class EventTapHotkeyService: HotkeyService {
     }
 
     private func installNSEventMonitorFallback() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [
+            .keyDown,
+            .keyUp,
+            .flagsChanged
+        ]) { [weak self] event in
             _ = self?.processNSEvent(event, canConsume: false)
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [
+            .keyDown,
+            .keyUp,
+            .flagsChanged
+        ]) { [weak self] event in
             guard let self else { return event }
             let shouldConsume = processNSEvent(event, canConsume: true)
             return shouldConsume ? nil : event
@@ -144,6 +330,7 @@ final class EventTapHotkeyService: HotkeyService {
             modifierFlags: filteredFlags(event.modifierFlags),
             isRepeat: event.isARepeat,
             canConsume: canConsume,
+            timestamp: event.timestamp
         )
     }
 
@@ -168,6 +355,7 @@ final class EventTapHotkeyService: HotkeyService {
             modifierFlags: flags,
             isRepeat: isRepeat,
             canConsume: true,
+            timestamp: TimeInterval(event.timestamp) / 1_000_000_000
         )
         return shouldConsume ? nil : Unmanaged.passUnretained(event)
     }
@@ -178,12 +366,14 @@ final class EventTapHotkeyService: HotkeyService {
         modifierFlags: UInt,
         isRepeat: Bool,
         canConsume: Bool,
+        timestamp: TimeInterval
     ) -> Bool {
         guard let eventType else { return false }
 
-        let activationHotkey = settingsStore.activationHotkey
-        let askHotkey = settingsStore.askHotkey
-        let personaHotkey = settingsStore.personaHotkey
+        let activationHotkey = activationBinding
+        let askHotkey = askBinding
+        let personaHotkey = personaBinding
+        let historyHotkey = historyBinding
         let shouldConsume = canConsume && arbiter.shouldConsume(
             eventType: eventType,
             keyCode: keyCode,
@@ -191,7 +381,28 @@ final class EventTapHotkeyService: HotkeyService {
             activationHotkey: activationHotkey,
             askHotkey: askHotkey,
             personaHotkey: personaHotkey,
+            historyHotkey: historyHotkey,
+            auxiliaryHotkey: auxiliaryBinding
         )
+
+        let stopEnabled = recordingStopEnabled?() == true
+        let stopRequested = recordingStopGesture.handle(
+            type: eventType, keyCode: keyCode, flags: modifierFlags, isRepeat: isRepeat,
+            bindings: [activationHotkey, auxiliaryBinding, askHotkey].compactMap { $0 },
+            enabled: stopEnabled, timestamp: timestamp
+        )
+        if stopRequested {
+            // Discard the old gesture so neither shortcut's release can submit or restart it.
+            arbiter = HotkeyGestureArbiter()
+            syncPendingModifierActivationTimer()
+            DispatchQueue.main.async { [weak self] in self?.onRecordingStop?() }
+            return canConsume
+        }
+        if recordingStopGesture.suppressesActivation { return canConsume }
+        if stopEnabled, recordingStopGesture.isPress || isRepeat {
+            // New presses are stop candidates; releases retain hold-to-talk behavior.
+            return shouldConsume
+        }
 
         switch eventType {
         case .keyDown:
@@ -203,7 +414,11 @@ final class EventTapHotkeyService: HotkeyService {
                     activationHotkey: activationHotkey,
                     askHotkey: askHotkey,
                     personaHotkey: personaHotkey,
+                    historyHotkey: historyHotkey,
+                    auxiliaryHotkey: auxiliaryBinding,
+                    timestamp: timestamp
                 ),
+                context: HotkeyEventContext(uptime: timestamp)
             )
         case .keyUp:
             handleGestureEvents(
@@ -211,7 +426,10 @@ final class EventTapHotkeyService: HotkeyService {
                     keyCode: keyCode,
                     activationHotkey: activationHotkey,
                     askHotkey: askHotkey,
+                    auxiliaryHotkey: auxiliaryBinding,
+                    timestamp: timestamp
                 ),
+                context: HotkeyEventContext(uptime: timestamp)
             )
         case .flagsChanged:
             handleGestureEvents(
@@ -221,7 +439,11 @@ final class EventTapHotkeyService: HotkeyService {
                     activationHotkey: activationHotkey,
                     askHotkey: askHotkey,
                     personaHotkey: personaHotkey,
+                    historyHotkey: historyHotkey,
+                    auxiliaryHotkey: auxiliaryBinding,
+                    timestamp: timestamp
                 ),
+                context: HotkeyEventContext(uptime: timestamp)
             )
         }
 
@@ -258,28 +480,41 @@ final class EventTapHotkeyService: HotkeyService {
         }
     }
 
-    private func handleGestureEvents(_ events: [HotkeyGestureEvent]) {
+    private func handleGestureEvents(
+        _ events: [HotkeyGestureEvent],
+        context: HotkeyEventContext = HotkeyEventContext()
+    ) {
         syncPendingModifierActivationTimer()
 
         for event in events {
             switch event {
+            case .auxiliaryPromoted:
+                RecordingStartupLatencyTrace.shared.mark("hotkey.auxiliary_promoted")
+                DispatchQueue.main.async { [weak self] in self?.onAuxiliaryPromoted?(context) }
+            case .begin(.auxiliary):
+                RecordingStartupLatencyTrace.shared.begin("hotkey.auxiliary_begin", physicalUptime: context.uptime)
+                DispatchQueue.main.async { [weak self] in self?.onAuxiliaryPressBegan?(context) }
+            case .end(.auxiliary):
+                DispatchQueue.main.async { [weak self] in self?.onAuxiliaryPressEnded?(context) }
+            case .cancel(.auxiliary):
+                break
             case .activationTapped:
                 ErrorLogStore.shared.log("Hotkey(NSEvent): activation tap")
                 RecordingStartupLatencyTrace.shared.mark("hotkey.activation_tap")
                 DispatchQueue.main.async { [weak self] in
-                    self?.onActivationTap?()
+                    self?.onActivationTap?(context)
                 }
             case .begin(.activation):
                 ErrorLogStore.shared.log("Hotkey(NSEvent): activation down")
-                RecordingStartupLatencyTrace.shared.begin("hotkey.activation_begin")
+                RecordingStartupLatencyTrace.shared.begin("hotkey.activation_begin", physicalUptime: context.uptime)
                 DispatchQueue.main.async { [weak self] in
-                    self?.onActivationPressBegan?()
+                    self?.onActivationPressBegan?(context)
                 }
             case .end(.activation):
                 ErrorLogStore.shared.log("Hotkey(NSEvent): activation up")
                 RecordingStartupLatencyTrace.shared.mark("hotkey.activation_end")
                 DispatchQueue.main.async { [weak self] in
-                    self?.onActivationPressEnded?()
+                    self?.onActivationPressEnded?(context)
                 }
             case .cancel(.activation):
                 ErrorLogStore.shared.log("Hotkey(NSEvent): activation cancel")
@@ -287,13 +522,13 @@ final class EventTapHotkeyService: HotkeyService {
                 DispatchQueue.main.async { [weak self] in
                     self?.onActivationCancelled?()
                 }
-            case .cancel(.ask), .cancel(.personaPicker):
+            case .cancel(.ask), .cancel(.personaPicker), .cancel(.history):
                 break
             case .begin(.ask):
                 ErrorLogStore.shared.log("Hotkey(NSEvent): ask down")
                 RecordingStartupLatencyTrace.shared.mark("hotkey.ask_begin")
                 DispatchQueue.main.async { [weak self] in
-                    self?.onAskPressBegan?()
+                    self?.onAskPressBegan?(context)
                 }
             case .end(.ask):
                 ErrorLogStore.shared.log("Hotkey(NSEvent): ask up")
@@ -301,14 +536,30 @@ final class EventTapHotkeyService: HotkeyService {
                 DispatchQueue.main.async { [weak self] in
                     self?.onAskPressEnded?()
                 }
-            case .begin(.personaPicker), .end(.personaPicker):
+            case .begin(.personaPicker), .end(.personaPicker), .begin(.history), .end(.history):
                 break
             case .personaRequested:
                 ErrorLogStore.shared.log("Hotkey(NSEvent): persona picker")
                 DispatchQueue.main.async { [weak self] in
                     self?.onPersonaPickerRequested?()
                 }
+            case .historyRequested:
+                ErrorLogStore.shared.log("Hotkey(NSEvent): history")
+                requestHistoryPicker()
             }
+        }
+    }
+
+    private func requestHistoryPicker() {
+        let now = Date()
+        if let lastHistoryRequestAt,
+           now.timeIntervalSince(lastHistoryRequestAt) < Self.duplicateHistoryRequestSuppression {
+            ErrorLogStore.shared.log("Hotkey: suppressed duplicate History request")
+            return
+        }
+        lastHistoryRequestAt = now
+        DispatchQueue.main.async { [weak self] in
+            self?.onHistoryRequested?()
         }
     }
 
@@ -328,8 +579,8 @@ final class EventTapHotkeyService: HotkeyService {
         }
         pendingModifierActivationWorkItem = workItem
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + Self.modifierActivationHoldDelay,
-            execute: workItem,
+            deadline: .now() + Self.modifierShortcutArbitrationDelay,
+            execute: workItem
         )
     }
 }

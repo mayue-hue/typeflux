@@ -2,18 +2,41 @@
 import XCTest
 
 final class OverlayControllerTests: XCTestCase {
+    @MainActor
+    func testDeinitCleansUpInstalledPickerMonitoring() {
+        weak var weakController: OverlayController?
+
+        autoreleasepool {
+            let controller = OverlayController(appState: AppStateStore())
+            weakController = controller
+            controller.showPersonaPicker(
+                items: [.init(id: "test", title: "Test", subtitle: "")],
+                selectedIndex: 0,
+                title: "Picker",
+                instructions: "Choose",
+                icon: .none
+            )
+        }
+
+        XCTAssertNil(weakController)
+    }
+
     func testLiveTranscriptPreviewLayoutCapsVisibleTextToThreeLines() {
         XCTAssertEqual(LiveTranscriptPreviewLayout.maxVisibleLineCount, 3)
         XCTAssertEqual(
             LiveTranscriptPreviewLayout.textViewportHeight,
             LiveTranscriptPreviewLayout.lineHeight * 3,
-            accuracy: 0.001,
+            accuracy: 0.001
         )
     }
 
     func testExpandedRecordingPreviewLayoutIsSmallerThanPreviousFiveLineDesign() {
         XCTAssertLessThan(LiveTranscriptPreviewLayout.expandedCapsuleHeight, 127)
         XCTAssertLessThan(LiveTranscriptPreviewLayout.expandedOverlayHeight, 218)
+    }
+
+    func testNoticeLayoutSupportsThreeLinesOfDetailText() {
+        XCTAssertEqual(NoticeToastLayout.maxVisibleLineCount, 3)
     }
 
     func testWrapFailureActionsRunsDismissBeforeOriginalHandler() {
@@ -23,10 +46,10 @@ final class OverlayControllerTests: XCTestCase {
                 OverlayFailureAction(
                     title: "Login",
                     isRetry: false,
-                    handler: { events.append("action") },
-                ),
+                    handler: { events.append("action") }
+                )
             ],
-            beforeAction: { events.append("dismiss") },
+            beforeAction: { events.append("dismiss") }
         )
 
         XCTAssertEqual(wrapped.count, 1)
@@ -42,13 +65,85 @@ final class OverlayControllerTests: XCTestCase {
                 OverlayFailureAction(
                     title: "Retry",
                     isRetry: true,
-                    handler: {},
-                ),
+                    style: .text,
+                    trailingSystemImage: "gearshape",
+                    handler: {}
+                )
             ],
-            beforeAction: {},
+            beforeAction: {}
         )
 
         XCTAssertEqual(wrapped[0].title, "Retry")
         XCTAssertTrue(wrapped[0].isRetry)
+        XCTAssertEqual(wrapped[0].style, .text)
+        XCTAssertEqual(wrapped[0].trailingSystemImage, "gearshape")
+    }
+
+    func testPassiveNoticeDoesNotAcceptMouseInteraction() {
+        XCTAssertFalse(OverlayController.noticeIsInteractive(dismissible: false))
+        XCTAssertTrue(OverlayController.noticeIsInteractive(dismissible: true))
+    }
+
+    @MainActor
+    func testProcessingProgressAdvancesUntilPresentationStops() async throws {
+        let controller = OverlayController(appState: AppStateStore())
+
+        controller.showProcessing(timeout: 1)
+        XCTAssertTrue(controller.isProcessingProgressActiveForTesting)
+        XCTAssertEqual(controller.processingProgressForTesting, 0.5)
+
+        try await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertGreaterThan(controller.processingProgressForTesting, 0.5)
+        XCTAssertLessThan(controller.processingProgressForTesting, 0.7)
+        controller.showFailure(message: "Failed")
+        XCTAssertFalse(controller.isProcessingProgressActiveForTesting)
+        XCTAssertEqual(controller.processingProgressForTesting, 0)
+    }
+
+    @MainActor
+    func testProcessingProgressMovesFromRecognitionIntoLLMPhase() async throws {
+        let controller = OverlayController(appState: AppStateStore())
+
+        controller.showProcessing(timeout: 1)
+        try await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertGreaterThan(controller.processingProgressForTesting, 0.5)
+        XCTAssertLessThan(controller.processingProgressForTesting, 0.7)
+
+        controller.transitionToLLMPhase()
+        XCTAssertEqual(controller.processingProgressForTesting, 0.7, accuracy: 0.001)
+        try await Task.sleep(for: .milliseconds(70))
+
+        XCTAssertGreaterThan(controller.processingProgressForTesting, 0.7)
+    }
+
+    @MainActor
+    func testLLMProgressMovesByVisibleAmountWithinFirstSecond() async throws {
+        let controller = OverlayController(appState: AppStateStore())
+
+        controller.showProcessing(timeout: 120)
+        controller.transitionToLLMPhase()
+        for _ in 0 ..< 20 {
+            if controller.processingProgressForTesting >= 0.738 { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        XCTAssertGreaterThanOrEqual(controller.processingProgressForTesting, 0.738)
+        XCTAssertLessThan(
+            controller.processingProgressForTesting,
+            ProcessingProgressTimeline.maximumIncompleteProgress
+        )
+    }
+
+    @MainActor
+    func testSuccessfulProcessingStopsTimelineAndCompletesProgress() {
+        let controller = OverlayController(appState: AppStateStore())
+
+        controller.showProcessing(timeout: 1)
+        controller.dismissSoon()
+
+        XCTAssertFalse(controller.isProcessingProgressActiveForTesting)
+        XCTAssertEqual(controller.processingProgressForTesting, 1)
     }
 }

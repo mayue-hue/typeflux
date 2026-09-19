@@ -13,6 +13,15 @@ struct ASRLLMConfig: Encodable {
     /// User prompt template containing "{{transcript}}" as a placeholder for the
     /// final transcription text. The server substitutes it before calling the LLM.
     let userPromptTemplate: String
+    /// Stable identifier for the persona used to build the prompts. This is sent
+    /// as a request header only, not as part of the WebSocket start payload.
+    let personaID: UUID?
+
+    init(systemPrompt: String, userPromptTemplate: String, personaID: UUID? = nil) {
+        self.systemPrompt = systemPrompt
+        self.userPromptTemplate = userPromptTemplate
+        self.personaID = personaID
+    }
 
     enum CodingKeys: String, CodingKey {
         case systemPrompt = "system_prompt"
@@ -28,67 +37,89 @@ protocol TypefluxCloudLLMIntegratedTranscriber: TypefluxCloudScenarioAwareTransc
         scenario: TypefluxCloudScenario,
         onASRUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
         onLLMStart: @escaping @Sendable () async -> Void,
-        onLLMChunk: @escaping @Sendable (String) async -> Void,
+        onLLMChunk: @escaping @Sendable (String) async -> Void
     ) async throws -> (transcript: String, rewritten: String?)
 }
 
 protocol TypefluxOfficialASRTransport: Sendable {
+    // swiftlint:disable:next function_parameter_count
     func transcribeViaWebSocket(
         pcmData: Data,
         apiBaseURL: String,
         token: String,
+        provider: String,
         scenario: TypefluxCloudScenario,
+        optimize: Bool,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String
 
+    // swiftlint:disable:next function_parameter_count
     func transcribeViaWebSocketWithLLM(
         pcmData: Data,
         apiBaseURL: String,
         token: String,
+        provider: String,
         scenario: TypefluxCloudScenario,
         llmConfig: ASRLLMConfig,
         onASRUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
         onLLMStart: @escaping @Sendable () async -> Void,
         onLLMChunk: @escaping @Sendable (String) async -> Void
     ) async throws -> (transcript: String, rewritten: String?)
-
-    func transcribeViaDirectAliyun(
-        pcmData: Data,
-        token: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
-    ) async throws -> String
-
-    func makeDirectAliyunPCMStream(
-        token: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
-    ) -> any PCM16RealtimeTranscriptionSession
 }
 
 // MARK: - Main Transcriber
 
-final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, TypefluxCloudLLMIntegratedTranscriber,
-    RealtimeTranscriptionSessionFactory {
-    private let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "TypefluxOfficialTranscriber")
+final class TypefluxOfficialTranscriber: ASROptimizeAwareTranscriber, TypefluxCloudLLMIntegratedTranscriber,
+    OptimizeAwareRealtimeSessionFactory, RecordingPrewarmingTranscriber {
     private let routingClient: any TypefluxOfficialASRRoutingClient
     private let transport: any TypefluxOfficialASRTransport
+    private let serverRegistry: any TypefluxASRServerProviding
     private let accessTokenProvider: @Sendable () async -> String?
 
     init(
-        routingClient: any TypefluxOfficialASRRoutingClient = TypefluxOfficialASRRoutingHTTPClient(),
+        routingClient: any TypefluxOfficialASRRoutingClient = TypefluxOfficialASRRouteCache.shared,
         transport: any TypefluxOfficialASRTransport = DefaultTypefluxOfficialASRTransport(),
+        serverRegistry: any TypefluxASRServerProviding = TypefluxASRServerRegistry.shared,
         accessTokenProvider: @escaping @Sendable () async -> String? = {
             await MainActor.run { AuthState.shared.accessToken }
         }
     ) {
         self.routingClient = routingClient
         self.transport = transport
+        self.serverRegistry = serverRegistry
         self.accessTokenProvider = accessTokenProvider
+    }
+
+    func prepareForRecording() async {
+        guard let cache = routingClient as? TypefluxOfficialASRRouteCache,
+              let token = await accessTokenProvider(),
+              !token.isEmpty
+        else { return }
+        await cache.prefetch(accessToken: token)
+    }
+
+    func cancelPreparedRecording() async {
+        // The prefetched route remains useful for the next recording.
     }
 
     func transcribeStream(
         audioFile: AudioFile,
         scenario: TypefluxCloudScenario,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        try await transcribeStream(
+            audioFile: audioFile,
+            scenario: scenario,
+            optimize: true,
+            onUpdate: onUpdate
+        )
+    }
+
+    func transcribeStream(
+        audioFile: AudioFile,
+        scenario: TypefluxCloudScenario,
+        optimize: Bool,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let token = await accessTokenProvider()
         guard let token, !token.isEmpty else {
@@ -97,29 +128,28 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
 
         let pcmData = try CloudASRAudioConverter.convert(url: audioFile.fileURL)
         let route = try await routingClient.fetchRoute(accessToken: token, scenario: scenario)
-        if case .aliyun(let aliyunToken, _, let usageReportID) = route {
-            let transcript = try await transport.transcribeViaDirectAliyun(
-                pcmData: pcmData,
-                token: aliyunToken,
-                onUpdate: onUpdate,
-            )
-            reportAliyunUsageInBackground(
-                accessToken: token,
-                usageReportID: usageReportID,
-                pcm16ByteCount: pcmData.count,
-                outputChars: transcript.count,
-                scenario: scenario,
-            )
-            return transcript
+        let asrToken: String
+        let asrProvider: String
+        let serverBaseURLs: [URL]
+        switch route {
+        case let .webSocket(token, _, _, _, servers):
+            asrToken = token
+            asrProvider = TypefluxOfficialASRTokenScope.provider(from: token) ?? "default"
+            serverBaseURLs = servers
         }
 
-        return try await Self.runWithEndpointFailover { apiBaseURL in
+        return try await Self.runWithASRServerFailover(
+            preferredServers: serverBaseURLs,
+            serverRegistry: serverRegistry
+        ) { apiBaseURL in
             try await transport.transcribeViaWebSocket(
                 pcmData: pcmData,
                 apiBaseURL: apiBaseURL,
-                token: token,
+                token: asrToken,
+                provider: asrProvider,
                 scenario: scenario,
-                onUpdate: onUpdate,
+                optimize: optimize,
+                onUpdate: onUpdate
             )
         }
     }
@@ -130,7 +160,7 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
         scenario: TypefluxCloudScenario,
         onASRUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
         onLLMStart: @escaping @Sendable () async -> Void,
-        onLLMChunk: @escaping @Sendable (String) async -> Void,
+        onLLMChunk: @escaping @Sendable (String) async -> Void
     ) async throws -> (transcript: String, rewritten: String?) {
         let token = await accessTokenProvider()
         guard let token, !token.isEmpty else {
@@ -139,74 +169,98 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
 
         let pcmData = try CloudASRAudioConverter.convert(url: audioFile.fileURL)
         let route = try await routingClient.fetchRoute(accessToken: token, scenario: scenario)
-        if case .aliyun(let aliyunToken, _, let usageReportID) = route {
-            let transcript = try await transport.transcribeViaDirectAliyun(
-                pcmData: pcmData,
-                token: aliyunToken,
-                onUpdate: onASRUpdate,
-            )
-            reportAliyunUsageInBackground(
-                accessToken: token,
-                usageReportID: usageReportID,
-                pcm16ByteCount: pcmData.count,
-                outputChars: transcript.count,
-                scenario: scenario,
-            )
-            return (transcript: transcript, rewritten: nil)
+        let asrToken: String
+        let asrProvider: String
+        let serverBaseURLs: [URL]
+        switch route {
+        case let .webSocket(token, _, _, _, servers):
+            asrToken = token
+            asrProvider = TypefluxOfficialASRTokenScope.provider(from: token) ?? "default"
+            serverBaseURLs = servers
         }
 
-        return try await Self.runWithEndpointFailover { apiBaseURL in
+        return try await Self.runWithASRServerFailover(
+            preferredServers: serverBaseURLs,
+            serverRegistry: serverRegistry
+        ) { apiBaseURL in
             try await transport.transcribeViaWebSocketWithLLM(
                 pcmData: pcmData,
                 apiBaseURL: apiBaseURL,
-                token: token,
+                token: asrToken,
+                provider: asrProvider,
                 scenario: scenario,
                 llmConfig: llmConfig,
                 onASRUpdate: onASRUpdate,
                 onLLMStart: onLLMStart,
-                onLLMChunk: onLLMChunk,
+                onLLMChunk: onLLMChunk
             )
         }
     }
 
     func makeRealtimeTranscriptionSession(
         scenario: TypefluxCloudScenario,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> any RealtimeTranscriptionSession {
+        try await makeRealtimeTranscriptionSession(
+            scenario: scenario,
+            optimize: true,
+            onUpdate: onUpdate
+        )
+    }
+
+    func makeRealtimeTranscriptionSession(
+        scenario: TypefluxCloudScenario,
+        optimize: Bool,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> any RealtimeTranscriptionSession {
+        let transportDiagnostics = NetworkTransportDiagnosticsRecorder(endpoint: nil)
         return BufferedRealtimeTranscriptionSession(
-            upstream: DeferredPCM16RealtimeTranscriptionSession { [accessTokenProvider, routingClient, transport] in
+            upstream: DeferredPCM16RealtimeTranscriptionSession {
+                [accessTokenProvider, routingClient, serverRegistry, transportDiagnostics] in
+                transportDiagnostics.markCredentialLookupStarted()
                 let token = await accessTokenProvider()
+                transportDiagnostics.markCredentialLookupCompleted()
                 guard let token, !token.isEmpty else {
                     throw TypefluxOfficialASRError.notLoggedIn
                 }
 
+                transportDiagnostics.markRouteLookupStarted()
                 let route = try await routingClient.fetchRoute(accessToken: token, scenario: scenario)
-                if case .aliyun(let aliyunToken, _, let usageReportID) = route {
-                    return TypefluxOfficialAliyunUsageReportingPCMStream(
-                        upstream: transport.makeDirectAliyunPCMStream(token: aliyunToken, onUpdate: onUpdate),
-                        accessToken: token,
-                        usageReportID: usageReportID,
-                        scenario: scenario,
-                        routingClient: routingClient,
-                    )
+                transportDiagnostics.markRouteLookupCompleted()
+                let asrToken: String
+                let asrProvider: String
+                let serverBaseURLs: [URL]
+                switch route {
+                case let .webSocket(token, _, _, _, servers):
+                    asrToken = token
+                    asrProvider = TypefluxOfficialASRTokenScope.provider(from: token) ?? "default"
+                    serverBaseURLs = servers
                 }
 
-                let baseURLs = await Self.realtimeCandidateBaseURLs()
+                transportDiagnostics.markServerSelectionStarted()
+                let baseURLs = await serverRegistry.orderedServers(preferred: serverBaseURLs)
+                transportDiagnostics.markServerSelectionCompleted()
                 guard let baseURL = baseURLs.first else {
                     throw TypefluxOfficialASRError.connectionFailed("No Typeflux Cloud endpoint configured.")
                 }
 
                 return TypefluxOfficialRealtimePCMStream(
                     apiBaseURL: baseURL.absoluteString,
-                    token: token,
+                    token: asrToken,
+                    provider: asrProvider,
                     scenario: scenario,
+                    optimize: optimize,
                     onUpdate: onUpdate,
+                    transportDiagnostics: transportDiagnostics
                 )
-            },
+            }
         )
     }
 
     static func testConnection() async throws -> String {
+        guard await MainActor.run(body: { AuthState.shared.canUseCloudASR }) else {
+            throw TypefluxCloudASRDirectiveError()
+        }
         let token = await MainActor.run { AuthState.shared.accessToken }
         guard let token, !token.isEmpty else {
             throw TypefluxOfficialASRError.notLoggedIn
@@ -215,37 +269,23 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
         let pcmData = RemoteSTTTestAudio.pcm16MonoSilence()
         let routingClient = TypefluxOfficialASRRoutingHTTPClient()
         let route = try await routingClient.fetchRoute(accessToken: token, scenario: .modelSetup)
-        if case .aliyun(let aliyunToken, _, let usageReportID) = route {
-            let transcript = try await AliCloudFunASRSession.run(
-                pcmData: pcmData,
-                model: AliCloudASRDefaults.model,
-                apiKey: aliyunToken,
-            ) { _ in }
-            let audioDurationMs = TypefluxOfficialASRUsageMeter.audioDurationMilliseconds(
-                pcm16ByteCount: pcmData.count
-            )
-            Task.detached(priority: .utility) {
-                do {
-                    try await routingClient.reportAliyunUsage(
-                        accessToken: token,
-                        usageReportID: usageReportID,
-                        audioDurationMs: audioDurationMs,
-                        outputChars: transcript.count,
-                        scenario: .modelSetup,
-                    )
-                } catch {
-                    NetworkDebugLogger.logError(context: "Aliyun test ASR usage report failed", error: error)
-                }
-            }
-            return transcript
+        let asrToken: String
+        let asrProvider: String
+        let serverBaseURLs: [URL]
+        switch route {
+        case let .webSocket(token, _, _, _, servers):
+            asrToken = token
+            asrProvider = TypefluxOfficialASRTokenScope.provider(from: token) ?? "default"
+            serverBaseURLs = servers
         }
 
-        return try await runWithEndpointFailover { apiBaseURL in
+        return try await runWithASRServerFailover(preferredServers: serverBaseURLs) { apiBaseURL in
             try await TypefluxOfficialASRSession.run(
                 pcmData: pcmData,
                 apiBaseURL: apiBaseURL,
-                token: token,
+                token: asrToken,
                 scenario: .modelSetup,
+                provider: asrProvider
             ) { _ in }
         }
     }
@@ -255,13 +295,12 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
     /// fails. Once a session begins streaming results we let it run to
     /// completion against the chosen endpoint — mid-session migration is not
     /// supported because that would risk reordering or duplicating audio.
-    static func runWithEndpointFailover<T>(
+    static func runWithASRServerFailover<T>(
+        preferredServers: [URL],
+        serverRegistry: any TypefluxASRServerProviding = TypefluxASRServerRegistry.shared,
         operation: @Sendable (String) async throws -> T
     ) async throws -> T {
-        let urls = await CloudEndpointRegistry.shared.latencyOptimizedEndpoints()
-        let baseURLs: [URL] = urls.isEmpty
-            ? [URL(string: AppServerConfiguration.apiBaseURL)].compactMap { $0 }
-            : urls
+        let baseURLs = await serverRegistry.orderedServers(preferred: preferredServers)
 
         guard !baseURLs.isEmpty else {
             throw TypefluxOfficialASRError.connectionFailed("No Typeflux Cloud endpoint configured.")
@@ -273,58 +312,33 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
                 return try await operation(baseURL.absoluteString)
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let error where TypefluxCloudASRDirectiveError.fromError(error) != nil {
+                throw TypefluxCloudASRDirectiveError()
+            } catch let error where TypefluxCloudBillingError.fromError(error) != nil {
+                throw TypefluxCloudBillingError.fromError(error) ?? error
             } catch let error as TypefluxOfficialASRError {
-                await CloudEndpointRegistry.shared.reportFailure(baseURL, error: error)
+                await serverRegistry.reportFailure(baseURL, error: error)
                 lastError = error
                 continue
             } catch {
-                await CloudEndpointRegistry.shared.reportFailure(baseURL, error: error)
+                await serverRegistry.reportFailure(baseURL, error: error)
                 lastError = error
                 continue
             }
         }
         throw lastError ?? TypefluxOfficialASRError.connectionFailed("All endpoints failed.")
     }
-
-    private static func realtimeCandidateBaseURLs() async -> [URL] {
-        let urls = await CloudEndpointRegistry.shared.latencyOptimizedEndpoints()
-        if !urls.isEmpty { return urls }
-        return [URL(string: AppServerConfiguration.apiBaseURL)].compactMap { $0 }
-    }
-
-    private func reportAliyunUsageInBackground(
-        accessToken: String,
-        usageReportID: String,
-        pcm16ByteCount: Int,
-        outputChars: Int,
-        scenario: TypefluxCloudScenario
-    ) {
-        let audioDurationMs = TypefluxOfficialASRUsageMeter.audioDurationMilliseconds(
-            pcm16ByteCount: pcm16ByteCount
-        )
-        let routingClient = routingClient
-        Task.detached(priority: .utility) {
-            do {
-                try await routingClient.reportAliyunUsage(
-                    accessToken: accessToken,
-                    usageReportID: usageReportID,
-                    audioDurationMs: audioDurationMs,
-                    outputChars: outputChars,
-                    scenario: scenario,
-                )
-            } catch {
-                NetworkDebugLogger.logError(context: "Aliyun direct ASR usage report failed", error: error)
-            }
-        }
-    }
 }
 
 struct DefaultTypefluxOfficialASRTransport: TypefluxOfficialASRTransport {
+    // swiftlint:disable:next function_parameter_count
     func transcribeViaWebSocket(
         pcmData: Data,
         apiBaseURL: String,
         token: String,
+        provider: String,
         scenario: TypefluxCloudScenario,
+        optimize: Bool,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         try await TypefluxOfficialASRSession.run(
@@ -332,14 +346,18 @@ struct DefaultTypefluxOfficialASRTransport: TypefluxOfficialASRTransport {
             apiBaseURL: apiBaseURL,
             token: token,
             scenario: scenario,
-            onUpdate: onUpdate,
+            provider: provider,
+            optimize: optimize,
+            onUpdate: onUpdate
         )
     }
 
+    // swiftlint:disable:next function_parameter_count
     func transcribeViaWebSocketWithLLM(
         pcmData: Data,
         apiBaseURL: String,
         token: String,
+        provider: String,
         scenario: TypefluxCloudScenario,
         llmConfig: ASRLLMConfig,
         onASRUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
@@ -351,96 +369,12 @@ struct DefaultTypefluxOfficialASRTransport: TypefluxOfficialASRTransport {
             apiBaseURL: apiBaseURL,
             token: token,
             scenario: scenario,
+            provider: provider,
             llmConfig: llmConfig,
             onASRUpdate: onASRUpdate,
             onLLMStart: onLLMStart,
-            onLLMChunk: onLLMChunk,
+            onLLMChunk: onLLMChunk
         )
-    }
-
-    func transcribeViaDirectAliyun(
-        pcmData: Data,
-        token: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
-    ) async throws -> String {
-        try await AliCloudFunASRSession.run(
-            pcmData: pcmData,
-            model: AliCloudASRDefaults.model,
-            apiKey: token,
-            onUpdate: onUpdate,
-        )
-    }
-
-    func makeDirectAliyunPCMStream(
-        token: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
-    ) -> any PCM16RealtimeTranscriptionSession {
-        AliCloudFunASRSession(model: AliCloudASRDefaults.model, apiKey: token, onUpdate: onUpdate)
-    }
-}
-
-actor TypefluxOfficialAliyunUsageReportingPCMStream: PCM16RealtimeTranscriptionSession {
-    private let upstream: any PCM16RealtimeTranscriptionSession
-    private let accessToken: String
-    private let usageReportID: String
-    private let scenario: TypefluxCloudScenario
-    private let routingClient: any TypefluxOfficialASRRoutingClient
-    private var userAudioByteCount = 0
-
-    init(
-        upstream: any PCM16RealtimeTranscriptionSession,
-        accessToken: String,
-        usageReportID: String,
-        scenario: TypefluxCloudScenario,
-        routingClient: any TypefluxOfficialASRRoutingClient
-    ) {
-        self.upstream = upstream
-        self.accessToken = accessToken
-        self.usageReportID = usageReportID
-        self.scenario = scenario
-        self.routingClient = routingClient
-    }
-
-    func start() async throws {
-        try await upstream.start()
-    }
-
-    func appendPCM16(_ data: Data) async throws {
-        try await upstream.appendPCM16(data)
-        userAudioByteCount += data.count
-    }
-
-    func finish() async throws -> String {
-        let transcript = try await upstream.finish()
-        reportUsage(outputChars: transcript.count)
-        return transcript
-    }
-
-    func cancel() async {
-        await upstream.cancel()
-    }
-
-    private func reportUsage(outputChars: Int) {
-        let audioDurationMs = TypefluxOfficialASRUsageMeter.audioDurationMilliseconds(
-            pcm16ByteCount: userAudioByteCount
-        )
-        let routingClient = routingClient
-        let accessToken = accessToken
-        let usageReportID = usageReportID
-        let scenario = scenario
-        Task.detached(priority: .utility) {
-            do {
-                try await routingClient.reportAliyunUsage(
-                    accessToken: accessToken,
-                    usageReportID: usageReportID,
-                    audioDurationMs: audioDurationMs,
-                    outputChars: outputChars,
-                    scenario: scenario,
-                )
-            } catch {
-                NetworkDebugLogger.logError(context: "Aliyun realtime direct ASR usage report failed", error: error)
-            }
-        }
     }
 }
 
@@ -456,9 +390,9 @@ enum TypefluxOfficialASRError: LocalizedError {
         switch self {
         case .notLoggedIn:
             "Please sign in to use Typeflux Cloud speech recognition."
-        case .connectionFailed(let reason):
+        case let .connectionFailed(reason):
             "Failed to connect to Typeflux ASR service: \(reason)"
-        case .serverError(let message):
+        case let .serverError(message):
             "Typeflux ASR error: \(message)"
         case .unexpectedClose:
             "The Typeflux ASR connection closed unexpectedly."
@@ -472,6 +406,13 @@ enum TypefluxOfficialASRClosePolicy {
         finalSegments: [String]
     ) -> Bool {
         !completed && finalSegments.isEmpty
+    }
+
+    static func isNormalProviderCompletion(_ message: String) -> Bool {
+        let lowercased = message.lowercased()
+        return lowercased.contains("close 1000")
+            && lowercased.contains("normal")
+            && lowercased.contains("finish last sequence")
     }
 }
 
@@ -491,12 +432,12 @@ enum CloudASRAudioConverter {
             commonFormat: .pcmFormatInt16,
             sampleRate: targetSampleRate,
             channels: 1,
-            interleaved: true,
+            interleaved: true
         ) else {
             throw NSError(
                 domain: "CloudASRAudioConverter",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create target audio format."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create target audio format."]
             )
         }
 
@@ -504,7 +445,7 @@ enum CloudASRAudioConverter {
             throw NSError(
                 domain: "CloudASRAudioConverter",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter."]
             )
         }
 
@@ -512,7 +453,7 @@ enum CloudASRAudioConverter {
             throw NSError(
                 domain: "CloudASRAudioConverter",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate source buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate source buffer."]
             )
         }
         try sourceFile.read(into: sourceBuffer)
@@ -523,7 +464,7 @@ enum CloudASRAudioConverter {
             throw NSError(
                 domain: "CloudASRAudioConverter",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate target buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate target buffer."]
             )
         }
 
@@ -544,7 +485,7 @@ enum CloudASRAudioConverter {
             throw NSError(
                 domain: "CloudASRAudioConverter",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Audio conversion failed."],
+                userInfo: [NSLocalizedDescriptionKey: "Audio conversion failed."]
             )
         }
 
@@ -556,30 +497,179 @@ enum CloudASRAudioConverter {
 }
 
 enum TypefluxOfficialASRRequestFactory {
+    static let traceIDHeader = "X-Typeflux-ASR-Trace-ID"
+
     static func makeWebSocketRequest(
         apiBaseURL: String,
         token: String,
         scenario: TypefluxCloudScenario,
         provider: String = "default",
+        personaID: UUID? = nil,
+        traceID: String? = nil
     ) throws -> URLRequest {
-        let wsScheme = apiBaseURL.hasPrefix("https") ? "wss" : "ws"
-        let host = apiBaseURL
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "http://", with: "")
-        let urlString = "\(wsScheme)://\(host)/api/v1/asr/ws/\(provider)"
+        guard var components = URLComponents(string: apiBaseURL),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.host?.isEmpty == false
+        else {
+            throw TypefluxOfficialASRError.connectionFailed("Invalid WebSocket server URL: \(apiBaseURL)")
+        }
+        components.scheme = scheme == "https" ? "wss" : "ws"
+        components.path = "/api/v1/asr/ws/\(provider)"
+        components.query = nil
+        components.fragment = nil
 
-        guard let url = URL(string: urlString) else {
-            throw TypefluxOfficialASRError.connectionFailed("Invalid WebSocket URL: \(urlString)")
+        guard let url = components.url else {
+            throw TypefluxOfficialASRError.connectionFailed("Invalid WebSocket server URL: \(apiBaseURL)")
         }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let traceID, !traceID.isEmpty {
+            request.setValue(traceID, forHTTPHeaderField: traceIDHeader)
+        }
         TypefluxCloudRequestHeaders.applyCloudHeaders(scenario: scenario, to: &request)
+        TypefluxCloudRequestHeaders.applyPersonaID(personaID, to: &request)
         return request
     }
 }
 
+enum TypefluxOfficialASRTokenScope {
+    static func provider(from token: String) -> String? {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return nil }
+
+        var payload = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = payload.count % 4
+        if padding > 0 {
+            payload += String(repeating: "=", count: 4 - padding)
+        }
+
+        guard let data = Data(base64Encoded: payload),
+              let claims = try? JSONDecoder().decode(Claims.self, from: data)
+        else {
+            return nil
+        }
+
+        let provider = claims.asrProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard allowedProviders.contains(provider) else { return nil }
+        return provider
+    }
+
+    private static let allowedProviders: Set<String> = ["aliyun", "doubao", "google"]
+
+    private struct Claims: Decodable {
+        let asrProvider: String
+
+        enum CodingKeys: String, CodingKey {
+            case asrProvider = "asr_provider"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            asrProvider = try container.decodeIfPresent(String.self, forKey: .asrProvider) ?? ""
+        }
+    }
+}
+
 // MARK: - WebSocket ASR Session
+
+enum TypefluxOfficialASRStartMessageFactory {
+    static func make(
+        optimize: Bool,
+        llmConfig: ASRLLMConfig? = nil,
+        inputMode: String = "realtime"
+    ) -> [String: Any] {
+        let audioConfig: [String: Any] = [
+            "format": "pcm",
+            "sample_rate": 16000,
+            "channel": 1,
+            "lang": "auto"
+        ]
+        var config: [String: Any] = [
+            "audio": audioConfig,
+            "optimize": optimize,
+            "input_mode": inputMode
+        ]
+        if let llmConfig {
+            config["llm"] = [
+                "system_prompt": llmConfig.systemPrompt,
+                "user_prompt_template": llmConfig.userPromptTemplate
+            ]
+        }
+        return ["type": "start", "config": config]
+    }
+}
+
+private struct TypefluxASRTiming {
+    let traceID = UUID().uuidString.lowercased()
+    let mode: String
+    let optimize: Bool
+    let startedAt = Date()
+    var connectionReadyAt: Date?
+    var firstAudioAt: Date?
+    var firstResultAt: Date?
+    var finalResultAt: Date?
+    var stopStartedAt: Date?
+    var serverCompletedAt: Date?
+    var audioBytes = 0
+    var summaryLogged = false
+
+    mutating func markConnectionReady() {
+        connectionReadyAt = connectionReadyAt ?? Date()
+    }
+
+    mutating func addAudioBytes(_ count: Int) -> Bool {
+        audioBytes += count
+        guard count > 0, firstAudioAt == nil else { return false }
+        firstAudioAt = Date()
+        return true
+    }
+
+    mutating func markResult(isFinal: Bool) -> Bool {
+        let isFirst = firstResultAt == nil
+        firstResultAt = firstResultAt ?? Date()
+        if isFinal {
+            finalResultAt = finalResultAt ?? Date()
+        }
+        return isFirst
+    }
+
+    mutating func markStopStarted() {
+        stopStartedAt = stopStartedAt ?? Date()
+    }
+
+    mutating func markServerCompleted() {
+        serverCompletedAt = serverCompletedAt ?? Date()
+    }
+
+    func summary(status: String, outputChars: Int, endedAt: Date = Date()) -> String {
+        [
+            "[ASR Timing][client]",
+            "trace_id=\(traceID)",
+            "phase=summary",
+            "mode=\(mode)",
+            "status=\(status)",
+            "optimize=\(optimize)",
+            "connect_ms=\(Self.milliseconds(from: startedAt, to: connectionReadyAt))",
+            "first_audio_ms=\(Self.milliseconds(from: startedAt, to: firstAudioAt))",
+            "audio_to_first_result_ms=\(Self.milliseconds(from: firstAudioAt, to: firstResultAt))",
+            "stop_to_final_ms=\(Self.milliseconds(from: stopStartedAt, to: finalResultAt))",
+            "stop_to_server_completed_ms=\(Self.milliseconds(from: stopStartedAt, to: serverCompletedAt))",
+            "stop_to_request_completed_ms=\(Self.milliseconds(from: stopStartedAt, to: endedAt))",
+            "total_ms=\(Self.milliseconds(from: startedAt, to: endedAt))",
+            "audio_bytes=\(audioBytes)",
+            "output_chars=\(outputChars)"
+        ].joined(separator: " ")
+    }
+
+    static func milliseconds(from start: Date?, to end: Date?) -> Int {
+        guard let start, let end, end >= start else { return -1 }
+        return Int(end.timeIntervalSince(start) * 1000)
+    }
+}
 
 private actor TypefluxOfficialASRSession {
     static func run(
@@ -588,7 +678,8 @@ private actor TypefluxOfficialASRSession {
         token: String,
         scenario: TypefluxCloudScenario,
         provider: String = "default",
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        optimize: Bool = true,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let session = TypefluxOfficialASRSession(
             pcmData: pcmData,
@@ -596,10 +687,12 @@ private actor TypefluxOfficialASRSession {
             token: token,
             scenario: scenario,
             provider: provider,
+            personaID: nil,
+            optimize: optimize,
             onASRUpdate: onUpdate,
             llmConfig: nil,
             onLLMStart: nil,
-            onLLMChunk: nil,
+            onLLMChunk: nil
         )
         let (transcript, _) = try await session.execute()
         return transcript
@@ -610,21 +703,24 @@ private actor TypefluxOfficialASRSession {
         apiBaseURL: String,
         token: String,
         scenario: TypefluxCloudScenario,
+        provider: String = "default",
         llmConfig: ASRLLMConfig,
         onASRUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
         onLLMStart: @escaping @Sendable () async -> Void,
-        onLLMChunk: @escaping @Sendable (String) async -> Void,
+        onLLMChunk: @escaping @Sendable (String) async -> Void
     ) async throws -> (transcript: String, rewritten: String?) {
         let session = TypefluxOfficialASRSession(
             pcmData: pcmData,
             apiBaseURL: apiBaseURL,
             token: token,
             scenario: scenario,
-            provider: "default",
+            provider: provider,
+            personaID: llmConfig.personaID,
+            optimize: false,
             onASRUpdate: onASRUpdate,
             llmConfig: llmConfig,
             onLLMStart: onLLMStart,
-            onLLMChunk: onLLMChunk,
+            onLLMChunk: onLLMChunk
         )
         return try await session.execute()
     }
@@ -634,11 +730,14 @@ private actor TypefluxOfficialASRSession {
     private let token: String
     private let scenario: TypefluxCloudScenario
     private let provider: String
+    private let personaID: UUID?
+    private let optimize: Bool
     private let onASRUpdate: @Sendable (TranscriptionSnapshot) async -> Void
     private let llmConfig: ASRLLMConfig?
     private let onLLMStart: (@Sendable () async -> Void)?
     private let onLLMChunk: (@Sendable (String) async -> Void)?
     private let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "TypefluxOfficialASRSession")
+    private var timing: TypefluxASRTiming
 
     private var finalSegments: [String] = []
     private var currentPartialText: String = ""
@@ -652,28 +751,43 @@ private actor TypefluxOfficialASRSession {
         token: String,
         scenario: TypefluxCloudScenario,
         provider: String,
+        personaID: UUID?,
+        optimize: Bool,
         onASRUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
         llmConfig: ASRLLMConfig?,
         onLLMStart: (@Sendable () async -> Void)?,
-        onLLMChunk: (@Sendable (String) async -> Void)?,
+        onLLMChunk: (@Sendable (String) async -> Void)?
     ) {
         self.pcmData = pcmData
         self.apiBaseURL = apiBaseURL
         self.token = token
         self.scenario = scenario
         self.provider = provider
+        self.personaID = personaID
+        self.optimize = optimize
         self.onASRUpdate = onASRUpdate
         self.llmConfig = llmConfig
         self.onLLMStart = onLLMStart
         self.onLLMChunk = onLLMChunk
+        timing = TypefluxASRTiming(mode: llmConfig == nil ? "batch" : "batch_llm", optimize: optimize)
     }
 
     private func execute() async throws -> (transcript: String, rewritten: String?) {
+        defer {
+            logTimingSummary(status: "interrupted", outputChars: assembleTranscript().count)
+        }
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) phase=request_start " +
+                "mode=\(timing.mode) provider=\(provider) optimize=\(optimize) " +
+                "audio_bytes=\(pcmData.count) endpoint=\(apiBaseURL)"
+        )
         let request = try TypefluxOfficialASRRequestFactory.makeWebSocketRequest(
             apiBaseURL: apiBaseURL,
             token: token,
             scenario: scenario,
             provider: provider,
+            personaID: personaID,
+            traceID: timing.traceID
         )
         let session = URLSession(configuration: .default)
         let socketTask = session.webSocketTask(with: request)
@@ -684,46 +798,67 @@ private actor TypefluxOfficialASRSession {
             session.finishTasksAndInvalidate()
         }
 
-        // Build start message; include LLM config when present.
-        let audioConfig: [String: Any] = [
-            "format": "pcm",
-            "sample_rate": 16000,
-            "channel": 1,
-            "lang": "auto",
-        ]
-        var config: [String: Any] = ["audio": audioConfig]
-        if let llmConfig {
-            config["llm"] = [
-                "system_prompt": llmConfig.systemPrompt,
-                "user_prompt_template": llmConfig.userPromptTemplate,
-            ]
+        // Begin receiving before sending the start message. Entitlement failures
+        // can arrive immediately after the WebSocket upgrade, so waiting until
+        // after the first send can lose the server's fallback directive.
+        let receiveTask = Task { [self] in
+            await receiveLoop(socketTask: socketTask)
         }
-        let startMessage: [String: Any] = ["type": "start", "config": config]
+
+        let startMessage = TypefluxOfficialASRStartMessageFactory.make(
+            optimize: optimize,
+            llmConfig: llmConfig,
+            inputMode: "batch"
+        )
         let startData = try JSONSerialization.data(withJSONObject: startMessage)
         try await socketTask.send(.string(String(data: startData, encoding: .utf8)!))
-
-        // Start receive loop in a separate task
-        let receiveTask = Task { [self] in
-            await self.receiveLoop(socketTask: socketTask)
-        }
+        timing.markConnectionReady()
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) phase=start_sent " +
+                "mode=\(timing.mode) optimize=\(optimize) " +
+                "connect_ms=\(TypefluxASRTiming.milliseconds(from: timing.startedAt, to: timing.connectionReadyAt))"
+        )
 
         // Stream audio chunks
         let chunkSize = CloudASRAudioConverter.chunkSize
         var offset = pcmData.startIndex
         while offset < pcmData.endIndex {
             let end = pcmData.index(offset, offsetBy: chunkSize, limitedBy: pcmData.endIndex) ?? pcmData.endIndex
-            try await socketTask.send(.data(Data(pcmData[offset ..< end])))
+            let chunk = Data(pcmData[offset ..< end])
+            if timing.addAudioBytes(chunk.count) {
+                NetworkDebugLogger.logMessage(
+                    "[ASR Timing][client] trace_id=\(timing.traceID) phase=first_audio " +
+                        "mode=\(timing.mode) optimize=\(optimize) " +
+                        "since_start_ms=\(TypefluxASRTiming.milliseconds(from: timing.startedAt, to: timing.firstAudioAt))"
+                )
+            }
+            try await socketTask.send(.data(chunk))
             offset = end
         }
 
         // Send stop message
+        timing.markStopStarted()
         let stopMessage = try JSONSerialization.data(withJSONObject: ["type": "stop"])
         try await socketTask.send(.string(String(data: stopMessage, encoding: .utf8)!))
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) phase=stop_sent " +
+                "mode=\(timing.mode) optimize=\(optimize) audio_bytes=\(timing.audioBytes)"
+        )
 
         // Wait for receive loop to complete
         await receiveTask.value
 
         if let error = sessionError {
+            let transcript = assembleTranscript()
+            logTimingSummary(status: "error", outputChars: transcript.count)
+            if llmConfig != nil,
+               !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               TypefluxCloudBillingError.fromError(error) != nil {
+                throw TypefluxCloudIntegratedRewriteError(
+                    transcript: transcript,
+                    underlyingError: error
+                )
+            }
             throw error
         }
 
@@ -731,6 +866,7 @@ private actor TypefluxOfficialASRSession {
         if !transcript.isEmpty {
             await onASRUpdate(TranscriptionSnapshot(text: transcript, isFinal: true))
         }
+        logTimingSummary(status: "completed", outputChars: transcript.count)
         return (transcript: transcript, rewritten: rewrittenText)
     }
 
@@ -739,9 +875,9 @@ private actor TypefluxOfficialASRSession {
             do {
                 let message = try await socketTask.receive()
                 switch message {
-                case .string(let text):
+                case let .string(text):
                     await handleTextMessage(text)
-                case .data(let data):
+                case let .data(data):
                     if let text = String(data: data, encoding: .utf8) {
                         await handleTextMessage(text)
                     }
@@ -754,7 +890,10 @@ private actor TypefluxOfficialASRSession {
                     finalSegments: finalSegments
                 ) {
                     logger.error("WebSocket receive error: \(error.localizedDescription)")
-                    sessionError = sessionError ?? TypefluxOfficialASRError.unexpectedClose
+                    sessionError = sessionError
+                        ?? TypefluxCloudASRDirectiveError.fromError(error)
+                        ?? TypefluxCloudBillingError.fromError(error)
+                        ?? TypefluxOfficialASRError.unexpectedClose
                 }
                 completed = true
             }
@@ -772,6 +911,7 @@ private actor TypefluxOfficialASRSession {
             let partialText = json["text"] as? String ?? ""
             currentPartialText = partialText
             let display = assembleTranscript()
+            logFirstResultIfNeeded(isFinal: false, text: display)
             await onASRUpdate(TranscriptionSnapshot(text: display, isFinal: false))
 
         case "final":
@@ -781,11 +921,13 @@ private actor TypefluxOfficialASRSession {
             }
             currentPartialText = ""
             let display = assembleTranscript()
+            logFirstResultIfNeeded(isFinal: true, text: display)
             await onASRUpdate(TranscriptionSnapshot(text: display, isFinal: true))
 
         case "event":
             let eventText = json["text"] as? String ?? ""
             if eventText == "completed" {
+                timing.markServerCompleted()
                 // If LLM is pending, keep the receive loop alive to handle llm_* messages.
                 if llmConfig == nil {
                     completed = true
@@ -807,14 +949,43 @@ private actor TypefluxOfficialASRSession {
             completed = true
 
         case "error":
-            let errorText = json["error"] as? String ?? "Unknown error"
+            let errorCode = json["code"] as? String
+            let errorText = errorCode ?? (json["error"] as? String) ?? "Unknown error"
+            if TypefluxOfficialASRClosePolicy.isNormalProviderCompletion(errorText) {
+                completed = true
+                return
+            }
             logger.error("ASR server error: \(errorText)")
-            sessionError = TypefluxOfficialASRError.serverError(errorText)
+            sessionError = errorCode.flatMap(TypefluxCloudASRDirectiveError.fromServerCode)
+                ?? TypefluxCloudASRDirectiveError.fromMessage(errorText)
+                ?? TypefluxCloudBillingError.fromMessage(errorText)
+                ?? TypefluxOfficialASRError.serverError(errorText)
             completed = true
 
         default:
             break
         }
+    }
+
+    private func logFirstResultIfNeeded(isFinal: Bool, text: String) {
+        guard !text.isEmpty else { return }
+        let isFirst = timing.markResult(isFinal: isFinal)
+        guard isFirst || isFinal else { return }
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) " +
+                "phase=\(isFinal ? "final_result" : "first_result") mode=\(timing.mode) " +
+                "optimize=\(optimize) audio_to_result_ms=" +
+                "\(TypefluxASRTiming.milliseconds(from: timing.firstAudioAt, to: isFinal ? timing.finalResultAt : timing.firstResultAt)) " +
+                "stop_to_result_ms=" +
+                "\(TypefluxASRTiming.milliseconds(from: timing.stopStartedAt, to: isFinal ? timing.finalResultAt : timing.firstResultAt)) " +
+                "chars=\(text.count)"
+        )
+    }
+
+    private func logTimingSummary(status: String, outputChars: Int) {
+        guard !timing.summaryLogged else { return }
+        timing.summaryLogged = true
+        NetworkDebugLogger.logMessage(timing.summary(status: status, outputChars: outputChars))
     }
 
     private func assembleTranscript() -> String {
@@ -826,12 +997,16 @@ private actor TypefluxOfficialASRSession {
     }
 }
 
-private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSession {
+private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSession,
+    RealtimeTransportDiagnosticsProviding {
     private let apiBaseURL: String
     private let token: String
+    private let provider: String
     private let scenario: TypefluxCloudScenario
+    private let optimize: Bool
     private let onUpdate: @Sendable (TranscriptionSnapshot) async -> Void
     private let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "TypefluxOfficialRealtimePCMStream")
+    private var timing: TypefluxASRTiming
 
     private var urlSession: URLSession?
     private var socketTask: URLSessionWebSocketTask?
@@ -840,43 +1015,67 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
     private var currentPartialText = ""
     private var completed = false
     private var sessionError: Error?
+    private var transportDiagnostics: NetworkTransportDiagnosticsRecorder?
 
     init(
         apiBaseURL: String,
         token: String,
+        provider: String = "default",
         scenario: TypefluxCloudScenario,
+        optimize: Bool = true,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        transportDiagnostics: NetworkTransportDiagnosticsRecorder? = nil
     ) {
         self.apiBaseURL = apiBaseURL
         self.token = token
+        self.provider = provider
         self.scenario = scenario
+        self.optimize = optimize
         self.onUpdate = onUpdate
+        self.transportDiagnostics = transportDiagnostics
+        timing = TypefluxASRTiming(mode: "realtime", optimize: optimize)
     }
 
     func start() async throws {
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) phase=request_start " +
+                "mode=realtime provider=\(provider) optimize=\(optimize) endpoint=\(apiBaseURL)"
+        )
         let request = try TypefluxOfficialASRRequestFactory.makeWebSocketRequest(
             apiBaseURL: apiBaseURL,
             token: token,
             scenario: scenario,
+            provider: provider,
+            traceID: timing.traceID
         )
-        let session = URLSession(configuration: .default)
+        let transportDiagnostics = transportDiagnostics ?? NetworkTransportDiagnosticsRecorder(endpoint: request.url)
+        transportDiagnostics.updateEndpoint(request.url)
+        let session = URLSession(
+            configuration: .default,
+            delegate: transportDiagnostics,
+            delegateQueue: nil
+        )
+        self.transportDiagnostics = transportDiagnostics
         let socketTask = session.webSocketTask(with: request)
-        self.urlSession = session
+        urlSession = session
         self.socketTask = socketTask
+        transportDiagnostics.markWebSocketTaskResumed()
         socketTask.resume()
-
-        let audioConfig: [String: Any] = [
-            "format": "pcm",
-            "sample_rate": 16000,
-            "channel": 1,
-            "lang": "auto",
-        ]
-        let startMessage: [String: Any] = ["type": "start", "config": ["audio": audioConfig]]
-        try await sendJSON(startMessage)
 
         receiveTask = Task { [weak self] in
             await self?.receiveLoop()
         }
+
+        let startMessage = TypefluxOfficialASRStartMessageFactory.make(optimize: optimize)
+        try await sendJSON(startMessage)
+        transportDiagnostics.markStartMessageSent()
+        timing.markConnectionReady()
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) phase=start_sent " +
+                "mode=realtime optimize=\(optimize) " +
+                "connect_ms=\(TypefluxASRTiming.milliseconds(from: timing.startedAt, to: timing.connectionReadyAt))"
+        )
+
     }
 
     func appendPCM16(_ data: Data) async throws {
@@ -884,27 +1083,47 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
         guard let socketTask else {
             throw TypefluxOfficialASRError.connectionFailed("Realtime WebSocket is not connected.")
         }
+        if timing.addAudioBytes(data.count) {
+            NetworkDebugLogger.logMessage(
+                "[ASR Timing][client] trace_id=\(timing.traceID) phase=first_audio " +
+                    "mode=realtime optimize=\(optimize) " +
+                    "since_start_ms=\(TypefluxASRTiming.milliseconds(from: timing.startedAt, to: timing.firstAudioAt))"
+            )
+        }
         try await socketTask.send(.data(Data(data)))
     }
 
     func finish() async throws -> String {
+        timing.markStopStarted()
         try await sendJSON(["type": "stop"])
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) phase=stop_sent " +
+                "mode=realtime optimize=\(optimize) audio_bytes=\(timing.audioBytes)"
+        )
         await receiveTask?.value
 
         if let sessionError {
+            logTimingSummary(status: "error", outputChars: assembleTranscript().count)
             throw sessionError
         }
 
         let transcript = assembleTranscript()
         if !transcript.isEmpty {
+            logFirstResultIfNeeded(isFinal: true, text: transcript)
             await onUpdate(TranscriptionSnapshot(text: transcript, isFinal: true))
         }
+        logTimingSummary(status: "completed", outputChars: transcript.count)
         await close()
         return transcript
     }
 
     func cancel() async {
+        logTimingSummary(status: "cancelled", outputChars: assembleTranscript().count)
         await close()
+    }
+
+    func transportDiagnosticsSnapshot() async -> NetworkTransportDiagnosticsSnapshot? {
+        await transportDiagnostics?.settledSnapshot()
     }
 
     private func close() async {
@@ -923,9 +1142,9 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
                 guard let socketTask else { break }
                 let message = try await socketTask.receive()
                 switch message {
-                case .string(let text):
+                case let .string(text):
                     await handleTextMessage(text)
-                case .data(let data):
+                case let .data(data):
                     if let text = String(data: data, encoding: .utf8) {
                         await handleTextMessage(text)
                     }
@@ -936,10 +1155,13 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
                 if !Task.isCancelled,
                    TypefluxOfficialASRClosePolicy.shouldTreatReceiveFailureAsUnexpectedClose(
                        completed: completed,
-                       finalSegments: finalSegments,
+                       finalSegments: finalSegments
                    ) {
                     logger.error("WebSocket receive error: \(error.localizedDescription)")
-                    sessionError = sessionError ?? TypefluxOfficialASRError.unexpectedClose
+                    sessionError = sessionError
+                        ?? TypefluxCloudASRDirectiveError.fromError(error)
+                        ?? TypefluxCloudBillingError.fromError(error)
+                        ?? TypefluxOfficialASRError.unexpectedClose
                 }
                 completed = true
             }
@@ -947,34 +1169,73 @@ private actor TypefluxOfficialRealtimePCMStream: PCM16RealtimeTranscriptionSessi
     }
 
     private func handleTextMessage(_ text: String) async {
+        let parsingStartedAt = Date()
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String
-        else { return }
+        else {
+            transportDiagnostics?.recordMessageParsing(duration: Date().timeIntervalSince(parsingStartedAt))
+            return
+        }
+        transportDiagnostics?.recordMessageParsing(duration: Date().timeIntervalSince(parsingStartedAt))
 
         switch type {
         case "partial":
             currentPartialText = json["text"] as? String ?? ""
-            await onUpdate(TranscriptionSnapshot(text: assembleTranscript(), isFinal: false))
+            let display = assembleTranscript()
+            logFirstResultIfNeeded(isFinal: false, text: display)
+            await onUpdate(TranscriptionSnapshot(text: display, isFinal: false))
         case "final":
             let finalText = json["text"] as? String ?? ""
             if !finalText.isEmpty {
                 finalSegments.append(finalText)
             }
             currentPartialText = ""
-            await onUpdate(TranscriptionSnapshot(text: assembleTranscript(), isFinal: true))
+            let display = assembleTranscript()
+            logFirstResultIfNeeded(isFinal: true, text: display)
+            await onUpdate(TranscriptionSnapshot(text: display, isFinal: true))
         case "event":
             if (json["text"] as? String) == "completed" {
+                timing.markServerCompleted()
                 completed = true
             }
         case "error":
-            let errorText = json["error"] as? String ?? "Unknown error"
+            let errorCode = json["code"] as? String
+            let errorText = errorCode ?? (json["error"] as? String) ?? "Unknown error"
+            if TypefluxOfficialASRClosePolicy.isNormalProviderCompletion(errorText) {
+                completed = true
+                return
+            }
             logger.error("ASR server error: \(errorText)")
-            sessionError = TypefluxOfficialASRError.serverError(errorText)
+            sessionError = errorCode.flatMap(TypefluxCloudASRDirectiveError.fromServerCode)
+                ?? TypefluxCloudASRDirectiveError.fromMessage(errorText)
+                ?? TypefluxCloudBillingError.fromMessage(errorText)
+                ?? TypefluxOfficialASRError.serverError(errorText)
             completed = true
         default:
             break
         }
+    }
+
+    private func logFirstResultIfNeeded(isFinal: Bool, text: String) {
+        guard !text.isEmpty else { return }
+        let isFirst = timing.markResult(isFinal: isFinal)
+        guard isFirst || isFinal else { return }
+        NetworkDebugLogger.logMessage(
+            "[ASR Timing][client] trace_id=\(timing.traceID) " +
+                "phase=\(isFinal ? "final_result" : "first_result") mode=realtime " +
+                "optimize=\(optimize) audio_to_result_ms=" +
+                "\(TypefluxASRTiming.milliseconds(from: timing.firstAudioAt, to: isFinal ? timing.finalResultAt : timing.firstResultAt)) " +
+                "stop_to_result_ms=" +
+                "\(TypefluxASRTiming.milliseconds(from: timing.stopStartedAt, to: isFinal ? timing.finalResultAt : timing.firstResultAt)) " +
+                "chars=\(text.count)"
+        )
+    }
+
+    private func logTimingSummary(status: String, outputChars: Int) {
+        guard !timing.summaryLogged else { return }
+        timing.summaryLogged = true
+        NetworkDebugLogger.logMessage(timing.summary(status: status, outputChars: outputChars))
     }
 
     private func sendJSON(_ json: [String: Any]) async throws {

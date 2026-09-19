@@ -13,20 +13,20 @@ struct AgentWorkflowRunner {
         systemPrompt: String,
         userMessage: String,
         extraTools: [any AgentTool] = [],
-        config: AgentConfig = .default,
+        config: AgentConfig = .default
     ) async throws -> AgentResult {
         let llmMultiTurnService = OpenAICompatibleAgentService(settingsStore: settingsStore)
         let registry = AgentToolRegistry()
         let builtinTools: [any AgentTool] = [
             AnswerTextTool(),
             EditTextTool(),
-            GetClipboardTool(clipboardService: clipboardService),
+            GetClipboardTool(clipboardService: clipboardService)
         ]
         await registry.registerAll(builtinTools + extraTools)
         let loop = AgentLoop(llmService: llmMultiTurnService, toolRegistry: registry, config: config)
         return try await loop.run(messages: [
             .system(systemPrompt),
-            .user(userMessage),
+            .user(userMessage)
         ])
     }
 }

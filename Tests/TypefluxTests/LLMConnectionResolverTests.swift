@@ -9,7 +9,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .openAI,
             baseURL: "https://api.openai.com/v1",
             model: "gpt-4",
-            apiKey: "sk-test",
+            apiKey: "sk-test"
         )
 
         XCTAssertEqual(connection.provider, .openAI)
@@ -24,7 +24,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .openAI,
             baseURL: "https://api.openai.com/v1",
             model: "",
-            apiKey: "sk-test",
+            apiKey: "sk-test"
         )
 
         XCTAssertEqual(connection.model, LLMRemoteProvider.openAI.defaultModel)
@@ -35,7 +35,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .deepSeek,
             baseURL: "https://api.deepseek.com",
             model: "   ",
-            apiKey: "sk-test",
+            apiKey: "sk-test"
         )
 
         XCTAssertEqual(connection.model, LLMRemoteProvider.deepSeek.defaultModel)
@@ -46,7 +46,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .custom,
             baseURL: "https://api.example.com",
             model: "  gpt-4  ",
-            apiKey: "key",
+            apiKey: "key"
         )
 
         XCTAssertEqual(connection.model, "gpt-4")
@@ -59,7 +59,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .custom,
             baseURL: "",
             model: "gpt-4",
-            apiKey: "sk-test",
+            apiKey: "sk-test"
         ))
     }
 
@@ -68,7 +68,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .openAI,
             baseURL: "not a url",
             model: "gpt-4",
-            apiKey: "sk-test",
+            apiKey: "sk-test"
         ))
     }
 
@@ -79,7 +79,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .freeModel,
             baseURL: "",
             model: "",
-            apiKey: "",
+            apiKey: ""
         ))
     }
 
@@ -88,7 +88,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .freeModel,
             baseURL: "",
             model: "nonexistent-model-xyz",
-            apiKey: "",
+            apiKey: ""
         ))
     }
 
@@ -100,7 +100,7 @@ final class LLMConnectionResolverTests: XCTestCase {
             provider: .freeModel,
             baseURL: "",
             model: firstName,
-            apiKey: "",
+            apiKey: ""
         )
 
         XCTAssertEqual(connection.provider, .freeModel)
@@ -119,7 +119,7 @@ extension LLMConnectionResolverTests {
             provider: .custom,
             baseURL: "  https://api.example.com/v1  ",
             model: "model-x",
-            apiKey: "sk-123",
+            apiKey: "sk-123"
         )
         XCTAssertEqual(connection.baseURL.absoluteString, "https://api.example.com/v1")
     }
@@ -129,7 +129,7 @@ extension LLMConnectionResolverTests {
             provider: .openAI,
             baseURL: "https://api.openai.com/v1",
             model: "  gpt-4o  ",
-            apiKey: "sk-123",
+            apiKey: "sk-123"
         )
         XCTAssertEqual(connection.model, "gpt-4o")
     }
@@ -141,7 +141,7 @@ extension LLMConnectionResolverTests {
             provider: .openAI,
             baseURL: "https://api.openai.com/v1",
             model: "",
-            apiKey: "sk-123",
+            apiKey: "sk-123"
         )
         XCTAssertEqual(connection.model, LLMRemoteProvider.openAI.defaultModel)
     }
@@ -151,7 +151,7 @@ extension LLMConnectionResolverTests {
             provider: .anthropic,
             baseURL: "https://api.anthropic.com/v1",
             model: "  ",
-            apiKey: "sk-123",
+            apiKey: "sk-123"
         )
         XCTAssertEqual(connection.model, LLMRemoteProvider.anthropic.defaultModel)
     }
@@ -163,7 +163,7 @@ extension LLMConnectionResolverTests {
             provider: .custom,
             baseURL: "ftp://api.example.com/v1",
             model: "m",
-            apiKey: "",
+            apiKey: ""
         ))
     }
 
@@ -172,7 +172,7 @@ extension LLMConnectionResolverTests {
             provider: .custom,
             baseURL: "file:///some/path",
             model: "m",
-            apiKey: "",
+            apiKey: ""
         ))
     }
 
@@ -183,7 +183,7 @@ extension LLMConnectionResolverTests {
             provider: .openRouter,
             baseURL: "https://openrouter.ai/api/v1",
             model: "openai/gpt-4o",
-            apiKey: "sk-or-key",
+            apiKey: "sk-or-key"
         )
         XCTAssertEqual(connection.provider, .openRouter)
         XCTAssertEqual(connection.apiKey, "sk-or-key")
@@ -194,7 +194,7 @@ extension LLMConnectionResolverTests {
             provider: .anthropic,
             baseURL: "https://api.anthropic.com/v1",
             model: "claude-3",
-            apiKey: "sk-ant-xyz",
+            apiKey: "sk-ant-xyz"
         )
         XCTAssertEqual(connection.apiKey, "sk-ant-xyz")
     }
@@ -204,19 +204,19 @@ extension LLMConnectionResolverTests {
             provider: .custom,
             baseURL: "http://localhost:11434/v1",
             model: "llama3",
-            apiKey: "",
+            apiKey: ""
         )
         XCTAssertEqual(connection.baseURL.scheme, "http")
         XCTAssertEqual(connection.model, "llama3")
     }
 
-    func testTypefluxCloudHeadersIncludeScenario() {
-        let connection = ResolvedLLMConnection(
+    func testTypefluxCloudHeadersIncludeScenario() throws {
+        let connection = try ResolvedLLMConnection(
             provider: .typefluxCloud,
-            baseURL: URL(string: "https://api.typeflux.dev/api/v1")!,
+            baseURL: XCTUnwrap(URL(string: "https://api.typeflux.dev/api/v1")),
             model: "default",
             apiKey: "token",
-            additionalHeaders: ["x-request-id": "req-1"],
+            additionalHeaders: ["x-request-id": "req-1"]
         )
 
         let headers = connection.headers(for: .askAnything)
@@ -225,19 +225,37 @@ extension LLMConnectionResolverTests {
         XCTAssertEqual(headers[TypefluxCloudRequestHeaders.scenarioField], TypefluxCloudScenario.askAnything.rawValue)
     }
 
-    func testNonTypefluxCloudHeadersDoNotInjectScenario() {
-        let connection = ResolvedLLMConnection(
+    func testTypefluxCloudHeadersIncludePersonaIDWhenProvided() throws {
+        let personaID = try XCTUnwrap(UUID(uuidString: "2A7A4A74-A8AC-4F3C-9FB1-5A433EDFA001"))
+        let connection = try ResolvedLLMConnection(
+            provider: .typefluxCloud,
+            baseURL: XCTUnwrap(URL(string: "https://api.typeflux.dev/api/v1")),
+            model: "default",
+            apiKey: "token",
+            additionalHeaders: ["x-request-id": "req-1"]
+        )
+
+        let headers = connection.headers(for: .textRewrite, personaID: personaID)
+
+        XCTAssertEqual(headers["x-request-id"], "req-1")
+        XCTAssertEqual(headers[TypefluxCloudRequestHeaders.scenarioField], TypefluxCloudScenario.textRewrite.rawValue)
+        XCTAssertEqual(headers[TypefluxCloudRequestHeaders.personaIDField], personaID.uuidString)
+    }
+
+    func testNonTypefluxCloudHeadersDoNotInjectScenario() throws {
+        let connection = try ResolvedLLMConnection(
             provider: .openAI,
-            baseURL: URL(string: "https://api.openai.com/v1")!,
+            baseURL: XCTUnwrap(URL(string: "https://api.openai.com/v1")),
             model: "gpt-4.1",
             apiKey: "sk-test",
-            additionalHeaders: ["x-request-id": "req-1"],
+            additionalHeaders: ["x-request-id": "req-1"]
         )
 
         let headers = connection.headers(for: .askAnything)
 
         XCTAssertEqual(headers["x-request-id"], "req-1")
         XCTAssertNil(headers[TypefluxCloudRequestHeaders.scenarioField])
+        XCTAssertNil(headers[TypefluxCloudRequestHeaders.personaIDField])
     }
 
     // MARK: - Free model whitespace handling
@@ -247,7 +265,7 @@ extension LLMConnectionResolverTests {
             provider: .freeModel,
             baseURL: "",
             model: "  ",
-            apiKey: "",
+            apiKey: ""
         ))
     }
 }

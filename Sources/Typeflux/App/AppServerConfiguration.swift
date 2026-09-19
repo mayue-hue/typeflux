@@ -138,5 +138,4 @@ enum AppServerConfiguration {
             default: defaultGithubOAuthClientID
         )
     }
-
 }

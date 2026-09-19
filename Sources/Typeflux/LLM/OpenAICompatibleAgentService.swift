@@ -19,20 +19,20 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
                 baseURL: "",
                 model: config.model,
                 apiKey: token,
-                typefluxCloudBaseURL: primary,
+                typefluxCloudBaseURL: primary
             )
         }
         return try LLMConnectionResolver.resolve(
             provider: config.provider,
             baseURL: config.baseURL,
             model: config.model,
-            apiKey: config.apiKey,
+            apiKey: config.apiKey
         )
     }
 
     private func headers(
         for connection: ResolvedLLMConnection,
-        scenario: TypefluxCloudScenario,
+        scenario: TypefluxCloudScenario
     ) -> [String: String] {
         connection.headers(for: scenario)
     }
@@ -45,9 +45,8 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
         let llmConfig = settingsStore.textLLMConfiguration()
         let appLanguage = settingsStore.appLanguage
         let effectiveSystemPrompt: String = {
-            var prompt = PromptCatalog.appendUserEnvironmentContext(
-                to: request.systemPrompt,
-                appLanguage: appLanguage,
+            var prompt = PromptCatalog.appendLanguageResolutionPolicy(
+                to: request.systemPrompt
             )
             if let appContext = request.appSystemContext {
                 let extra = PromptCatalog.appSpecificSystemContext(appContext)
@@ -57,11 +56,15 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
             }
             return prompt
         }()
+        let effectiveUserPrompt = PromptCatalog.appendUserEnvironmentContext(
+            to: request.userPrompt,
+            appLanguage: appLanguage
+        )
 
         return try await RequestRetry.perform(operationName: "LLM agent tool call") { [weak self] in
             guard let self else { throw CancellationError() }
-            let connection = try await self.resolveConnection(for: llmConfig)
-            let additionalHeaders = self.headers(for: connection, scenario: .askAnything)
+            let connection = try await resolveConnection(for: llmConfig)
+            let additionalHeaders = headers(for: connection, scenario: .askAnything)
             let cloudBaseURL: URL? = (llmConfig.provider == .typefluxCloud)
                 ? await CloudEndpointRegistry.shared.latencyOptimizedEndpoint()
                 : nil
@@ -74,11 +77,11 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
                     additionalHeaders: additionalHeaders,
                     request: LLMAgentRequest(
                         systemPrompt: effectiveSystemPrompt,
-                        userPrompt: request.userPrompt,
+                        userPrompt: effectiveUserPrompt,
                         tools: request.tools,
-                        forcedToolName: request.forcedToolName,
+                        forcedToolName: request.forcedToolName
                     ),
-                    decoding: type,
+                    decoding: type
                 )
             }
         }
@@ -94,9 +97,8 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
         let llmConfig = settingsStore.textLLMConfiguration()
         let appLanguage = settingsStore.appLanguage
         let effectiveSystemPrompt: String = {
-            var prompt = PromptCatalog.appendUserEnvironmentContext(
-                to: request.systemPrompt,
-                appLanguage: appLanguage,
+            var prompt = PromptCatalog.appendLanguageResolutionPolicy(
+                to: request.systemPrompt
             )
             if let appContext = request.appSystemContext {
                 let extra = PromptCatalog.appSpecificSystemContext(appContext)
@@ -106,11 +108,15 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
             }
             return prompt
         }()
+        let effectiveUserPrompt = PromptCatalog.appendUserEnvironmentContext(
+            to: request.userPrompt,
+            appLanguage: appLanguage
+        )
 
         return try await RequestRetry.perform(operationName: "LLM phase 1 router call") { [weak self] in
             guard let self else { throw CancellationError() }
-            let connection = try await self.resolveConnection(for: llmConfig)
-            let additionalHeaders = self.headers(for: connection, scenario: .askAnything)
+            let connection = try await resolveConnection(for: llmConfig)
+            let additionalHeaders = headers(for: connection, scenario: .askAnything)
             let cloudBaseURL: URL? = (llmConfig.provider == .typefluxCloud)
                 ? await CloudEndpointRegistry.shared.latencyOptimizedEndpoint()
                 : nil
@@ -123,10 +129,10 @@ final class OpenAICompatibleAgentService: LLMAgentService, @unchecked Sendable {
                     additionalHeaders: additionalHeaders,
                     request: LLMAgentRequest(
                         systemPrompt: effectiveSystemPrompt,
-                        userPrompt: request.userPrompt,
+                        userPrompt: effectiveUserPrompt,
                         tools: request.tools,
-                        forcedToolName: request.forcedToolName,
-                    ),
+                        forcedToolName: request.forcedToolName
+                    )
                 )
             }
         }
@@ -154,17 +160,18 @@ enum RemoteAgentClient {
         apiKey: String,
         additionalHeaders: [String: String] = [:],
         request: LLMAgentRequest,
-        decoding type: T.Type,
+        decoding type: T.Type
     ) async throws -> T {
         switch provider.apiStyle {
         case .openAICompatible:
             try await runOpenAICompatibleTool(
+                provider: provider,
                 baseURL: baseURL,
                 model: model,
                 apiKey: apiKey,
                 additionalHeaders: additionalHeaders,
                 request: request,
-                decoding: type,
+                decoding: type
             )
         case .anthropic:
             try await runAnthropicTool(
@@ -173,7 +180,7 @@ enum RemoteAgentClient {
                 apiKey: apiKey,
                 additionalHeaders: additionalHeaders,
                 request: request,
-                decoding: type,
+                decoding: type
             )
         case .gemini:
             try await runGeminiTool(
@@ -182,7 +189,7 @@ enum RemoteAgentClient {
                 apiKey: apiKey,
                 additionalHeaders: additionalHeaders,
                 request: request,
-                decoding: type,
+                decoding: type
             )
         }
     }
@@ -190,16 +197,17 @@ enum RemoteAgentClient {
     // MARK: - Typed tool call (decode into T)
 
     private static func runOpenAICompatibleTool<T: Decodable & Sendable>(
+        provider: LLMRemoteProvider,
         baseURL: URL,
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
         request: LLMAgentRequest,
-        decoding type: T.Type,
+        decoding type: T.Type
     ) async throws -> T {
         let toolCall = try await fetchOpenAICompatibleToolCall(
-            baseURL: baseURL, model: model, apiKey: apiKey,
-            additionalHeaders: additionalHeaders, request: request,
+            provider: provider, baseURL: baseURL, model: model, apiKey: apiKey,
+            additionalHeaders: additionalHeaders, request: request
         )
         return try decodeToolArguments(toolCall, expectedToolName: request.forcedToolName, as: type)
     }
@@ -210,11 +218,11 @@ enum RemoteAgentClient {
         apiKey: String,
         additionalHeaders: [String: String],
         request: LLMAgentRequest,
-        decoding type: T.Type,
+        decoding type: T.Type
     ) async throws -> T {
         let toolCall = try await fetchAnthropicToolCall(
             baseURL: baseURL, model: model, apiKey: apiKey,
-            additionalHeaders: additionalHeaders, request: request,
+            additionalHeaders: additionalHeaders, request: request
         )
         return try decodeToolArguments(toolCall, expectedToolName: request.forcedToolName, as: type)
     }
@@ -225,11 +233,11 @@ enum RemoteAgentClient {
         apiKey: String,
         additionalHeaders: [String: String],
         request: LLMAgentRequest,
-        decoding type: T.Type,
+        decoding type: T.Type
     ) async throws -> T {
         let toolCall = try await fetchGeminiToolCall(
             baseURL: baseURL, model: model, apiKey: apiKey,
-            additionalHeaders: additionalHeaders, request: request,
+            additionalHeaders: additionalHeaders, request: request
         )
         return try decodeToolArguments(toolCall, expectedToolName: request.forcedToolName, as: type)
     }
@@ -244,23 +252,23 @@ enum RemoteAgentClient {
         model: String,
         apiKey: String,
         additionalHeaders: [String: String] = [:],
-        request: LLMAgentRequest,
+        request: LLMAgentRequest
     ) async throws -> LLMAgentToolCall {
         switch provider.apiStyle {
         case .openAICompatible:
             try await fetchOpenAICompatibleToolCall(
-                baseURL: baseURL, model: model, apiKey: apiKey,
-                additionalHeaders: additionalHeaders, request: request,
+                provider: provider, baseURL: baseURL, model: model, apiKey: apiKey,
+                additionalHeaders: additionalHeaders, request: request
             )
         case .anthropic:
             try await fetchAnthropicToolCall(
                 baseURL: baseURL, model: model, apiKey: apiKey,
-                additionalHeaders: additionalHeaders, request: request,
+                additionalHeaders: additionalHeaders, request: request
             )
         case .gemini:
             try await fetchGeminiToolCall(
                 baseURL: baseURL, model: model, apiKey: apiKey,
-                additionalHeaders: additionalHeaders, request: request,
+                additionalHeaders: additionalHeaders, request: request
             )
         }
     }
@@ -268,11 +276,12 @@ enum RemoteAgentClient {
     // MARK: - HTTP fetch helpers (provider-specific, return raw LLMAgentToolCall)
 
     private static func fetchOpenAICompatibleToolCall(
+        provider: LLMRemoteProvider,
         baseURL: URL,
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
-        request: LLMAgentRequest,
+        request: LLMAgentRequest
     ) async throws -> LLMAgentToolCall {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "chat/completions")
         var urlRequest = URLRequest(url: url)
@@ -291,12 +300,38 @@ enum RemoteAgentClient {
             systemPrompt: request.systemPrompt,
             userPrompt: request.userPrompt,
             tools: request.tools,
-            forcedToolName: request.forcedToolName,
+            forcedToolName: request.forcedToolName
         )
-        OpenAICompatibleResponseSupport.applyProviderTuning(body: &body, baseURL: baseURL, model: model)
+        OpenAICompatibleResponseSupport.applyProviderTuning(
+            body: &body,
+            baseURL: baseURL,
+            model: model,
+            provider: provider
+        )
+        let baseBody = body
+        let tuningCandidate = RemoteLLMClient.applyCustomThinkingTuning(
+            body: &body,
+            provider: provider,
+            baseURL: baseURL
+        )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let data = try await RemoteLLMClient.performJSONRequest(urlRequest)
+        let result = try await RemoteLLMClient.performJSONRequestWithCustomThinkingAdaptation(
+            urlRequest,
+            baseBody: baseBody,
+            provider: provider,
+            baseURL: baseURL,
+            candidate: tuningCandidate
+        )
+        if let text = LLMAgentResponseSupport.extractOpenAICompatibleText(from: result.data) {
+            RemoteLLMClient.recordCustomThinkingTuningSuccess(
+                provider: provider,
+                baseURL: baseURL,
+                candidate: result.candidate,
+                containsThinking: OpenAICompatibleResponseSupport.containsLeadingThinkingTags(text)
+            )
+        }
+        let data = result.data
         guard let toolCall = LLMAgentResponseSupport.extractOpenAICompatibleToolCall(from: data) else {
             if let text = LLMAgentResponseSupport.extractOpenAICompatibleText(from: data) {
                 throw LLMAgentError.textResponse(text: text)
@@ -311,7 +346,7 @@ enum RemoteAgentClient {
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
-        request: LLMAgentRequest,
+        request: LLMAgentRequest
     ) async throws -> LLMAgentToolCall {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "messages")
         var urlRequest = URLRequest(url: url)
@@ -328,7 +363,7 @@ enum RemoteAgentClient {
             systemPrompt: request.systemPrompt,
             userPrompt: request.userPrompt,
             tools: request.tools,
-            forcedToolName: request.forcedToolName,
+            forcedToolName: request.forcedToolName
         )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -347,17 +382,25 @@ enum RemoteAgentClient {
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
-        request: LLMAgentRequest,
+        request: LLMAgentRequest
     ) async throws -> LLMAgentToolCall {
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent("models/\(model):generateContent"),
-            resolvingAgainstBaseURL: false,
+            resolvingAgainstBaseURL: false
         ) else {
-            throw NSError(domain: "LLMAgent", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini endpoint."])
+            throw NSError(
+                domain: "LLMAgent",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini endpoint."]
+            )
         }
         components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "key", value: apiKey)]
         guard let url = components.url else {
-            throw NSError(domain: "LLMAgent", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini endpoint."])
+            throw NSError(
+                domain: "LLMAgent",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini endpoint."]
+            )
         }
 
         var urlRequest = URLRequest(url: url)
@@ -372,7 +415,7 @@ enum RemoteAgentClient {
             systemPrompt: request.systemPrompt,
             userPrompt: request.userPrompt,
             tools: request.tools,
-            forcedToolName: request.forcedToolName,
+            forcedToolName: request.forcedToolName
         )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -389,7 +432,7 @@ enum RemoteAgentClient {
     static func decodeToolArguments<T: Decodable & Sendable>(
         _ toolCall: LLMAgentToolCall,
         expectedToolName: String?,
-        as type: T.Type,
+        as type: T.Type
     ) throws -> T {
         guard expectedToolName == nil || toolCall.name == expectedToolName else {
             throw LLMAgentError.unexpectedToolName(expected: expectedToolName, actual: toolCall.name)

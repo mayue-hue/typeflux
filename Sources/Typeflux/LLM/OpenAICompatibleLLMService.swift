@@ -27,7 +27,7 @@ enum LLMConnectionResolver {
         baseURL: String,
         model: String,
         apiKey: String,
-        typefluxCloudBaseURL: URL? = nil,
+        typefluxCloudBaseURL: URL? = nil
     ) throws -> ResolvedLLMConnection {
         let trimmedBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,7 +42,7 @@ enum LLMConnectionResolver {
                     throw NSError(
                         domain: "LLM",
                         code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "Invalid Typeflux Cloud server URL."],
+                        userInfo: [NSLocalizedDescriptionKey: "Invalid Typeflux Cloud server URL."]
                     )
                 }
                 rawBase = fallback
@@ -53,7 +53,7 @@ enum LLMConnectionResolver {
                 baseURL: url,
                 model: trimmedModel.isEmpty ? "default" : trimmedModel,
                 apiKey: apiKey,
-                additionalHeaders: [:],
+                additionalHeaders: [:]
             )
         }
 
@@ -63,8 +63,8 @@ enum LLMConnectionResolver {
                     domain: "LLM",
                     code: 1,
                     userInfo: [
-                        NSLocalizedDescriptionKey: L("settings.models.freeModel.validation.emptyModel"),
-                    ],
+                        NSLocalizedDescriptionKey: L("settings.models.freeModel.validation.emptyModel")
+                    ]
                 )
             }
             guard let resolved = FreeLLMModelRegistry.resolve(modelName: trimmedModel) else {
@@ -74,9 +74,9 @@ enum LLMConnectionResolver {
                     userInfo: [
                         NSLocalizedDescriptionKey: L(
                             "settings.models.freeModel.validation.unsupportedModel",
-                            trimmedModel,
-                        ),
-                    ],
+                            trimmedModel
+                        )
+                    ]
                 )
             }
             guard let url = URL(string: resolved.baseURL), !resolved.baseURL.isEmpty else {
@@ -84,8 +84,8 @@ enum LLMConnectionResolver {
                     domain: "LLM",
                     code: 1,
                     userInfo: [
-                        NSLocalizedDescriptionKey: L("settings.models.freeModel.validation.invalidEndpoint"),
-                    ],
+                        NSLocalizedDescriptionKey: L("settings.models.freeModel.validation.invalidEndpoint")
+                    ]
                 )
             }
             return ResolvedLLMConnection(
@@ -93,7 +93,7 @@ enum LLMConnectionResolver {
                 baseURL: url,
                 model: resolved.modelName,
                 apiKey: resolved.apiKey,
-                additionalHeaders: resolved.additionalHeaders,
+                additionalHeaders: resolved.additionalHeaders
             )
         }
 
@@ -107,7 +107,7 @@ enum LLMConnectionResolver {
             throw NSError(
                 domain: "LLM",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid LLM base URL."],
+                userInfo: [NSLocalizedDescriptionKey: "Invalid LLM base URL."]
             )
         }
 
@@ -116,7 +116,7 @@ enum LLMConnectionResolver {
             baseURL: url,
             model: trimmedModel.isEmpty ? provider.defaultModel : trimmedModel,
             apiKey: apiKey,
-            additionalHeaders: [:],
+            additionalHeaders: [:]
         )
     }
 }
@@ -148,7 +148,7 @@ final class OpenAICompatibleLLMService: LLMService {
                 baseURL: "",
                 model: config.model,
                 apiKey: token,
-                typefluxCloudBaseURL: primary,
+                typefluxCloudBaseURL: primary
             )
             return ResolvedLLMCall(connection: connection, cloudBaseURL: primary)
         }
@@ -156,7 +156,7 @@ final class OpenAICompatibleLLMService: LLMService {
             provider: config.provider,
             baseURL: config.baseURL,
             model: config.model,
-            apiKey: config.apiKey,
+            apiKey: config.apiKey
         )
         return ResolvedLLMCall(connection: connection, cloudBaseURL: nil)
     }
@@ -164,8 +164,9 @@ final class OpenAICompatibleLLMService: LLMService {
     private func headers(
         for connection: ResolvedLLMConnection,
         scenario: TypefluxCloudScenario,
+        personaID: UUID? = nil
     ) -> [String: String] {
-        connection.headers(for: scenario)
+        connection.headers(for: scenario, personaID: personaID)
     }
 
     func streamRewrite(request rewriteRequest: LLMRewriteRequest) -> AsyncThrowingStream<String, Error> {
@@ -185,17 +186,20 @@ final class OpenAICompatibleLLMService: LLMService {
     func complete(systemPrompt: String, userPrompt: String) async throws -> String {
         let llmConfig = settingsStore.textLLMConfiguration()
         let appLanguage = settingsStore.appLanguage
-        let effectiveSystemPrompt = PromptCatalog.appendUserEnvironmentContext(
-            to: systemPrompt,
-            appLanguage: appLanguage,
+        let effectiveSystemPrompt = PromptCatalog.appendLanguageResolutionPolicy(
+            to: systemPrompt
+        )
+        let effectiveUserPrompt = PromptCatalog.appendUserEnvironmentContext(
+            to: userPrompt,
+            appLanguage: appLanguage
         )
         return try await RequestRetry.perform(operationName: "LLM completion request") { [weak self] in
             guard let self else { throw CancellationError() }
             // Re-resolve on each attempt so typefluxCloud retries pick up the
             // current lowest-latency endpoint when an earlier attempt failed.
-            let call = try await self.resolveConnection(for: llmConfig)
-            let additionalHeaders = self.headers(for: call.connection, scenario: .askAnything)
-            return try await self.runWithFailureReporting(cloudBaseURL: call.cloudBaseURL) {
+            let call = try await resolveConnection(for: llmConfig)
+            let additionalHeaders = headers(for: call.connection, scenario: .askAnything)
+            return try await runWithFailureReporting(cloudBaseURL: call.cloudBaseURL) {
                 try await RemoteLLMClient.complete(
                     provider: call.connection.provider,
                     baseURL: call.connection.baseURL,
@@ -203,8 +207,8 @@ final class OpenAICompatibleLLMService: LLMService {
                     apiKey: call.connection.apiKey,
                     additionalHeaders: additionalHeaders,
                     systemPrompt: effectiveSystemPrompt,
-                    userPrompt: userPrompt,
-                    schema: nil,
+                    userPrompt: effectiveUserPrompt,
+                    schema: nil
                 )
             }
         }
@@ -213,15 +217,18 @@ final class OpenAICompatibleLLMService: LLMService {
     func completeJSON(systemPrompt: String, userPrompt: String, schema: LLMJSONSchema) async throws -> String {
         let llmConfig = settingsStore.textLLMConfiguration()
         let appLanguage = settingsStore.appLanguage
-        let effectiveSystemPrompt = PromptCatalog.appendUserEnvironmentContext(
-            to: systemPrompt,
-            appLanguage: appLanguage,
+        let effectiveSystemPrompt = PromptCatalog.appendLanguageResolutionPolicy(
+            to: systemPrompt
+        )
+        let effectiveUserPrompt = PromptCatalog.appendUserEnvironmentContext(
+            to: userPrompt,
+            appLanguage: appLanguage
         )
         return try await RequestRetry.perform(operationName: "LLM JSON completion request") { [weak self] in
             guard let self else { throw CancellationError() }
-            let call = try await self.resolveConnection(for: llmConfig)
-            let additionalHeaders = self.headers(for: call.connection, scenario: .automaticVocabulary)
-            return try await self.runWithFailureReporting(cloudBaseURL: call.cloudBaseURL) {
+            let call = try await resolveConnection(for: llmConfig)
+            let additionalHeaders = headers(for: call.connection, scenario: .automaticVocabulary)
+            return try await runWithFailureReporting(cloudBaseURL: call.cloudBaseURL) {
                 try await RemoteLLMClient.complete(
                     provider: call.connection.provider,
                     baseURL: call.connection.baseURL,
@@ -229,8 +236,8 @@ final class OpenAICompatibleLLMService: LLMService {
                     apiKey: call.connection.apiKey,
                     additionalHeaders: additionalHeaders,
                     systemPrompt: effectiveSystemPrompt,
-                    userPrompt: userPrompt,
-                    schema: schema,
+                    userPrompt: effectiveUserPrompt,
+                    schema: schema
                 )
             }
         }
@@ -242,7 +249,7 @@ final class OpenAICompatibleLLMService: LLMService {
     /// latency; the periodic ping probe is authoritative for latency.
     private func runWithFailureReporting<T>(
         cloudBaseURL: URL?,
-        operation: () async throws -> T,
+        operation: () async throws -> T
     ) async throws -> T {
         do {
             return try await operation()
@@ -258,31 +265,38 @@ final class OpenAICompatibleLLMService: LLMService {
 
     private func streamRewriteInternal(
         request rewriteRequest: LLMRewriteRequest,
-        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws -> String {
         let llmConfig = settingsStore.textLLMConfiguration()
         let call = try await resolveConnection(for: llmConfig)
-        let additionalHeaders = headers(for: call.connection, scenario: .textRewrite)
+        let additionalHeaders = headers(
+            for: call.connection,
+            scenario: .textRewrite,
+            personaID: rewriteRequest.personaID
+        )
 
         let prompts = PromptCatalog.rewritePrompts(for: rewriteRequest)
-        var effectiveSystemPrompt = PromptCatalog.appendUserEnvironmentContext(
-            to: prompts.system,
-            appLanguage: settingsStore.appLanguage,
+        var effectiveSystemPrompt = PromptCatalog.appendLanguageResolutionPolicy(
+            to: prompts.system
+        )
+        let effectiveUserPrompt = PromptCatalog.appendUserEnvironmentContext(
+            to: prompts.user,
+            appLanguage: settingsStore.appLanguage
         )
         if let appContext = rewriteRequest.appSystemContext {
             let extra = PromptCatalog.appSpecificSystemContext(appContext)
             if !extra.isEmpty {
                 effectiveSystemPrompt = PromptCatalog.appendAdditionalSystemContext(
                     extra,
-                    to: effectiveSystemPrompt,
+                    to: effectiveSystemPrompt
                 )
             }
         }
         NetworkDebugLogger.logMessage(
             PromptCatalog.rewritePromptDebugDescription(
                 system: effectiveSystemPrompt,
-                user: prompts.user,
-            ),
+                user: effectiveUserPrompt
+            )
         )
 
         let final = try await runWithFailureReporting(cloudBaseURL: call.cloudBaseURL) {
@@ -293,8 +307,9 @@ final class OpenAICompatibleLLMService: LLMService {
                 apiKey: call.connection.apiKey,
                 additionalHeaders: additionalHeaders,
                 systemPrompt: effectiveSystemPrompt,
-                userPrompt: prompts.user,
-                continuation: continuation,
+                userPrompt: effectiveUserPrompt,
+                diagnosticsRecorder: rewriteRequest.diagnosticsRecorder,
+                continuation: continuation
             )
         }
 
@@ -305,6 +320,8 @@ final class OpenAICompatibleLLMService: LLMService {
 }
 
 enum RemoteLLMClient {
+    static let customThinkingTuningStore = LLMThinkingTuningAdaptationStore()
+
     static func streamRewrite(
         provider: LLMRemoteProvider,
         baseURL: URL,
@@ -313,7 +330,8 @@ enum RemoteLLMClient {
         additionalHeaders: [String: String] = [:],
         systemPrompt: String,
         userPrompt: String,
-        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        diagnosticsRecorder: LLMRequestDiagnosticsRecorder? = nil,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws -> String {
         switch provider.apiStyle {
         case .openAICompatible:
@@ -325,7 +343,8 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                continuation: continuation,
+                diagnosticsRecorder: diagnosticsRecorder,
+                continuation: continuation
             )
         case .anthropic:
             let text = try await requestAnthropic(
@@ -335,7 +354,7 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: nil,
+                schema: nil
             )
             if !text.isEmpty {
                 continuation.yield(text)
@@ -349,7 +368,7 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: nil,
+                schema: nil
             )
             if !text.isEmpty {
                 continuation.yield(text)
@@ -363,7 +382,7 @@ enum RemoteLLMClient {
         baseURL: URL,
         model: String,
         apiKey: String,
-        additionalHeaders: [String: String] = [:],
+        additionalHeaders: [String: String] = [:]
     ) async throws -> String {
         switch provider.apiStyle {
         case .openAICompatible:
@@ -372,7 +391,7 @@ enum RemoteLLMClient {
                 baseURL: baseURL,
                 model: model,
                 apiKey: apiKey,
-                additionalHeaders: additionalHeaders,
+                additionalHeaders: additionalHeaders
             )
         case .anthropic:
             try await requestAnthropic(
@@ -382,7 +401,7 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: "Reply with a short greeting.",
                 userPrompt: "Hello",
-                schema: nil,
+                schema: nil
             )
         case .gemini:
             try await requestGemini(
@@ -392,7 +411,7 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: "Reply with a short greeting.",
                 userPrompt: "Hello",
-                schema: nil,
+                schema: nil
             )
         }
     }
@@ -405,18 +424,19 @@ enum RemoteLLMClient {
         additionalHeaders: [String: String] = [:],
         systemPrompt: String,
         userPrompt: String,
-        schema: LLMJSONSchema?,
+        schema: LLMJSONSchema?
     ) async throws -> String {
         switch provider.apiStyle {
         case .openAICompatible:
             try await requestOpenAICompatible(
+                provider: provider,
                 baseURL: baseURL,
                 model: model,
                 apiKey: apiKey,
                 additionalHeaders: additionalHeaders,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: schema,
+                schema: schema
             )
         case .anthropic:
             try await requestAnthropic(
@@ -426,7 +446,7 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: schema,
+                schema: schema
             )
         case .gemini:
             try await requestGemini(
@@ -436,20 +456,21 @@ enum RemoteLLMClient {
                 additionalHeaders: additionalHeaders,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                schema: schema,
+                schema: schema
             )
         }
     }
 
     private static func streamOpenAICompatible(
-        provider _: LLMRemoteProvider,
+        provider: LLMRemoteProvider,
         baseURL: URL,
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
         systemPrompt: String,
         userPrompt: String,
-        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        diagnosticsRecorder: LLMRequestDiagnosticsRecorder?,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws -> String {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "chat/completions")
         var urlRequest = URLRequest(url: url)
@@ -465,50 +486,111 @@ enum RemoteLLMClient {
             "stream": true,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userPrompt],
-            ],
+                ["role": "user", "content": userPrompt]
+            ]
         ]
-        OpenAICompatibleResponseSupport.applyProviderTuning(body: &body, baseURL: baseURL, model: model)
+        OpenAICompatibleResponseSupport.applyProviderTuning(
+            body: &body,
+            baseURL: baseURL,
+            model: model,
+            provider: provider
+        )
+        let baseBody = body
+        let tuningCandidate = applyCustomThinkingTuning(
+            body: &body,
+            provider: provider,
+            baseURL: baseURL
+        )
 
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
         NetworkDebugLogger.logRequest(urlRequest)
 
-        var final = ""
-        var thinkingFilter = OpenAICompatibleResponseSupport.StreamingThinkingFilter()
+        var currentRequest = urlRequest
+        var currentCandidate = tuningCandidate
 
-        do {
-            for try await line in try await SSEClient.lines(for: urlRequest) {
-                if line == "[DONE]" { break }
+        while true {
+            var final = ""
+            var thinkingFilter = OpenAICompatibleResponseSupport.StreamingThinkingFilter()
+            var usedCandidate = currentCandidate
+            var observedReasoning = false
 
-                guard let data = line.data(using: .utf8) else { continue }
-                let content = OpenAICompatibleResponseSupport.extractTextDelta(from: data)
-                if let content, !content.isEmpty {
-                    if let filtered = thinkingFilter.process(content) {
-                        final += filtered
-                        continuation.yield(filtered)
+            do {
+                let stream = try await sseLinesWithCustomThinkingAdaptation(
+                    currentRequest,
+                    baseBody: baseBody,
+                    provider: provider,
+                    baseURL: baseURL,
+                    model: model,
+                    diagnosticsRecorder: diagnosticsRecorder,
+                    candidate: currentCandidate
+                )
+                usedCandidate = stream.candidate
+                for try await line in stream.lines {
+                    if line == "[DONE]" { break }
+
+                    let parseStartedAt = Date()
+                    guard let data = line.data(using: .utf8) else { continue }
+                    if let streamError = OpenAICompatibleResponseSupport.streamError(from: data) {
+                        diagnosticsRecorder?.recordJSONParsing(
+                            id: stream.attemptID,
+                            duration: Date().timeIntervalSince(parseStartedAt),
+                            producedOutput: false
+                        )
+                        throw streamError
                     }
-                } else if OpenAICompatibleResponseSupport.containsReasoningDelta(data) {
-                    continue
+                    let content = OpenAICompatibleResponseSupport.extractTextDelta(from: data)
+                    diagnosticsRecorder?.recordJSONParsing(
+                        id: stream.attemptID,
+                        duration: Date().timeIntervalSince(parseStartedAt),
+                        producedOutput: !(content?.isEmpty ?? true)
+                    )
+                    if let content, !content.isEmpty {
+                        if let filtered = thinkingFilter.process(content) {
+                            final += filtered
+                            continuation.yield(filtered)
+                        }
+                    } else if OpenAICompatibleResponseSupport.containsReasoningDelta(data) {
+                        observedReasoning = true
+                        continue
+                    }
                 }
+                if let remaining = thinkingFilter.flush() {
+                    final += remaining
+                    continuation.yield(remaining)
+                }
+                recordCustomThinkingTuningSuccess(
+                    provider: provider,
+                    baseURL: baseURL,
+                    candidate: usedCandidate,
+                    containsThinking: observedReasoning || thinkingFilter.observedThinking
+                )
+                return final
+            } catch {
+                NetworkDebugLogger.logError(context: "LLM stream failed", error: error)
+                guard final.isEmpty,
+                      let next = try nextCustomThinkingRetry(
+                          after: error,
+                          provider: provider,
+                          baseURL: baseURL,
+                          failedCandidate: usedCandidate,
+                          originalRequest: urlRequest,
+                          baseBody: baseBody
+                      )
+                else {
+                    throw error
+                }
+                currentRequest = next.request
+                currentCandidate = next.candidate
             }
-            if let remaining = thinkingFilter.flush() {
-                final += remaining
-                continuation.yield(remaining)
-            }
-        } catch {
-            NetworkDebugLogger.logError(context: "LLM stream failed", error: error)
-            throw error
         }
-
-        return final
     }
 
     private static func previewOpenAICompatible(
-        provider _: LLMRemoteProvider,
+        provider: LLMRemoteProvider,
         baseURL: URL,
         model: String,
         apiKey: String,
-        additionalHeaders: [String: String],
+        additionalHeaders: [String: String]
     ) async throws -> String {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "chat/completions")
         var urlRequest = URLRequest(url: url)
@@ -523,33 +605,93 @@ enum RemoteLLMClient {
             "model": model,
             "stream": true,
             "max_completion_tokens": 50,
-            "messages": [["role": "user", "content": "Hello"]],
+            "messages": [["role": "user", "content": "Hello"]]
         ]
-        OpenAICompatibleResponseSupport.applyProviderTuning(body: &body, baseURL: baseURL, model: model)
+        OpenAICompatibleResponseSupport.applyProviderTuning(
+            body: &body,
+            baseURL: baseURL,
+            model: model,
+            provider: provider
+        )
+        let baseBody = body
+        let tuningCandidate = applyCustomThinkingTuning(
+            body: &body,
+            provider: provider,
+            baseURL: baseURL
+        )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        var collected = ""
-        for try await chunk in try await SSEClient.lines(for: urlRequest) {
-            if chunk == "[DONE]" { break }
-            guard let data = chunk.data(using: .utf8) else { continue }
-            if let content = OpenAICompatibleResponseSupport.extractTextDelta(from: data), !content.isEmpty {
-                collected += content
-                if collected.count >= 60 {
-                    break
+        var currentRequest = urlRequest
+        var currentCandidate = tuningCandidate
+
+        while true {
+            var collected = ""
+            var thinkingFilter = OpenAICompatibleResponseSupport.StreamingThinkingFilter()
+            var observedReasoning = false
+            var usedCandidate = currentCandidate
+
+            do {
+                let stream = try await sseLinesWithCustomThinkingAdaptation(
+                    currentRequest,
+                    baseBody: baseBody,
+                    provider: provider,
+                    baseURL: baseURL,
+                    model: model,
+                    diagnosticsRecorder: nil,
+                    candidate: currentCandidate
+                )
+                usedCandidate = stream.candidate
+                for try await chunk in stream.lines {
+                    if chunk == "[DONE]" { break }
+                    guard let data = chunk.data(using: .utf8) else { continue }
+                    if let streamError = OpenAICompatibleResponseSupport.streamError(from: data) {
+                        throw streamError
+                    }
+                    if let content = OpenAICompatibleResponseSupport.extractTextDelta(from: data), !content.isEmpty {
+                        let filtered = thinkingFilter.process(content) ?? ""
+                        collected += filtered
+                        if collected.count >= 60 {
+                            break
+                        }
+                    } else if OpenAICompatibleResponseSupport.containsReasoningDelta(data) {
+                        observedReasoning = true
+                    }
                 }
+                recordCustomThinkingTuningSuccess(
+                    provider: provider,
+                    baseURL: baseURL,
+                    candidate: usedCandidate,
+                    containsThinking: observedReasoning || thinkingFilter.observedThinking
+                )
+                return collected
+            } catch {
+                guard collected.isEmpty,
+                      let next = try nextCustomThinkingRetry(
+                          after: error,
+                          provider: provider,
+                          baseURL: baseURL,
+                          failedCandidate: usedCandidate,
+                          originalRequest: urlRequest,
+                          baseBody: baseBody
+                      )
+                else {
+                    throw error
+                }
+                currentRequest = next.request
+                currentCandidate = next.candidate
             }
         }
-        return collected
     }
 
     private static func requestOpenAICompatible(
+        provider: LLMRemoteProvider,
         baseURL: URL,
         model: String,
         apiKey: String,
         additionalHeaders: [String: String],
         systemPrompt: String,
         userPrompt: String,
-        schema: LLMJSONSchema?,
+        schema: LLMJSONSchema?
     ) async throws -> String {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "chat/completions")
         var urlRequest = URLRequest(url: url)
@@ -565,8 +707,8 @@ enum RemoteLLMClient {
             "stream": false,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userPrompt],
-            ],
+                ["role": "user", "content": userPrompt]
+            ]
         ]
         if let schema, providerSupportsResponseFormat(baseURL: baseURL) {
             body["response_format"] = [
@@ -574,16 +716,39 @@ enum RemoteLLMClient {
                 "json_schema": [
                     "name": schema.name,
                     "strict": schema.strict,
-                    "schema": schema.jsonObject,
-                ],
+                    "schema": schema.jsonObject
+                ]
             ]
         }
-        OpenAICompatibleResponseSupport.applyProviderTuning(body: &body, baseURL: baseURL, model: model)
+        OpenAICompatibleResponseSupport.applyProviderTuning(
+            body: &body,
+            baseURL: baseURL,
+            model: model,
+            provider: provider
+        )
+        let baseBody = body
+        let tuningCandidate = applyCustomThinkingTuning(
+            body: &body,
+            provider: provider,
+            baseURL: baseURL
+        )
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let data = try await performJSONRequest(urlRequest)
-        let raw = OpenAICompatibleResponseSupport.extractTextDelta(from: data)?
+        let result = try await performJSONRequestWithCustomThinkingAdaptation(
+            urlRequest,
+            baseBody: baseBody,
+            provider: provider,
+            baseURL: baseURL,
+            candidate: tuningCandidate
+        )
+        let raw = OpenAICompatibleResponseSupport.extractTextDelta(from: result.data)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        recordCustomThinkingTuningSuccess(
+            provider: provider,
+            baseURL: baseURL,
+            candidate: result.candidate,
+            containsThinking: OpenAICompatibleResponseSupport.containsLeadingThinkingTags(raw)
+        )
         return OpenAICompatibleResponseSupport.stripLeadingThinkingTags(raw)
     }
 
@@ -594,7 +759,7 @@ enum RemoteLLMClient {
         additionalHeaders: [String: String],
         systemPrompt: String,
         userPrompt: String,
-        schema: LLMJSONSchema?,
+        schema: LLMJSONSchema?
     ) async throws -> String {
         let url = OpenAIEndpointResolver.resolve(from: baseURL, path: "messages")
         var urlRequest = URLRequest(url: url)
@@ -611,10 +776,10 @@ enum RemoteLLMClient {
                 [
                     "role": "user",
                     "content": [
-                        ["type": "text", "text": anthropicUserPrompt(userPrompt: userPrompt, schema: schema)],
-                    ],
-                ],
-            ],
+                        ["type": "text", "text": anthropicUserPrompt(userPrompt: userPrompt, schema: schema)]
+                    ]
+                ]
+            ]
         ]
         OpenAICompatibleResponseSupport.applyAnthropicTuning(body: &body)
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -639,9 +804,12 @@ enum RemoteLLMClient {
         additionalHeaders: [String: String],
         systemPrompt: String,
         userPrompt: String,
-        schema: LLMJSONSchema?,
+        schema: LLMJSONSchema?
     ) async throws -> String {
-        guard var components = URLComponents(url: baseURL.appendingPathComponent("models/\(model):generateContent"), resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("models/\(model):generateContent"),
+            resolvingAgainstBaseURL: false
+        ) else {
             throw NSError(domain: "LLM", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini endpoint."])
         }
         components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "key", value: apiKey)]
@@ -655,18 +823,18 @@ enum RemoteLLMClient {
         applyAdditionalHeaders(additionalHeaders, to: &urlRequest)
         var body: [String: Any] = [
             "systemInstruction": [
-                "parts": [["text": systemPrompt]],
+                "parts": [["text": systemPrompt]]
             ],
             "contents": [
                 [
                     "role": "user",
-                    "parts": [["text": userPrompt]],
-                ],
+                    "parts": [["text": userPrompt]]
+                ]
             ],
             "generationConfig": [
                 "candidateCount": 1,
-                "maxOutputTokens": 1024,
-            ],
+                "maxOutputTokens": 1024
+            ]
         ]
         if var generationConfig = body["generationConfig"] as? [String: Any] {
             OpenAICompatibleResponseSupport.applyGeminiTuning(generationConfig: &generationConfig, model: model)
@@ -677,7 +845,7 @@ enum RemoteLLMClient {
                 "candidateCount": 1,
                 "maxOutputTokens": 1024,
                 "responseMimeType": "application/json",
-                "responseSchema": schema.jsonObject,
+                "responseSchema": schema.jsonObject
             ]
             OpenAICompatibleResponseSupport.applyGeminiTuning(generationConfig: &generationConfig, model: model)
             body["generationConfig"] = generationConfig
@@ -739,7 +907,7 @@ enum RemoteLLMClient {
 
     private static func applyAdditionalHeaders(
         _ headers: [String: String],
-        to request: inout URLRequest,
+        to request: inout URLRequest
     ) {
         for (field, value) in headers {
             request.setValue(value, forHTTPHeaderField: field)
@@ -754,20 +922,189 @@ enum RemoteLLMClient {
             throw NSError(domain: "LLM", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response."])
         }
         guard (200 ..< 300).contains(http.statusCode) else {
+            if let billingError = TypefluxCloudBillingError.fromHTTPStatus(http.statusCode, bodyData: data) {
+                throw billingError
+            }
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "LLM", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(message)"])
+            throw NSError(
+                domain: "LLM",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(message)"]
+            )
         }
         return data
+    }
+
+    struct CustomThinkingJSONResult {
+        let data: Data
+        let candidate: LLMThinkingTuningCandidate?
+    }
+
+    struct CustomThinkingStreamResult {
+        let lines: AsyncThrowingStream<String, Error>
+        let candidate: LLMThinkingTuningCandidate?
+        let attemptID: UUID
+    }
+
+    static func performJSONRequestWithCustomThinkingAdaptation(
+        _ request: URLRequest,
+        baseBody: [String: Any],
+        provider: LLMRemoteProvider,
+        baseURL: URL,
+        candidate: LLMThinkingTuningCandidate?
+    ) async throws -> CustomThinkingJSONResult {
+        var currentRequest = request
+        var currentCandidate = candidate
+
+        while true {
+            do {
+                let data = try await performJSONRequest(currentRequest)
+                return CustomThinkingJSONResult(data: data, candidate: currentCandidate)
+            } catch {
+                guard let next = try nextCustomThinkingRetry(
+                    after: error,
+                    provider: provider,
+                    baseURL: baseURL,
+                    failedCandidate: currentCandidate,
+                    originalRequest: request,
+                    baseBody: baseBody
+                ) else {
+                    throw error
+                }
+                currentRequest = next.request
+                currentCandidate = next.candidate
+            }
+        }
+    }
+
+    static func sseLinesWithCustomThinkingAdaptation(
+        _ request: URLRequest,
+        baseBody: [String: Any],
+        provider: LLMRemoteProvider,
+        baseURL: URL,
+        model: String,
+        diagnosticsRecorder: LLMRequestDiagnosticsRecorder?,
+        candidate: LLMThinkingTuningCandidate?
+    ) async throws -> CustomThinkingStreamResult {
+        var currentRequest = request
+        var currentCandidate = candidate
+
+        while true {
+            do {
+                let attemptID = diagnosticsRecorder?.beginAttempt(
+                    provider: provider.rawValue,
+                    endpoint: currentRequest.url ?? baseURL,
+                    model: model
+                ) ?? UUID()
+                let lines = try await SSEClient.lines(
+                    for: currentRequest,
+                    diagnosticsRecorder: diagnosticsRecorder,
+                    attemptID: attemptID
+                )
+                return CustomThinkingStreamResult(
+                    lines: lines,
+                    candidate: currentCandidate,
+                    attemptID: attemptID
+                )
+            } catch {
+                guard let next = try nextCustomThinkingRetry(
+                    after: error,
+                    provider: provider,
+                    baseURL: baseURL,
+                    failedCandidate: currentCandidate,
+                    originalRequest: request,
+                    baseBody: baseBody
+                ) else {
+                    throw error
+                }
+                currentRequest = next.request
+                currentCandidate = next.candidate
+            }
+        }
+    }
+
+    static func applyCustomThinkingTuning(
+        body: inout [String: Any],
+        provider: LLMRemoteProvider,
+        baseURL: URL
+    ) -> LLMThinkingTuningCandidate? {
+        guard provider == .custom else { return nil }
+        return customThinkingTuningStore.applyCandidate(to: &body, for: baseURL)
+    }
+
+    static func recordCustomThinkingTuningSuccess(
+        provider: LLMRemoteProvider,
+        baseURL: URL,
+        candidate: LLMThinkingTuningCandidate?,
+        containsThinking: Bool
+    ) {
+        guard provider == .custom else { return }
+        customThinkingTuningStore.recordSuccess(
+            baseURL: baseURL,
+            candidate: candidate,
+            containsThinking: containsThinking
+        )
+    }
+
+    private static func nextCustomThinkingRetry(
+        after error: Error,
+        provider: LLMRemoteProvider,
+        baseURL: URL,
+        failedCandidate: LLMThinkingTuningCandidate?,
+        originalRequest: URLRequest,
+        baseBody: [String: Any]
+    ) throws -> (request: URLRequest, candidate: LLMThinkingTuningCandidate?)? {
+        guard provider == .custom,
+              OpenAICompatibleResponseSupport.shouldRetryWithoutCustomThinkingTuning(error: error)
+        else {
+            return nil
+        }
+
+        customThinkingTuningStore.recordUnsupportedParameter(
+            baseURL: baseURL,
+            candidate: failedCandidate
+        )
+
+        var nextBody = baseBody
+        let nextCandidate = customThinkingTuningStore.applyCandidate(to: &nextBody, for: baseURL)
+
+        if let nextCandidate {
+            NetworkDebugLogger.logMessage(
+                "Custom LLM rejected thinking tuning parameters; retrying with \(nextCandidate.id)."
+            )
+        } else {
+            NetworkDebugLogger.logMessage(
+                "Custom LLM rejected all thinking tuning candidates; retrying without tuning."
+            )
+        }
+
+        var retryRequest = originalRequest
+        retryRequest.httpBody = try JSONSerialization.data(withJSONObject: nextBody)
+        return (retryRequest, nextCandidate)
     }
 }
 
 enum SSEClient {
-    static func lines(for request: URLRequest) async throws -> AsyncThrowingStream<String, Error> {
-        let (bytes, response) = try await LLMHTTPSession.shared.bytes(for: request)
+    static func lines(
+        for request: URLRequest,
+        diagnosticsRecorder: LLMRequestDiagnosticsRecorder? = nil,
+        attemptID: UUID = UUID()
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        var instrumentedRequest = request
+        if let diagnosticsRecorder {
+            instrumentedRequest.setValue(
+                attemptID.uuidString,
+                forHTTPHeaderField: LLMURLSessionMetricsDelegate.diagnosticsHeader
+            )
+            LLMHTTPSession.metricsDelegate.register(id: attemptID, recorder: diagnosticsRecorder)
+        }
+        let (bytes, response) = try await LLMHTTPSession.shared.bytes(for: instrumentedRequest)
         guard let http = response as? HTTPURLResponse else {
             NetworkDebugLogger.logResponse(response, bodyDescription: "<invalid non-http response>")
             throw NSError(domain: "SSE", code: 1)
         }
+
+        diagnosticsRecorder?.markResponseHeaders(id: attemptID, statusCode: http.statusCode)
 
         if !(200 ..< 300).contains(http.statusCode) {
             var errorBodyData = Data()
@@ -775,16 +1112,27 @@ enum SSEClient {
                 errorBodyData.append(byte)
             }
             NetworkDebugLogger.logResponse(http, data: errorBodyData)
+            if let billingError = TypefluxCloudBillingError.fromHTTPStatus(http.statusCode, bodyData: errorBodyData) {
+                throw billingError
+            }
             let errorBody = String(data: errorBodyData, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "SSE", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(errorBody)"])
+            throw NSError(
+                domain: "SSE",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(errorBody)"]
+            )
         }
 
         NetworkDebugLogger.logResponse(http, bodyDescription: "<stream opened>")
 
-        return lines(for: bytes)
+        return lines(for: bytes, diagnosticsRecorder: diagnosticsRecorder, attemptID: attemptID)
     }
 
-    static func lines(for bytes: URLSession.AsyncBytes) -> AsyncThrowingStream<String, Error> {
+    static func lines(
+        for bytes: URLSession.AsyncBytes,
+        diagnosticsRecorder: LLMRequestDiagnosticsRecorder? = nil,
+        attemptID: UUID = UUID()
+    ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -793,6 +1141,7 @@ enum SSEClient {
                         buffer.append(byte)
 
                         while let newlineIndex = buffer.firstIndex(of: 0x0A) {
+                            let parseStartedAt = Date()
                             let lineData = buffer.prefix(upTo: newlineIndex)
                             buffer.removeSubrange(...newlineIndex)
 
@@ -806,18 +1155,37 @@ enum SSEClient {
 
                             if line.hasPrefix("data:") {
                                 let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+                                diagnosticsRecorder?.recordSSEParsing(
+                                    id: attemptID,
+                                    duration: Date().timeIntervalSince(parseStartedAt),
+                                    yieldedEvent: true
+                                )
                                 continuation.yield(payload)
+                            } else {
+                                diagnosticsRecorder?.recordSSEParsing(
+                                    id: attemptID,
+                                    duration: Date().timeIntervalSince(parseStartedAt),
+                                    yieldedEvent: false
+                                )
                             }
                         }
                     }
 
                     if !buffer.isEmpty, let line = String(data: buffer, encoding: .utf8), line.hasPrefix("data:") {
+                        let parseStartedAt = Date()
                         let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+                        diagnosticsRecorder?.recordSSEParsing(
+                            id: attemptID,
+                            duration: Date().timeIntervalSince(parseStartedAt),
+                            yieldedEvent: true
+                        )
                         continuation.yield(payload)
                     }
 
+                    diagnosticsRecorder?.markResponseCompleted(id: attemptID)
                     continuation.finish()
                 } catch {
+                    diagnosticsRecorder?.markResponseCompleted(id: attemptID)
                     NetworkDebugLogger.logError(context: "SSE stream parsing failed", error: error)
                     continuation.finish(throwing: error)
                 }

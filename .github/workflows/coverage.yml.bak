@@ -1,0 +1,28 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - pre-release
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+concurrency:
+  group: coverage-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  coverage:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run coverage
+        uses: ./.github/actions/swift-coverage
+        with:
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}

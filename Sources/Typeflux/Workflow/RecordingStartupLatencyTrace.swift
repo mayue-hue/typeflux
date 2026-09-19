@@ -10,15 +10,21 @@ final class RecordingStartupLatencyTrace {
 
     private init() {}
 
-    func begin(_ label: String) {
+    func begin(_ label: String, physicalUptime: TimeInterval? = nil) {
         lock.lock()
         sessionID = UUID()
-        events = [(label, Self.now())]
+        let now = Self.now()
+        if let physicalUptime, physicalUptime.isFinite, physicalUptime >= 0,
+           physicalUptime <= Double(now) / 1_000_000_000 {
+            events = [("hotkey.physical_press", UInt64(physicalUptime * 1_000_000_000)), (label, now)]
+        } else {
+            events = [(label, now)]
+        }
         didLogFirstBuffer = false
         lock.unlock()
     }
 
-    func mark(_ label: String) {
+    func mark(_ label: String, logSummary: Bool = false) {
         lock.lock()
         if events.isEmpty {
             events = [(label, Self.now())]
@@ -26,7 +32,9 @@ final class RecordingStartupLatencyTrace {
         } else {
             events.append((label, Self.now()))
         }
+        let summary = logSummary ? summaryLocked() : nil
         lock.unlock()
+        if let summary { NetworkDebugLogger.logMessage(summary) }
     }
 
     func markFirstAudioBuffer() {

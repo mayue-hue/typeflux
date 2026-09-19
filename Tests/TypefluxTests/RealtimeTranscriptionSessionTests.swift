@@ -1,15 +1,27 @@
 import AVFoundation
-import XCTest
 @testable import Typeflux
+import XCTest
 
 final class RealtimeTranscriptionSessionTests: XCTestCase {
+    func testDiagnosticsRecordsInboundResultMilestonesOnlyOnce() {
+        let diagnostics = RealtimeTranscriptionDiagnostics()
+
+        diagnostics.markResult(isFinal: false)
+        let firstResult = diagnostics.currentSnapshot().firstResultReceivedAt
+        diagnostics.markResult(isFinal: true)
+        let snapshot = diagnostics.currentSnapshot()
+
+        XCTAssertEqual(snapshot.firstResultReceivedAt, firstResult)
+        XCTAssertNotNil(snapshot.finalResultReceivedAt)
+    }
+
     func testPCM16FrameChunkerKeepsRemainderUntilFlush() {
         var chunker = PCM16FrameChunker(chunkSize: 4)
 
         XCTAssertEqual(chunker.append(Data([1, 2, 3])), [])
         XCTAssertEqual(chunker.append(Data([4, 5, 6, 7, 8])), [
             Data([1, 2, 3, 4]),
-            Data([5, 6, 7, 8]),
+            Data([5, 6, 7, 8])
         ])
         XCTAssertEqual(chunker.append(Data([9, 10])), [])
         XCTAssertEqual(chunker.flush(), [Data([9, 10])])
@@ -22,7 +34,7 @@ final class RealtimeTranscriptionSessionTests: XCTestCase {
 
         XCTAssertEqual(chunks, [
             Data([1, 2, 3, 4]),
-            Data([5, 6, 7, 8]),
+            Data([5, 6, 7, 8])
         ])
         XCTAssertEqual(chunks.map(\.startIndex), [0, 0])
         XCTAssertEqual(chunker.append(Data([9, 10])), [])
@@ -32,7 +44,7 @@ final class RealtimeTranscriptionSessionTests: XCTestCase {
     func testBufferedSessionQueuesAudioUntilUpstreamStartCompletes() async throws {
         let upstream = DelayedStartPCMStream(finalText: "done")
         let session = BufferedRealtimeTranscriptionSession(upstream: upstream)
-        let buffer = try makeFloatBuffer(frameCount: 1_600)
+        let buffer = try makeFloatBuffer(frameCount: 1600)
 
         await session.start()
         await session.append(buffer)
@@ -52,7 +64,7 @@ final class RealtimeTranscriptionSessionTests: XCTestCase {
     func testBufferedSessionThrowsStartErrorFromFinish() async throws {
         let upstream = FailingStartPCMStream()
         let session = BufferedRealtimeTranscriptionSession(upstream: upstream)
-        let buffer = try makeFloatBuffer(frameCount: 1_600)
+        let buffer = try makeFloatBuffer(frameCount: 1600)
 
         await session.start()
         await session.append(buffer)
@@ -96,12 +108,27 @@ final class RealtimeTranscriptionSessionTests: XCTestCase {
         XCTAssertEqual(sentByteCount, 3)
     }
 
+    func testDeferredPCM16SessionForwardsTransportDiagnostics() async throws {
+        let expected = NetworkTransportDiagnosticsSnapshot(endpoint: "wss://asr.example.com/realtime")
+        let upstream = DelayedStartPCMStream(finalText: "done", transportDiagnostics: expected)
+        let session = DeferredPCM16RealtimeTranscriptionSession { upstream }
+
+        let startTask = Task { try await session.start() }
+        await upstream.waitUntilStartCalled()
+        await upstream.releaseStart()
+        try await startTask.value
+
+        let snapshot = await session.transportDiagnosticsSnapshot()
+
+        XCTAssertEqual(snapshot, expected)
+    }
+
     private func makeFloatBuffer(frameCount: AVAudioFrameCount) throws -> AVAudioPCMBuffer {
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: CloudASRAudioConverter.targetSampleRate,
             channels: 1,
-            interleaved: false,
+            interleaved: false
         )!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
         buffer.frameLength = frameCount
@@ -113,15 +140,18 @@ final class RealtimeTranscriptionSessionTests: XCTestCase {
     }
 }
 
-private actor DelayedStartPCMStream: PCM16RealtimeTranscriptionSession {
+private actor DelayedStartPCMStream: PCM16RealtimeTranscriptionSession,
+    RealtimeTransportDiagnosticsProviding {
     private let finalText: String
+    private let transportDiagnostics: NetworkTransportDiagnosticsSnapshot?
     private var startContinuation: CheckedContinuation<Void, Never>?
     private var startRequestedContinuation: CheckedContinuation<Void, Never>?
     private var chunks: [Data] = []
     private var starts = 0
 
-    init(finalText: String) {
+    init(finalText: String, transportDiagnostics: NetworkTransportDiagnosticsSnapshot? = nil) {
         self.finalText = finalText
+        self.transportDiagnostics = transportDiagnostics
     }
 
     func start() async throws {
@@ -168,6 +198,10 @@ private actor DelayedStartPCMStream: PCM16RealtimeTranscriptionSession {
         await withCheckedContinuation { continuation in
             startRequestedContinuation = continuation
         }
+    }
+
+    func transportDiagnosticsSnapshot() -> NetworkTransportDiagnosticsSnapshot? {
+        transportDiagnostics
     }
 }
 

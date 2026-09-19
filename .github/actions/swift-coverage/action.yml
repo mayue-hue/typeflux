@@ -1,0 +1,73 @@
+name: Swift Coverage
+description: Run Swift tests with coverage, generate an lcov report, and upload it to Codecov.
+
+inputs:
+  codecov-token:
+    description: Codecov upload token.
+    required: false
+  test-binary-path:
+    description: Expected test binary path relative to the Swift build bin path.
+    required: false
+    default: TypefluxPackageTests.xctest/Contents/MacOS/TypefluxPackageTests
+  coverage-file:
+    description: Output lcov file path.
+    required: false
+    default: coverage.lcov
+
+runs:
+  using: composite
+  steps:
+    - name: Cache SwiftPM
+      uses: actions/cache@v4
+      with:
+        path: |
+          .build
+          ~/Library/Caches/org.swift.swiftpm
+        key: swiftpm-coverage-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+        restore-keys: |
+          swiftpm-coverage-${{ runner.os }}-
+
+    - name: Run tests with coverage
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        find .build -name "default.profdata" -type f -delete 2>/dev/null || true
+        swift test --enable-code-coverage
+
+    - name: Generate lcov report
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BIN_PATH="$(swift build --show-bin-path)"
+        PROFDATA="$(find .build -name "default.profdata" -type f 2>/dev/null | head -1)"
+        TEST_BINARY="${BIN_PATH}/${{ inputs.test-binary-path }}"
+
+        if [[ -z "${PROFDATA}" ]]; then
+          echo "Error: Could not find default.profdata"
+          find .build -name "*.profdata" -type f 2>/dev/null || true
+          exit 1
+        fi
+
+        if [[ ! -f "${TEST_BINARY}" ]]; then
+          echo "Error: Could not find test binary: ${TEST_BINARY}"
+          find .build -name "*.xctest" -type d 2>/dev/null || true
+          exit 1
+        fi
+
+        echo "Using binary: ${TEST_BINARY}"
+        echo "Using profdata: ${PROFDATA}"
+        xcrun llvm-cov export \
+          "${TEST_BINARY}" \
+          --instr-profile="${PROFDATA}" \
+          --format=lcov \
+          --ignore-filename-regex="\.build|Tests" \
+          > "${{ inputs.coverage-file }}"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ${{ inputs.coverage-file }}
+        token: ${{ inputs.codecov-token }}
+        fail_ci_if_error: false

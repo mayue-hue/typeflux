@@ -32,7 +32,7 @@ final class AgentJobTitleGeneratorTests: XCTestCase {
         prompt: String = "Translate this email to Japanese",
         selectedText: String? = "Hello, how are you?",
         resultText: String? = "こんにちは、お元気ですか？",
-        steps: [AgentJobStep] = [],
+        steps: [AgentJobStep] = []
     ) -> AgentJob {
         AgentJob(
             status: .completed,
@@ -40,7 +40,7 @@ final class AgentJobTitleGeneratorTests: XCTestCase {
             userPrompt: prompt,
             selectedText: selectedText,
             resultText: resultText,
-            steps: steps,
+            steps: steps
         )
     }
 

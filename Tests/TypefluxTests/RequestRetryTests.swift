@@ -40,7 +40,7 @@ final class RequestRetryTests: XCTestCase {
                 operation: {
                     _ = await recorder.incrementAttempt()
                     throw expectedError
-                },
+                }
             ) as String
             XCTFail("Expected retry helper to rethrow the final error")
         } catch {
@@ -73,7 +73,7 @@ final class RequestRetryTests: XCTestCase {
                     throw NSError(domain: "RequestRetryTests", code: attemptCount, userInfo: nil)
                 }
                 return "ok"
-            },
+            }
         )
 
         let attempts = await recorder.attemptCount
@@ -99,12 +99,107 @@ final class RequestRetryTests: XCTestCase {
                 operation: {
                     _ = await recorder.incrementAttempt()
                     throw CancellationError()
-                },
+                }
             ) as String
             XCTFail("Expected cancellation to be rethrown")
         } catch is CancellationError {
         } catch {
             XCTFail("Expected CancellationError, got \(error)")
+        }
+
+        let attempts = await recorder.attemptCount
+        let retryNumbers = await recorder.retryNumbers
+        let sleptDurations = await recorder.sleptDurations
+
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(retryNumbers.isEmpty)
+        XCTAssertTrue(sleptDurations.isEmpty)
+    }
+
+    func testRetryPredicateCanStopRetryingRecoverableOperation() async {
+        let recorder = Recorder()
+        let expectedError = NSError(domain: "RequestRetryTests", code: 503)
+
+        do {
+            _ = try await RequestRetry.perform(
+                operationName: "test-operation",
+                shouldRetry: { _ in false },
+                sleep: { duration in
+                    await recorder.recordSleep(duration)
+                },
+                operation: {
+                    _ = await recorder.incrementAttempt()
+                    throw expectedError
+                }
+            ) as String
+            XCTFail("Expected retry predicate to rethrow immediately")
+        } catch {
+            XCTAssertEqual((error as NSError).code, 503)
+        }
+
+        let attemptCount = await recorder.attemptCount
+        let sleptDurations = await recorder.sleptDurations
+        XCTAssertEqual(attemptCount, 1)
+        XCTAssertTrue(sleptDurations.isEmpty)
+    }
+
+    func testDoesNotRetryTypefluxCloudBillingError() async {
+        let recorder = Recorder()
+        let expectedError = TypefluxCloudBillingError(reason: .subscriptionRequired, serverMessage: nil)
+
+        do {
+            _ = try await RequestRetry.perform(
+                operationName: "test-operation",
+                onRetry: { retryNumber, _, delay in
+                    await recorder.recordRetry(number: retryNumber, delay: delay)
+                },
+                sleep: { duration in
+                    await recorder.recordSleep(duration)
+                },
+                operation: {
+                    _ = await recorder.incrementAttempt()
+                    throw expectedError
+                }
+            ) as String
+            XCTFail("Expected billing error to be rethrown")
+        } catch let error as TypefluxCloudBillingError {
+            XCTAssertEqual(error.reason, .subscriptionRequired)
+        } catch {
+            XCTFail("Expected TypefluxCloudBillingError, got \(error)")
+        }
+
+        let attempts = await recorder.attemptCount
+        let retryNumbers = await recorder.retryNumbers
+        let sleptDurations = await recorder.sleptDurations
+
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(retryNumbers.isEmpty)
+        XCTAssertTrue(sleptDurations.isEmpty)
+    }
+
+    func testDoesNotRetryTypefluxCloudLoginRequiredError() async {
+        let recorder = Recorder()
+        let expectedError = TypefluxCloudLoginRequiredError()
+
+        do {
+            _ = try await RequestRetry.perform(
+                operationName: "test-operation",
+                onRetry: { retryNumber, _, delay in
+                    await recorder.recordRetry(number: retryNumber, delay: delay)
+                },
+                sleep: { duration in
+                    await recorder.recordSleep(duration)
+                },
+                operation: {
+                    _ = await recorder.incrementAttempt()
+                    throw expectedError
+                }
+            ) as String
+            XCTFail("Expected login required error to be rethrown")
+        } catch let error as TypefluxCloudLoginRequiredError {
+            XCTAssertEqual(error, expectedError)
+        } catch {
+            XCTFail("Expected TypefluxCloudLoginRequiredError, got \(error)")
         }
 
         let attempts = await recorder.attemptCount
@@ -144,7 +239,7 @@ extension RequestRetryTests {
         let recorder = Recorder()
         let result = try await RequestRetry.perform(
             operationName: "immediate-success",
-            sleep: { _ in },
+            sleep: { _ in }
         ) {
             _ = await recorder.incrementAttempt()
             return "success"
@@ -159,7 +254,7 @@ extension RequestRetryTests {
         do {
             _ = try await RequestRetry.perform(
                 operationName: "always-fails",
-                sleep: { _ in },
+                sleep: { _ in }
             ) {
                 let count = await recorder.incrementAttempt()
                 throw NSError(domain: "test", code: count)

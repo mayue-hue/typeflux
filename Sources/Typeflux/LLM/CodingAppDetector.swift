@@ -41,15 +41,15 @@ enum CodingAppDetector {
         "co.zeit.hyper",
         "com.github.wez.wezterm",
         "io.alacritty",
-        "com.tabby",
+        "com.tabby"
     ]
 
     /// Bundle identifier prefixes that cover families of coding apps (e.g. every
     /// JetBrains IDE shares `com.jetbrains.` and shipping a new one shouldn't
     /// require an update here).
     private static let bundlePrefixes: [String] = [
-        "com.jetbrains.",       // IntelliJ, GoLand, PyCharm, WebStorm, RustRover, Fleet, ...
-        "com.google.android.studio", // Android Studio variants
+        "com.jetbrains.", // IntelliJ, GoLand, PyCharm, WebStorm, RustRover, Fleet, ...
+        "com.google.android.studio" // Android Studio variants
     ]
 
     /// Returns `true` when the given bundle identifier belongs to a code editor,

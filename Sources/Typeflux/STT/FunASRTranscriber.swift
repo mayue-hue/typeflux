@@ -6,13 +6,13 @@ final class FunASRTranscriber: Transcriber {
     init(
         modelIdentifier: String,
         modelFolder: String,
-        processRunner: ProcessCommandRunning = ProcessCommandRunner(),
+        processRunner: ProcessCommandRunning = ProcessCommandRunner()
     ) {
         decoder = SherpaOnnxCommandLineDecoder(
             model: .funASR,
             modelIdentifier: modelIdentifier,
             modelFolder: modelFolder,
-            processRunner: processRunner,
+            processRunner: processRunner
         )
     }
 

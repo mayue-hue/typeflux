@@ -18,7 +18,7 @@ final class MCPSettingsTests: XCTestCase {
             name: "TestServer",
             transport: .stdio(MCPStdioTransportConfig(command: "/usr/bin/echo")),
             enabled: true,
-            autoConnect: false,
+            autoConnect: false
         )
         store.addServer(config)
         XCTAssertEqual(store.servers.count, 1)
@@ -31,7 +31,7 @@ final class MCPSettingsTests: XCTestCase {
             name: "ToRemove",
             transport: .http(MCPHTTPTransportConfig(url: "http://localhost:8080")),
             enabled: true,
-            autoConnect: false,
+            autoConnect: false
         )
         store.addServer(config)
         XCTAssertEqual(store.servers.count, 1)
@@ -46,7 +46,7 @@ final class MCPSettingsTests: XCTestCase {
             name: "Original",
             transport: .stdio(MCPStdioTransportConfig(command: "/bin/cat")),
             enabled: true,
-            autoConnect: false,
+            autoConnect: false
         )
         store.addServer(config)
 
@@ -65,13 +65,16 @@ final class MCPSettingsTests: XCTestCase {
             name: "Server1",
             transport: .stdio(MCPStdioTransportConfig(command: "/bin/echo")),
             enabled: true,
-            autoConnect: true,
+            autoConnect: true
         )
         let c2 = MCPServerConfig(
             name: "Server2",
-            transport: .http(MCPHTTPTransportConfig(url: "http://localhost:9090", headers: ["Authorization": "Bearer key123"])),
+            transport: .http(MCPHTTPTransportConfig(
+                url: "http://localhost:9090",
+                headers: ["Authorization": "Bearer key123"]
+            )),
             enabled: false,
-            autoConnect: false,
+            autoConnect: false
         )
         store.addServer(c1)
         store.addServer(c2)
@@ -87,7 +90,7 @@ final class MCPSettingsTests: XCTestCase {
             name: "Keep",
             transport: .stdio(MCPStdioTransportConfig(command: "/bin/echo")),
             enabled: true,
-            autoConnect: false,
+            autoConnect: false
         )
         store.addServer(config)
         store.removeServer(id: UUID()) // Non-existent ID
@@ -99,13 +102,16 @@ final class MCPSettingsTests: XCTestCase {
             name: "Stdio",
             transport: .stdio(MCPStdioTransportConfig(command: "/bin/echo", args: ["hello"], env: ["FOO": "BAR"])),
             enabled: true,
-            autoConnect: true,
+            autoConnect: true
         )
         let httpConfig = MCPServerConfig(
             name: "HTTP",
-            transport: .http(MCPHTTPTransportConfig(url: "https://api.example.com", headers: ["Authorization": "Bearer secret"])),
+            transport: .http(MCPHTTPTransportConfig(
+                url: "https://api.example.com",
+                headers: ["Authorization": "Bearer secret"]
+            )),
             enabled: false,
-            autoConnect: false,
+            autoConnect: false
         )
 
         let data = try JSONEncoder().encode([stdioConfig, httpConfig])

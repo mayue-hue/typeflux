@@ -27,7 +27,7 @@ final class WhisperKitTranscriber: Transcriber {
         modelRepo: String? = nil,
         modelEndpoint: String? = nil,
         modelFolder: String? = nil,
-        tokenizerFolder: URL? = nil,
+        tokenizerFolder: URL? = nil
     ) {
         self.modelName = modelName
         self.downloadBase = downloadBase
@@ -50,15 +50,26 @@ final class WhisperKitTranscriber: Transcriber {
 
     func transcribeStream(
         audioFile: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        profile: TranscriptionProfile = .standard,
+        prompt: String? = nil,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let pipe = try await ensurePipeline()
 
-        let options = Self.decodingOptions()
+        var options = Self.decodingOptions(profile: profile)
+        if profile == .lowEnergyRetry,
+           let prompt = prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !prompt.isEmpty,
+           let tokenizer = pipe.tokenizer {
+            options.promptTokens = tokenizer
+                .encode(text: " " + prompt)
+                .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+            options.usePrefillPrompt = true
+        }
 
         let results: [TranscriptionResult] = try await pipe.transcribe(
             audioPath: audioFile.fileURL.path,
-            decodeOptions: options,
+            decodeOptions: options
         ) { progress in
             // progress.text accumulates the partial transcript window by window
             let partial = progress.text
@@ -73,14 +84,21 @@ final class WhisperKitTranscriber: Transcriber {
         return text
     }
 
-    static func decodingOptions() -> DecodingOptions {
-        DecodingOptions(
+    static func decodingOptions(
+        profile: TranscriptionProfile = .standard,
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> DecodingOptions {
+        let retryLanguage = profile == .lowEnergyRetry
+            ? TranscriptionLanguageHints.preferredWhisperLanguageCode(preferredLanguages: preferredLanguages)
+            : nil
+        return DecodingOptions(
             verbose: false,
             task: .transcribe,
-            language: nil,
+            language: retryLanguage,
             usePrefillPrompt: true,
-            detectLanguage: true,
+            detectLanguage: retryLanguage == nil,
             withoutTimestamps: true,
+            noSpeechThreshold: profile == .lowEnergyRetry ? 0.8 : 0.6
         )
     }
 
@@ -140,7 +158,7 @@ final class WhisperKitTranscriber: Transcriber {
                 modelEndpoint: modelEndpoint,
                 modelFolder: modelFolder,
                 tokenizerFolder: tokenizerFolder,
-                verbose: false,
+                verbose: false
             ))
         }
         pipelineLoadTask = task

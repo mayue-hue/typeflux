@@ -51,7 +51,7 @@ struct AnyCodable: Codable, @unchecked Sendable {
         default:
             throw EncodingError.invalidValue(value, EncodingError.Context(
                 codingPath: encoder.codingPath,
-                debugDescription: "AnyCodable: unsupported type \(type(of: value))",
+                debugDescription: "AnyCodable: unsupported type \(type(of: value))"
             ))
         }
     }
@@ -203,7 +203,7 @@ struct MCPJsonRPCMessage: Codable {
         method: String? = nil,
         params: [String: AnyCodable]? = nil,
         result: [String: AnyCodable]? = nil,
-        error: MCPErrorDetail? = nil,
+        error: MCPErrorDetail? = nil
     ) {
         self.jsonrpc = jsonrpc
         self.id = id

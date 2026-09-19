@@ -15,17 +15,32 @@ struct GoogleCloudSpeechOAuthToken: Codable, Equatable {
     }
 }
 
-struct GoogleCloudSpeechOAuthTokenStore {
+enum GoogleCloudSpeechOAuthTokenStore {
     private static let service = "\(Bundle.main.bundleIdentifier ?? "ai.gulu.app.typeflux").google-cloud-speech"
     private static let account = "oauth-token"
+    private static let inMemoryLock = NSLock()
+    private static var inMemoryToken: GoogleCloudSpeechOAuthToken?
+
+    private static var usesInMemoryStore: Bool {
+        NSClassFromString("XCTest.XCTestCase") != nil
+            || NSClassFromString("XCTestCase") != nil
+            || Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+    }
 
     static func save(_ token: GoogleCloudSpeechOAuthToken) {
+        if usesInMemoryStore {
+            inMemoryLock.lock()
+            inMemoryToken = token
+            inMemoryLock.unlock()
+            return
+        }
+
         guard let data = try? JSONEncoder().encode(token) else { return }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
 
         SecItemDelete(query as CFDictionary)
@@ -37,12 +52,19 @@ struct GoogleCloudSpeechOAuthTokenStore {
     }
 
     static func load() -> GoogleCloudSpeechOAuthToken? {
+        if usesInMemoryStore {
+            inMemoryLock.lock()
+            let token = inMemoryToken
+            inMemoryLock.unlock()
+            return token
+        }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
 
         var result: AnyObject?
@@ -58,10 +80,17 @@ struct GoogleCloudSpeechOAuthTokenStore {
     }
 
     static func clear() {
+        if usesInMemoryStore {
+            inMemoryLock.lock()
+            inMemoryToken = nil
+            inMemoryLock.unlock()
+            return
+        }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -94,7 +123,7 @@ enum GoogleCloudSpeechCredentialResolver {
         clientSecret: String = AppServerConfiguration.googleCloudOAuthClientSecret,
         tokenLoader: TokenLoader = GoogleCloudSpeechOAuthTokenStore.load,
         tokenSaver: TokenSaver = GoogleCloudSpeechOAuthTokenStore.save,
-        tokenRefresher: TokenRefresher = GoogleOAuthService.refreshAccessToken,
+        tokenRefresher: TokenRefresher = GoogleOAuthService.refreshAccessToken
     ) async throws -> String {
         let trimmedManualCredential = manualCredential.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedManualCredential.isEmpty {
@@ -119,7 +148,7 @@ enum GoogleCloudSpeechCredentialResolver {
         let refreshedToken = try await tokenRefresher(
             refreshToken,
             clientID,
-            trimmedClientSecret.isEmpty ? nil : trimmedClientSecret,
+            trimmedClientSecret.isEmpty ? nil : trimmedClientSecret
         )
         tokenSaver(refreshedToken)
         return refreshedToken.accessToken

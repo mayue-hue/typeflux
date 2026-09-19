@@ -16,7 +16,7 @@ final class AgentConfigTests: XCTestCase {
             maxSteps: 5,
             allowParallelToolCalls: true,
             temperature: 0.7,
-            enableStreaming: true,
+            enableStreaming: true
         )
         XCTAssertEqual(config.maxSteps, 5)
         XCTAssertTrue(config.allowParallelToolCalls)
@@ -31,7 +31,7 @@ final class AgentConfigTests: XCTestCase {
             allowParallelToolCalls: true,
             temperature: 0.7,
             enableStreaming: true,
-            initialStepIndex: 2,
+            initialStepIndex: 2
         )
 
         XCTAssertEqual(config.initialStepIndex, 2)

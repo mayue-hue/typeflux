@@ -22,7 +22,7 @@ final class SettingsWindowController: NSObject {
         languageObserver = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.window?.title = L("window.voiceStudio")
@@ -31,7 +31,7 @@ final class SettingsWindowController: NSObject {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshAppearance()
@@ -43,8 +43,10 @@ final class SettingsWindowController: NSObject {
         settingsStore: SettingsStore,
         historyStore: HistoryStore,
         initialSection: StudioSection = .settings,
+        modelManager: OllamaModelManaging = OllamaLocalModelManager(),
+        localModelManager: LocalSTTModelManaging = LocalModelManager(),
         notificationService: LocalNotificationSending = NoopLocalNotificationService(),
-        onRetryHistory: @escaping (HistoryRecord) -> Void = { _ in },
+        onRetryHistory: @escaping (HistoryRecord) -> Void = { _ in }
     ) {
         self.settingsStore = settingsStore
 
@@ -65,7 +67,9 @@ final class SettingsWindowController: NSObject {
             historyStore: historyStore,
             initialSection: initialSection,
             onRetryHistory: onRetryHistory,
-            notificationService: notificationService,
+            modelManager: modelManager,
+            localModelManager: localModelManager,
+            notificationService: notificationService
         )
         AppLocalization.shared.setLanguage(viewModel.appLanguage)
         let view = StudioView(viewModel: viewModel)
@@ -76,11 +80,11 @@ final class SettingsWindowController: NSObject {
                 x: 0,
                 y: 0,
                 width: StudioTheme.Layout.settingsWindowWidth,
-                height: StudioTheme.Layout.settingsWindowHeight,
+                height: StudioTheme.Layout.settingsWindowHeight
             ),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
-            defer: false,
+            defer: false
         )
         window.title = L("window.voiceStudio")
         window.center()
@@ -94,10 +98,12 @@ final class SettingsWindowController: NSObject {
         window.contentView = hosting
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.minSize = NSSize(
+        let minimumWindowSize = NSSize(
             width: StudioTheme.Layout.settingsWindowMinWidth,
-            height: StudioTheme.Layout.settingsWindowMinHeight,
+            height: StudioTheme.Layout.settingsWindowMinHeight
         )
+        window.minSize = minimumWindowSize
+        window.contentMinSize = minimumWindowSize
         window.appearance = AppAppearance.nsAppearance(for: settingsStore.appearanceMode)
 
         self.viewModel = viewModel

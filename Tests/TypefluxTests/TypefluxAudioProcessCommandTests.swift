@@ -26,7 +26,7 @@ final class TypefluxAudioProcessCommandTests: XCTestCase {
             "--persona-name",
             "Default",
             "--persona-prompt-file",
-            promptURL.path,
+            promptURL.path
         ])
 
         XCTAssertEqual(exitCode, 2)
@@ -38,7 +38,7 @@ final class TypefluxAudioProcessCommandTests: XCTestCase {
             "/tmp/input.wav",
             "--stt-provider",
             "missingProvider",
-            "--no-persona",
+            "--no-persona"
         ])
 
         XCTAssertEqual(exitCode, 2)

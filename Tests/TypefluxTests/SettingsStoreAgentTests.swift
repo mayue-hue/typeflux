@@ -82,7 +82,7 @@ final class SettingsStoreAgentTests: XCTestCase {
             name: "test-server",
             transport: .stdio(MCPStdioTransportConfig(command: "/usr/bin/echo", args: ["hello"])),
             enabled: true,
-            autoConnect: false,
+            autoConnect: false
         )
 
         store.mcpServers = [server]
@@ -97,9 +97,12 @@ final class SettingsStoreAgentTests: XCTestCase {
     func testMCPServersRoundTripsHTTPTransport() {
         let server = MCPServerConfig(
             name: "http-server",
-            transport: .http(MCPHTTPTransportConfig(url: "https://example.com/mcp", headers: ["Authorization": "Bearer tok"])),
+            transport: .http(MCPHTTPTransportConfig(
+                url: "https://example.com/mcp",
+                headers: ["Authorization": "Bearer tok"]
+            )),
             enabled: false,
-            autoConnect: true,
+            autoConnect: true
         )
 
         store.mcpServers = [server]
@@ -115,12 +118,12 @@ final class SettingsStoreAgentTests: XCTestCase {
         let servers = [
             MCPServerConfig(
                 name: "server-a",
-                transport: .stdio(MCPStdioTransportConfig(command: "a")),
+                transport: .stdio(MCPStdioTransportConfig(command: "a"))
             ),
             MCPServerConfig(
                 name: "server-b",
-                transport: .stdio(MCPStdioTransportConfig(command: "b")),
-            ),
+                transport: .stdio(MCPStdioTransportConfig(command: "b"))
+            )
         ]
 
         store.mcpServers = servers

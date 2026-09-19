@@ -16,7 +16,7 @@ public enum TypefluxBatchCommand {
             FileHandle.standardError.write(Data((error.message + "\n").utf8))
             return 2
         } catch {
-            FileHandle.standardError.write(Data(("Error: \(error.localizedDescription)\n").utf8))
+            FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
             return 1
         }
     }
@@ -36,7 +36,7 @@ public enum TypefluxAudioProcessCommand {
             FileHandle.standardError.write(Data((error.message + "\n").utf8))
             return 2
         } catch {
-            FileHandle.standardError.write(Data(("Error: \(error.localizedDescription)\n").utf8))
+            FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
             return 1
         }
     }
@@ -45,7 +45,9 @@ public enum TypefluxAudioProcessCommand {
 private struct BatchCommandError: LocalizedError {
     let message: String
 
-    var errorDescription: String? { message }
+    var errorDescription: String? {
+        message
+    }
 }
 
 private struct BatchConfiguration {
@@ -99,9 +101,11 @@ private struct BatchConfiguration {
         let personaID = parser.consumeValue("--persona-id")
         let personaName = parser.consumeValue("--persona-name")
         let personaPromptFile = parser.consumeValue("--persona-prompt-file")
-        let selectors = [personaID, personaName, personaPromptFile].compactMap { $0 }
+        let selectors = [personaID, personaName, personaPromptFile].compactMap(\.self)
         guard selectors.count <= 1 else {
-            throw BatchCommandError(message: "Use only one persona selector: --persona-id, --persona-name, or --persona-prompt-file.")
+            throw BatchCommandError(
+                message: "Use only one persona selector: --persona-id, --persona-name, or --persona-prompt-file."
+            )
         }
         if let personaID {
             guard let uuid = UUID(uuidString: personaID) else {
@@ -175,31 +179,31 @@ private struct BatchConfiguration {
 
     fileprivate static var helpText: String {
         """
-    Usage:
-      Typeflux batch-wav --input <wav-directory> --output <report.csv> [--stt-provider <provider>] [--local-stt-model <model>] [--persona-id <uuid>|--persona-name <name>|--persona-prompt-file <path>] [options]
+        Usage:
+          Typeflux batch-wav --input <wav-directory> --output <report.csv> [--stt-provider <provider>] [--local-stt-model <model>] [--persona-id <uuid>|--persona-name <name>|--persona-prompt-file <path>] [options]
 
-    Options:
-      --resume                         Continue from the default or explicit state file.
-      --retry-failed                   Retry rows previously marked failed.
-      --state <path>                   Override the default state path. Defaults to <output>.state.json.
-      --stt-provider <provider>        Optional STT provider override. See table below.
-      --local-stt-model <model>        Optional local STT model override. See table below.
-      --persona-id <uuid>              Optional saved persona selector by ID.
-      --persona-name <name>            Optional saved persona selector by name.
-      --persona-prompt-file <path>     Optional prompt file selector instead of a saved persona.
-      --no-persona                     Only transcribe; write the transcript as the final result.
+        Options:
+          --resume                         Continue from the default or explicit state file.
+          --retry-failed                   Retry rows previously marked failed.
+          --state <path>                   Override the default state path. Defaults to <output>.state.json.
+          --stt-provider <provider>        Optional STT provider override. See table below.
+          --local-stt-model <model>        Optional local STT model override. See table below.
+          --persona-id <uuid>              Optional saved persona selector by ID.
+          --persona-name <name>            Optional saved persona selector by name.
+          --persona-prompt-file <path>     Optional prompt file selector instead of a saved persona.
+          --no-persona                     Only transcribe; write the transcript as the final result.
 
-    Parameter Tables:
+        Parameter Tables:
 
-    STT providers (--stt-provider):
-    \(sttProviderTable)
+        STT providers (--stt-provider):
+        \(sttProviderTable)
 
-    Local STT models (--local-stt-model):
-    \(localSTTModelTable)
+        Local STT models (--local-stt-model):
+        \(localSTTModelTable)
 
-    Personas (--persona-name / --persona-id):
-    \(personaTable)
-    """
+        Personas (--persona-name / --persona-id):
+        \(personaTable)
+        """
     }
 }
 
@@ -248,9 +252,11 @@ private struct SingleAudioConfiguration {
         let personaID = parser.consumeValue("--persona-id")
         let personaName = parser.consumeValue("--persona-name")
         let personaPromptFile = parser.consumeValue("--persona-prompt-file")
-        let selectors = [personaID, personaName, personaPromptFile].compactMap { $0 }
+        let selectors = [personaID, personaName, personaPromptFile].compactMap(\.self)
         guard selectors.count <= 1 else {
-            throw BatchCommandError(message: "Use only one persona selector: --persona-id, --persona-name, or --persona-prompt-file.")
+            throw BatchCommandError(
+                message: "Use only one persona selector: --persona-id, --persona-name, or --persona-prompt-file."
+            )
         }
         if let personaID {
             guard let uuid = UUID(uuidString: personaID) else {
@@ -332,35 +338,35 @@ private struct SingleAudioConfiguration {
 
     fileprivate static var helpText: String {
         """
-    Usage:
-      Typeflux process-audio <audio-file> [--stt-provider <provider>] [--stt-model <model>] [--persona-id <uuid>|--persona-name <name>|--persona-prompt-file <path>] [options]
-      Typeflux process-audio --audio <audio-file> [options]
+        Usage:
+          Typeflux process-audio <audio-file> [--stt-provider <provider>] [--stt-model <model>] [--persona-id <uuid>|--persona-name <name>|--persona-prompt-file <path>] [options]
+          Typeflux process-audio --audio <audio-file> [options]
 
-    Options:
-      --audio <path>                   Audio file to process. A positional audio path is also accepted.
-      --stt-provider <provider>        Optional STT provider override. See table below.
-      --stt-model <model>              Optional provider-specific speech model override.
-      --local-stt-model <model>        Optional local STT model override. See table below.
-      --persona-id <uuid>              Optional saved persona selector by ID.
-      --persona-name <name>            Optional saved persona selector by name.
-      --persona-prompt-file <path>     Optional prompt file selector instead of a saved persona.
-      --no-persona                     Only transcribe; print the transcript as the final result.
-      --include-transcript             When a persona rewrite runs, print both transcript and final result.
+        Options:
+          --audio <path>                   Audio file to process. A positional audio path is also accepted.
+          --stt-provider <provider>        Optional STT provider override. See table below.
+          --stt-model <model>              Optional provider-specific speech model override.
+          --local-stt-model <model>        Optional local STT model override. See table below.
+          --persona-id <uuid>              Optional saved persona selector by ID.
+          --persona-name <name>            Optional saved persona selector by name.
+          --persona-prompt-file <path>     Optional prompt file selector instead of a saved persona.
+          --no-persona                     Only transcribe; print the transcript as the final result.
+          --include-transcript             When a persona rewrite runs, print both transcript and final result.
 
-    Output:
-      The final processed text is written to stdout. Progress and timing are written to stderr.
+        Output:
+          The final processed text is written to stdout. Progress and timing are written to stderr.
 
-    Parameter Tables:
+        Parameter Tables:
 
-    STT providers (--stt-provider):
-    \(sttProviderTable)
+        STT providers (--stt-provider):
+        \(sttProviderTable)
 
-    Local STT models (--local-stt-model):
-    \(localSTTModelTable)
+        Local STT models (--local-stt-model):
+        \(localSTTModelTable)
 
-    Personas (--persona-name / --persona-id):
-    \(personaTable)
-    """
+        Personas (--persona-name / --persona-id):
+        \(personaTable)
+        """
     }
 }
 
@@ -371,7 +377,9 @@ private struct ArgumentParser {
         self.arguments = arguments
     }
 
-    var remaining: [String] { arguments }
+    var remaining: [String] {
+        arguments
+    }
 
     mutating func consumeFlag(_ flag: String) -> Bool {
         guard let index = arguments.firstIndex(of: flag) else { return false }
@@ -411,7 +419,9 @@ private final class SingleAudioProcessor {
         let llmService = makeLLMService(settingsStore: settingsStore)
         let audioFile = try makeAudioFile(config.audioURL)
 
-        writeStandardError("Transcribing \(config.audioURL.lastPathComponent) with \(sttModelDescription(settingsStore: settingsStore))")
+        writeStandardError(
+            "Transcribing \(config.audioURL.lastPathComponent) with \(sttModelDescription(settingsStore: settingsStore))"
+        )
         let sttStartedAt = Date()
         let transcript = try await sttRouter.transcribeStream(audioFile: audioFile, scenario: .voiceInput) { _ in }
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -435,20 +445,21 @@ private final class SingleAudioProcessor {
             finalText = try await rewrite(
                 transcript: transcript,
                 personaPrompt: trimmedPersona,
-                llmService: llmService,
+                personaID: persona.id,
+                llmService: llmService
             )
             llmMilliseconds = milliseconds(since: llmStartedAt)
         }
 
         if config.includeTranscript, finalText != transcript {
-            FileHandle.standardOutput.write(Data(("Transcript:\n\(transcript)\n\nFinal:\n\(finalText)\n").utf8))
+            FileHandle.standardOutput.write(Data("Transcript:\n\(transcript)\n\nFinal:\n\(finalText)\n".utf8))
         } else {
             FileHandle.standardOutput.write(Data((finalText + "\n").utf8))
         }
 
         let totalMilliseconds = sttMilliseconds + llmMilliseconds
         writeStandardError(
-            "Completed in \(totalMilliseconds)ms (stt=\(sttMilliseconds)ms, llm=\(llmMilliseconds)ms, persona=\(persona.name))",
+            "Completed in \(totalMilliseconds)ms (stt=\(sttMilliseconds)ms, llm=\(llmMilliseconds)ms, persona=\(persona.name))"
         )
     }
 
@@ -460,7 +471,7 @@ private final class SingleAudioProcessor {
             ?? .standard
         let processSuite = "ai.gulu.app.typeflux.process-audio.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: processSuite) ?? .standard
-        sourceDefaults.dictionaryRepresentation().forEach { key, value in
+        for (key, value) in sourceDefaults.dictionaryRepresentation() {
             defaults.set(value, forKey: key)
         }
 
@@ -508,6 +519,8 @@ private final class SingleAudioProcessor {
             defaults.set(model, forKey: "stt.google.model")
         case .groq:
             defaults.set(model, forKey: "stt.groq.model")
+        case .soniox:
+            defaults.set(model, forKey: "stt.soniox.model")
         case .appleSpeech, .aliCloud, .typefluxOfficial:
             throw BatchCommandError(message: "--stt-model is not supported for provider \(provider.rawValue).")
         }
@@ -529,9 +542,13 @@ private final class SingleAudioProcessor {
                 settingsStore: settingsStore,
                 baseURLOverride: "https://api.groq.com/openai/v1",
                 apiKeyOverride: { [settingsStore] in settingsStore.groqSTTAPIKey },
-                modelOverride: { [settingsStore] in settingsStore.groqSTTModel },
+                modelOverride: { [settingsStore] in settingsStore.groqSTTModel }
             ),
+            soniox: SonioxTranscriber(settingsStore: settingsStore),
             typefluxOfficial: TypefluxOfficialTranscriber(),
+            typefluxCloudLoginFallbackLocalModel: DefaultSenseVoiceFallbackTranscriber(
+                modelManager: localModelManager
+            )
         )
     }
 
@@ -539,7 +556,7 @@ private final class SingleAudioProcessor {
         LLMRouter(
             settingsStore: settingsStore,
             openAICompatible: OpenAICompatibleLLMService(settingsStore: settingsStore),
-            ollama: OllamaLLMService(settingsStore: settingsStore, modelManager: OllamaLocalModelManager()),
+            ollama: OllamaLLMService(settingsStore: settingsStore, modelManager: OllamaLocalModelManager())
         )
     }
 
@@ -549,17 +566,17 @@ private final class SingleAudioProcessor {
         }
 
         switch config.personaSelector {
-        case .id(let id):
+        case let .id(id):
             guard let persona = settingsStore.personas.first(where: { $0.id == id }) else {
                 throw BatchCommandError(message: "No saved persona found for id: \(id.uuidString)")
             }
             return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona), persona.id)
-        case .name(let name):
+        case let .name(name):
             guard let persona = settingsStore.personas.first(where: { $0.name == name }) else {
                 throw BatchCommandError(message: "No saved persona found named: \(name)")
             }
             return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona), persona.id)
-        case .promptFile(let url):
+        case let .promptFile(url):
             let prompt = try String(contentsOf: url, encoding: .utf8)
             return (url.lastPathComponent, prompt, nil)
         case .none:
@@ -572,7 +589,7 @@ private final class SingleAudioProcessor {
 
     private func applyPersonaForProviderInternalRewrite(
         _ persona: (name: String, prompt: String, id: UUID?),
-        settingsStore: SettingsStore,
+        settingsStore: SettingsStore
     ) throws {
         let trimmedPrompt = persona.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else {
@@ -599,13 +616,19 @@ private final class SingleAudioProcessor {
         return AudioFile(fileURL: url, duration: duration)
     }
 
-    private func rewrite(transcript: String, personaPrompt: String, llmService: LLMService) async throws -> String {
+    private func rewrite(
+        transcript: String,
+        personaPrompt: String,
+        personaID: UUID?,
+        llmService: LLMService
+    ) async throws -> String {
         let request = LLMRewriteRequest(
             mode: .rewriteTranscript,
             sourceText: transcript,
             spokenInstruction: nil,
             personaPrompt: personaPrompt,
-            vocabularyTerms: VocabularyStore.activeTerms(),
+            personaID: personaID,
+            vocabularyTerms: VocabularyStore.activeTerms()
         )
 
         var output = ""
@@ -623,7 +646,7 @@ private final class SingleAudioProcessor {
         case .whisperAPI:
             OpenAIAudioModelCatalog.resolvedWhisperModel(
                 settingsStore.whisperModel,
-                endpoint: OpenAIAudioModelCatalog.resolvedWhisperEndpoint(settingsStore.whisperBaseURL),
+                endpoint: OpenAIAudioModelCatalog.resolvedWhisperEndpoint(settingsStore.whisperBaseURL)
             )
         case .appleSpeech:
             "appleSpeech"
@@ -639,6 +662,8 @@ private final class SingleAudioProcessor {
             settingsStore.googleCloudModel
         case .groq:
             settingsStore.groqSTTModel
+        case .soniox:
+            settingsStore.sonioxModel
         case .typefluxOfficial:
             "default"
         }
@@ -703,7 +728,7 @@ private final class WAVPersonaBenchmark {
                 ?? BenchmarkRecord(
                     relativePath: file.relativePath,
                     absolutePath: file.url.path,
-                    status: .pending,
+                    status: .pending
                 )
             record.absolutePath = file.url.path
             record.fileSizeBytes = file.fileSizeBytes
@@ -734,7 +759,8 @@ private final class WAVPersonaBenchmark {
                     print("Transcribing \(file.relativePath)")
 
                     let startedAt = Date()
-                    let transcript = try await sttRouter.transcribeStream(audioFile: audioFile, scenario: .voiceInput) { _ in }
+                    let transcript = try await sttRouter
+                        .transcribeStream(audioFile: audioFile, scenario: .voiceInput) { _ in }
                     record.sttMilliseconds = milliseconds(since: startedAt)
                     record.transcript = transcript
                     record.status = .transcribed
@@ -765,7 +791,8 @@ private final class WAVPersonaBenchmark {
                     record.personaResult = try await rewrite(
                         transcript: transcript,
                         personaPrompt: persona.prompt,
-                        llmService: llmService,
+                        personaID: persona.id,
+                        llmService: llmService
                     )
                     record.llmMilliseconds = milliseconds(since: startedAt)
                 }
@@ -800,7 +827,7 @@ private final class WAVPersonaBenchmark {
             ?? .standard
         let batchSuite = "ai.gulu.app.typeflux.batch.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: batchSuite) ?? .standard
-        sourceDefaults.dictionaryRepresentation().forEach { key, value in
+        for (key, value) in sourceDefaults.dictionaryRepresentation() {
             defaults.set(value, forKey: key)
         }
         if let sttProviderOverride = config.sttProviderOverride {
@@ -829,9 +856,13 @@ private final class WAVPersonaBenchmark {
                 settingsStore: settingsStore,
                 baseURLOverride: "https://api.groq.com/openai/v1",
                 apiKeyOverride: { [settingsStore] in settingsStore.groqSTTAPIKey },
-                modelOverride: { [settingsStore] in settingsStore.groqSTTModel },
+                modelOverride: { [settingsStore] in settingsStore.groqSTTModel }
             ),
+            soniox: SonioxTranscriber(settingsStore: settingsStore),
             typefluxOfficial: TypefluxOfficialTranscriber(),
+            typefluxCloudLoginFallbackLocalModel: DefaultSenseVoiceFallbackTranscriber(
+                modelManager: localModelManager
+            )
         )
     }
 
@@ -839,34 +870,34 @@ private final class WAVPersonaBenchmark {
         LLMRouter(
             settingsStore: settingsStore,
             openAICompatible: OpenAICompatibleLLMService(settingsStore: settingsStore),
-            ollama: OllamaLLMService(settingsStore: settingsStore, modelManager: OllamaLocalModelManager()),
+            ollama: OllamaLLMService(settingsStore: settingsStore, modelManager: OllamaLocalModelManager())
         )
     }
 
-    private func resolvePersona(settingsStore: SettingsStore) throws -> (name: String, prompt: String) {
+    private func resolvePersona(settingsStore: SettingsStore) throws -> (name: String, prompt: String, id: UUID?) {
         if config.noPersona {
-            return ("none", "")
+            return ("none", "", nil)
         }
 
         switch config.personaSelector {
-        case .id(let id):
+        case let .id(id):
             guard let persona = settingsStore.personas.first(where: { $0.id == id }) else {
                 throw BatchCommandError(message: "No saved persona found for id: \(id.uuidString)")
             }
-            return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona))
-        case .name(let name):
+            return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona), persona.id)
+        case let .name(name):
             guard let persona = settingsStore.personas.first(where: { $0.name == name }) else {
                 throw BatchCommandError(message: "No saved persona found named: \(name)")
             }
-            return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona))
-        case .promptFile(let url):
+            return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona), persona.id)
+        case let .promptFile(url):
             let prompt = try String(contentsOf: url, encoding: .utf8)
-            return (url.lastPathComponent, prompt)
+            return (url.lastPathComponent, prompt, nil)
         case .none:
             guard let persona = settingsStore.activePersona else {
-                return ("none", "")
+                return ("none", "", nil)
             }
-            return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona))
+            return (persona.name, settingsStore.resolvedPersonaPrompt(for: persona), persona.id)
         }
     }
 
@@ -874,7 +905,7 @@ private final class WAVPersonaBenchmark {
         guard let enumerator = fileManager.enumerator(
             at: directory,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
             return []
         }
@@ -887,7 +918,7 @@ private final class WAVPersonaBenchmark {
             files.append(InputWAVFile(
                 url: url,
                 relativePath: relativePath(for: url, base: directory),
-                fileSizeBytes: Int64(values.fileSize ?? 0),
+                fileSizeBytes: Int64(values.fileSize ?? 0)
             ))
         }
         return files.sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
@@ -900,13 +931,19 @@ private final class WAVPersonaBenchmark {
         return AudioFile(fileURL: url, duration: duration)
     }
 
-    private func rewrite(transcript: String, personaPrompt: String, llmService: LLMService) async throws -> String {
+    private func rewrite(
+        transcript: String,
+        personaPrompt: String,
+        personaID: UUID?,
+        llmService: LLMService
+    ) async throws -> String {
         let request = LLMRewriteRequest(
             mode: .rewriteTranscript,
             sourceText: transcript,
             spokenInstruction: nil,
             personaPrompt: personaPrompt,
-            vocabularyTerms: VocabularyStore.activeTerms(),
+            personaID: personaID,
+            vocabularyTerms: VocabularyStore.activeTerms()
         )
 
         var output = ""
@@ -920,11 +957,11 @@ private final class WAVPersonaBenchmark {
     private func shouldSkip(_ record: BenchmarkRecord) -> Bool {
         switch record.status {
         case .completed:
-            return config.resume
+            config.resume
         case .failed:
-            return config.resume && !config.retryFailed
+            config.resume && !config.retryFailed
         case .pending, .transcribing, .transcribed, .rewriting:
-            return false
+            false
         }
     }
 
@@ -962,23 +999,22 @@ private final class WAVPersonaBenchmark {
                 "stt_realtime_factor",
                 "transcript",
                 "persona_result",
-                "error",
-            ].map(csvEscape).joined(separator: ","),
+                "error"
+            ].map(csvEscape).joined(separator: ",")
         ]
 
         for file in files {
             let record = recordsByPath[file.relativePath] ?? BenchmarkRecord(
                 relativePath: file.relativePath,
                 absolutePath: file.url.path,
-                status: .pending,
+                status: .pending
             )
-            let realtimeFactor: String
-            if let sttMs = record.sttMilliseconds,
-               let duration = record.audioDurationSeconds,
-               duration > 0 {
-                realtimeFactor = String(format: "%.3f", Double(sttMs) / 1000 / duration)
+            let realtimeFactor = if let sttMs = record.sttMilliseconds,
+                                    let duration = record.audioDurationSeconds,
+                                    duration > 0 {
+                String(format: "%.3f", Double(sttMs) / 1000 / duration)
             } else {
-                realtimeFactor = ""
+                ""
             }
             let row: [String] = [
                 record.relativePath,
@@ -996,7 +1032,7 @@ private final class WAVPersonaBenchmark {
                 realtimeFactor,
                 record.transcript ?? "",
                 record.personaResult ?? "",
-                record.error ?? "",
+                record.error ?? ""
             ]
             lines.append(row.map(csvEscape).joined(separator: ","))
         }
@@ -1042,7 +1078,7 @@ private final class WAVPersonaBenchmark {
         case .whisperAPI:
             OpenAIAudioModelCatalog.resolvedWhisperModel(
                 settingsStore.whisperModel,
-                endpoint: OpenAIAudioModelCatalog.resolvedWhisperEndpoint(settingsStore.whisperBaseURL),
+                endpoint: OpenAIAudioModelCatalog.resolvedWhisperEndpoint(settingsStore.whisperBaseURL)
             )
         case .appleSpeech:
             "appleSpeech"
@@ -1058,6 +1094,8 @@ private final class WAVPersonaBenchmark {
             settingsStore.googleCloudModel
         case .groq:
             settingsStore.groqSTTModel
+        case .soniox:
+            settingsStore.sonioxModel
         case .typefluxOfficial:
             "default"
         }

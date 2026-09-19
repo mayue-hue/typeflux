@@ -16,7 +16,7 @@ extension AgentMessage {
                 if msg.toolCalls.isEmpty {
                     result.append([
                         "role": "assistant",
-                        "content": msg.text as Any,
+                        "content": msg.text as Any
                     ])
                 } else {
                     var dict: [String: Any] = [
@@ -27,10 +27,10 @@ extension AgentMessage {
                                 "type": "function",
                                 "function": [
                                     "name": tc.name,
-                                    "arguments": tc.argumentsJSON,
-                                ],
+                                    "arguments": tc.argumentsJSON
+                                ]
                             ] as [String: Any]
-                        },
+                        }
                     ]
                     if let text = msg.text {
                         dict["content"] = text
@@ -43,7 +43,7 @@ extension AgentMessage {
                 result.append([
                     "role": "tool",
                     "tool_call_id": tr.toolCallId,
-                    "content": tr.content,
+                    "content": tr.content
                 ])
             }
         }
@@ -64,7 +64,7 @@ extension AgentMessage {
             case let .user(text):
                 result.append([
                     "role": "user",
-                    "content": [["type": "text", "text": text]],
+                    "content": [["type": "text", "text": text]]
                 ])
             case let .assistant(msg):
                 var content: [[String: Any]] = []
@@ -81,7 +81,7 @@ extension AgentMessage {
                         "type": "tool_use",
                         "id": tc.id,
                         "name": tc.name,
-                        "input": argsDict,
+                        "input": argsDict
                     ])
                 }
                 if !content.isEmpty {
@@ -95,9 +95,9 @@ extension AgentMessage {
                             "type": "tool_result",
                             "tool_use_id": tr.toolCallId,
                             "content": tr.content,
-                            "is_error": tr.isError,
-                        ] as [String: Any],
-                    ],
+                            "is_error": tr.isError
+                        ] as [String: Any]
+                    ]
                 ])
             }
         }
@@ -126,7 +126,7 @@ extension AgentMessage {
             case let .user(text):
                 result.append([
                     "role": "user",
-                    "parts": [["text": text]],
+                    "parts": [["text": text]]
                 ])
             case let .assistant(msg):
                 var parts: [[String: Any]] = []
@@ -142,8 +142,8 @@ extension AgentMessage {
                     parts.append([
                         "functionCall": [
                             "name": tc.name,
-                            "args": argsDict,
-                        ],
+                            "args": argsDict
+                        ]
                     ])
                 }
                 if !parts.isEmpty {
@@ -160,11 +160,11 @@ extension AgentMessage {
                                 "name": tr.toolCallId,
                                 "response": [
                                     "content": tr.content,
-                                    "isError": tr.isError,
-                                ],
-                            ],
-                        ] as [String: Any],
-                    ],
+                                    "isError": tr.isError
+                                ]
+                            ]
+                        ] as [String: Any]
+                    ]
                 ])
             }
         }
@@ -179,7 +179,7 @@ extension AgentMessage {
         }
         guard !systemTexts.isEmpty else { return nil }
         return [
-            "parts": [["text": systemTexts.joined(separator: "\n\n")]],
+            "parts": [["text": systemTexts.joined(separator: "\n\n")]]
         ]
     }
 }

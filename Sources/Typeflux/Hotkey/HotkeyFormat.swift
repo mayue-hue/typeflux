@@ -11,6 +11,10 @@ enum HotkeyFormat {
     }
 
     static func components(_ binding: HotkeyBinding) -> [String] {
+        let keys = binding.physicalModifierKeys
+        if !keys.isEmpty {
+            return keys.sorted { $0 == 56 ? false : ($1 == 56 || $0 < $1) }.map(keyCodeDisplayName)
+        }
         if binding.isModifierDoubleTapTrigger {
             return [singleKeyDisplay(binding)]
         }
@@ -30,7 +34,7 @@ enum HotkeyFormat {
             flags.contains(.control) ? "⌃" : nil,
             flags.contains(.option) ? "⌥" : nil,
             flags.contains(.shift) ? "⇧" : nil,
-            flags.contains(.command) ? "⌘" : nil,
+            flags.contains(.command) ? "⌘" : nil
         ].compactMap(\.self)
 
         parts.append(keyCodeDisplayName(binding.keyCode))
@@ -57,6 +61,15 @@ enum HotkeyFormat {
 
     private static func keyCodeDisplayName(_ keyCode: Int) -> String {
         switch keyCode {
+        case 54: "⌘(R)"
+        case 55: "⌘(L)"
+        case 56: "⇧(L)"
+        case 60: "⇧(R)"
+        case 58: "⌥(L)"
+        case 61: "⌥(R)"
+        case 59: "⌃(L)"
+        case 62: "⌃(R)"
+        case 63: "Fn"
         case 0: "A"
         case 1: "S"
         case 2: "D"

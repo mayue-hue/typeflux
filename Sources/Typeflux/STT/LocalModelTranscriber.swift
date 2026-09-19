@@ -3,20 +3,25 @@ import Foundation
 protocol LocalWhisperKitTranscribing: AnyObject {
     func transcribeStream(
         audioFile: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        profile: TranscriptionProfile,
+        prompt: String?,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String
 
     func prepare(onProgress: ((Double, String) -> Void)?) async throws
 }
 
-final class LocalModelTranscriber: Transcriber {
+final class LocalModelTranscriber: TranscriptionProfileAwareTranscriber {
     static let defaultWhisperKitKeepAliveDuration: TimeInterval = 30 * 60
     static let persistentWhisperKitKeepAliveDuration: TimeInterval? = nil
+    static let notPreparedErrorDomain = "LocalModelTranscriber"
+    static let notPreparedErrorCode = 1
 
     private let settingsStore: SettingsStore
     private let modelManager: LocalSTTModelManaging
     private let whisperKitTranscriberFactory: (String, String) -> LocalWhisperKitTranscribing
     private let whisperKitKeepAliveDurationWhenMemoryOptimized: TimeInterval
+    private let memoryOptimizationEnabledOverride: (() -> Bool)?
     private let whisperKitCacheLock = NSLock()
     /// Single active WhisperKit pipeline cache keyed by model name + resolved model folder.
     /// WhisperKit keeps CoreML graphs resident after the first load, so we drop stale
@@ -28,13 +33,16 @@ final class LocalModelTranscriber: Transcriber {
         settingsStore: SettingsStore,
         modelManager: LocalSTTModelManaging,
         whisperKitKeepAliveDuration: TimeInterval = defaultWhisperKitKeepAliveDuration,
-        whisperKitTranscriberFactory: @escaping (String, String) -> LocalWhisperKitTranscribing = { modelName, modelFolder in
-            WhisperKitTranscriber(modelName: modelName, modelFolder: modelFolder)
-        },
+        memoryOptimizationEnabledOverride: (() -> Bool)? = nil,
+        whisperKitTranscriberFactory: @escaping (String, String)
+            -> LocalWhisperKitTranscribing = { modelName, modelFolder in
+                WhisperKitTranscriber(modelName: modelName, modelFolder: modelFolder)
+            }
     ) {
         self.settingsStore = settingsStore
         self.modelManager = modelManager
         whisperKitKeepAliveDurationWhenMemoryOptimized = whisperKitKeepAliveDuration
+        self.memoryOptimizationEnabledOverride = memoryOptimizationEnabledOverride
         self.whisperKitTranscriberFactory = whisperKitTranscriberFactory
     }
 
@@ -44,7 +52,15 @@ final class LocalModelTranscriber: Transcriber {
 
     func transcribeStream(
         audioFile: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        try await transcribeStream(audioFile: audioFile, profile: .standard, onUpdate: onUpdate)
+    }
+
+    func transcribeStream(
+        audioFile: AudioFile,
+        profile: TranscriptionProfile,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let model = selectedModelIdentifier()
         NetworkDebugLogger.logRequest(
@@ -59,21 +75,26 @@ final class LocalModelTranscriber: Transcriber {
                 "path": "\(audioFile.fileURL.path)"
               }
             }
-            """,
+            """
         )
 
         switch settingsStore.localSTTModel {
         case .whisperLocal, .whisperLocalLarge:
             let modelInfo = try await preparedModelInfo()
             let transcriber = whisperKitTranscriber(for: model, modelFolder: modelInfo.storagePath)
-            return try await transcriber.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
+            return try await transcriber.transcribeStream(
+                audioFile: audioFile,
+                profile: profile,
+                prompt: profile == .lowEnergyRetry ? vocabularyPromptText() : nil,
+                onUpdate: onUpdate
+            )
 
         case .senseVoiceSmall:
             removeWhisperKitCache(keepingCapacity: false)
             let modelInfo = try await preparedModelInfo()
             let transcriber = SenseVoiceTranscriber(
                 modelIdentifier: model,
-                modelFolder: modelInfo.storagePath,
+                modelFolder: modelInfo.storagePath
             )
             return try await transcriber.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
 
@@ -82,7 +103,7 @@ final class LocalModelTranscriber: Transcriber {
             let modelInfo = try await preparedModelInfo()
             let transcriber = Qwen3ASRTranscriber(
                 modelIdentifier: model,
-                modelFolder: modelInfo.storagePath,
+                modelFolder: modelInfo.storagePath
             )
             return try await transcriber.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
 
@@ -91,7 +112,7 @@ final class LocalModelTranscriber: Transcriber {
             let modelInfo = try await preparedModelInfo()
             let transcriber = FunASRTranscriber(
                 modelIdentifier: model,
-                modelFolder: modelInfo.storagePath,
+                modelFolder: modelInfo.storagePath
             )
             return try await transcriber.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
         }
@@ -169,7 +190,7 @@ final class LocalModelTranscriber: Transcriber {
     }
 
     private var whisperKitKeepAliveDuration: TimeInterval? {
-        settingsStore.localSTTMemoryOptimizationEnabled
+        (memoryOptimizationEnabledOverride?() ?? settingsStore.localSTTMemoryOptimizationEnabled)
             ? whisperKitKeepAliveDurationWhenMemoryOptimized
             : Self.persistentWhisperKitKeepAliveDuration
     }
@@ -185,9 +206,9 @@ final class LocalModelTranscriber: Transcriber {
 
     private func notPreparedError() -> NSError {
         NSError(
-            domain: "LocalModelTranscriber",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: L("localSTT.error.notPrepared")],
+            domain: Self.notPreparedErrorDomain,
+            code: Self.notPreparedErrorCode,
+            userInfo: [NSLocalizedDescriptionKey: L("localSTT.error.notPrepared")]
         )
     }
 
@@ -195,7 +216,7 @@ final class LocalModelTranscriber: Transcriber {
         NSError(
             domain: "LocalModelTranscriber",
             code: 3,
-            userInfo: [NSLocalizedDescriptionKey: L("localSTT.error.preparedPathUnavailable")],
+            userInfo: [NSLocalizedDescriptionKey: L("localSTT.error.preparedPathUnavailable")]
         )
     }
 }

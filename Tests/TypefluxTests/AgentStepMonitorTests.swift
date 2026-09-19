@@ -8,10 +8,10 @@ final class AgentStepMonitorTests: XCTestCase {
             stepIndex: 0,
             assistantMessage: AgentAssistantMessage(
                 text: nil,
-                toolCalls: [AgentToolCall(id: "1", name: "get_clipboard", argumentsJSON: "{}")],
+                toolCalls: [AgentToolCall(id: "1", name: "get_clipboard", argumentsJSON: "{}")]
             ),
             toolResults: [AgentToolResult(toolCallId: "1", content: "data", isError: false)],
-            durationMs: 123,
+            durationMs: 123
         )
         await logger.agentDidCompleteStep(step)
         await logger.agentDidFinish(outcome: .text("done"), totalTokenUsage: nil)
@@ -23,7 +23,7 @@ final class AgentStepMonitorTests: XCTestCase {
         await logger.agentDidFinish(outcome: .text("answer"), totalTokenUsage: nil)
         await logger.agentDidFinish(
             outcome: .terminationTool(name: "answer_text", argumentsJSON: "{}"),
-            totalTokenUsage: nil,
+            totalTokenUsage: nil
         )
         await logger.agentDidFinish(outcome: .maxStepsReached, totalTokenUsage: nil)
 
@@ -37,7 +37,7 @@ final class AgentStepMonitorTests: XCTestCase {
             currentStep: 2,
             lastToolCall: tc,
             accumulatedText: "partial",
-            toolCallsSoFar: [tc],
+            toolCallsSoFar: [tc]
         )
         XCTAssertEqual(state.currentStep, 2)
         XCTAssertEqual(state.lastToolCall?.name, "get_clipboard")
@@ -48,14 +48,14 @@ final class AgentStepMonitorTests: XCTestCase {
     func testAgentStepProperties() {
         let assistantMsg = AgentAssistantMessage(
             text: "thinking",
-            toolCalls: [AgentToolCall(id: "1", name: "tool", argumentsJSON: "{}")],
+            toolCalls: [AgentToolCall(id: "1", name: "tool", argumentsJSON: "{}")]
         )
         let results = [AgentToolResult(toolCallId: "1", content: "result", isError: false)]
         let step = AgentStep(
             stepIndex: 3,
             assistantMessage: assistantMsg,
             toolResults: results,
-            durationMs: 250,
+            durationMs: 250
         )
         XCTAssertEqual(step.stepIndex, 3)
         XCTAssertEqual(step.assistantMessage.text, "thinking")
@@ -70,13 +70,13 @@ final class AgentStepMonitorTests: XCTestCase {
             stepIndex: 0,
             assistantMessage: AgentAssistantMessage(text: nil, toolCalls: []),
             toolResults: [],
-            durationMs: 10,
+            durationMs: 10
         )
         let step2 = AgentStep(
             stepIndex: 1,
             assistantMessage: AgentAssistantMessage(text: nil, toolCalls: []),
             toolResults: [],
-            durationMs: 20,
+            durationMs: 20
         )
 
         await monitor.agentDidCompleteStep(step1)

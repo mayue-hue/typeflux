@@ -19,7 +19,7 @@ enum LoginApplePreflight {
     static func errorMessage(
         availability: AppleSignInService.Availability = AppleSignInService.currentAvailability()
     ) -> String? {
-        guard case .unavailable(let description) = availability else {
+        guard case let .unavailable(description) = availability else {
             return nil
         }
 
@@ -66,7 +66,7 @@ enum SocialLoginLayout {
 
         return stride(from: 0, to: providers.count, by: itemsPerRow).map { startIndex in
             let endIndex = min(startIndex + itemsPerRow, providers.count)
-            return Array(providers[startIndex..<endIndex])
+            return Array(providers[startIndex ..< endIndex])
         }
     }
 }
@@ -268,7 +268,7 @@ struct LoginView: View {
                     size: 84,
                     symbolSize: 40,
                     backgroundShape: .circle,
-                    showsBorder: true,
+                    showsBorder: true
                 )
                 .padding(.bottom, 10)
 
@@ -312,7 +312,7 @@ struct LoginView: View {
             LoginTextField(
                 placeholder: L("auth.field.email"),
                 text: $email,
-                icon: "envelope",
+                icon: "envelope"
             )
 
             loginButton(title: L("auth.login.continue"), action: checkEmail)
@@ -340,7 +340,6 @@ struct LoginView: View {
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
     private func socialLoginButton(for provider: SocialLoginProvider) -> some View {
         Button(action: action(for: provider)) {
             HStack(spacing: 10) {
@@ -463,17 +462,17 @@ struct LoginView: View {
         colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.10)
     }
 
-    private func socialButtonFillColor(for provider: SocialLoginProvider) -> Color {
+    private func socialButtonFillColor(for _: SocialLoginProvider) -> Color {
         colorScheme == .dark ? Color.black : Color.white
     }
 
-    private func socialButtonTextColor(for provider: SocialLoginProvider) -> Color {
+    private func socialButtonTextColor(for _: SocialLoginProvider) -> Color {
         colorScheme == .dark
             ? Color.white.opacity(0.96)
             : Color(red: 0.12, green: 0.14, blue: 0.17)
     }
 
-    private func socialButtonStrokeColor(for provider: SocialLoginProvider) -> Color {
+    private func socialButtonStrokeColor(for _: SocialLoginProvider) -> Color {
         colorScheme == .dark
             ? Color.white.opacity(0.14)
             : Color.black.opacity(0.12)
@@ -485,14 +484,14 @@ struct LoginView: View {
                 placeholder: L("auth.field.email"),
                 text: .constant(email),
                 icon: "envelope",
-                isDisabled: true,
+                isDisabled: true
             )
 
             LoginTextField(
                 placeholder: L("auth.field.password"),
                 text: $password,
                 icon: "lock",
-                isSecure: true,
+                isSecure: true
             )
 
             loginButton(title: L("auth.login.signIn"), action: performLogin)
@@ -513,27 +512,27 @@ struct LoginView: View {
                 placeholder: L("auth.field.email"),
                 text: .constant(email),
                 icon: "envelope",
-                isDisabled: true,
+                isDisabled: true
             )
 
             LoginTextField(
                 placeholder: L("auth.field.name"),
                 text: $name,
-                icon: "person",
+                icon: "person"
             )
 
             LoginTextField(
                 placeholder: L("auth.field.password"),
                 text: $password,
                 icon: "lock",
-                isSecure: true,
+                isSecure: true
             )
 
             LoginTextField(
                 placeholder: L("auth.field.confirmPassword"),
                 text: $confirmPassword,
                 icon: "lock.rotation",
-                isSecure: true,
+                isSecure: true
             )
 
             loginButton(title: L("auth.login.createAccount"), action: performRegister)
@@ -550,7 +549,7 @@ struct LoginView: View {
             LoginTextField(
                 placeholder: L("auth.field.activationCode"),
                 text: $activationCode,
-                icon: "number",
+                icon: "number"
             )
 
             loginButton(title: L("auth.login.activate"), action: performActivate)
@@ -577,7 +576,7 @@ struct LoginView: View {
                 placeholder: L("auth.field.email"),
                 text: .constant(email),
                 icon: "envelope",
-                isDisabled: true,
+                isDisabled: true
             )
 
             loginButton(title: L("auth.login.sendResetCode"), action: performForgotPassword)
@@ -603,27 +602,27 @@ struct LoginView: View {
                 placeholder: L("auth.field.email"),
                 text: .constant(email),
                 icon: "envelope",
-                isDisabled: true,
+                isDisabled: true
             )
 
             LoginTextField(
                 placeholder: L("auth.field.resetCode"),
                 text: $resetCode,
-                icon: "key",
+                icon: "key"
             )
 
             LoginTextField(
                 placeholder: L("auth.field.newPassword"),
                 text: $resetPassword,
                 icon: "lock",
-                isSecure: true,
+                isSecure: true
             )
 
             LoginTextField(
                 placeholder: L("auth.field.confirmNewPassword"),
                 text: $resetPasswordConfirmation,
                 icon: "lock.rotation",
-                isSecure: true,
+                isSecure: true
             )
 
             loginButton(title: L("auth.login.resetPassword"), action: performResetPassword)
@@ -1010,7 +1009,8 @@ struct LoginView: View {
 
         Task {
             do {
-                let response = try await AuthAPIService.enterEmail(email.trimmingCharacters(in: .whitespacesAndNewlines))
+                let response = try await AuthAPIService
+                    .enterEmail(email.trimmingCharacters(in: .whitespacesAndNewlines))
                 isLoading = false
                 withAnimation(.easeInOut(duration: 0.2)) {
                     step = response.exists ? .login : .register
@@ -1159,7 +1159,8 @@ struct LoginView: View {
 
         Task {
             do {
-                _ = try await AuthAPIService.forgotPassword(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+                _ = try await AuthAPIService
+                    .forgotPassword(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
                 isLoading = false
                 statusMessage = L("auth.login.resetCodeSent")
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -1453,7 +1454,11 @@ private struct SocialProviderLogoMark: View {
     }
 
     private var logoImage: NSImage? {
-        guard let url = Bundle.appResources.url(forResource: resourceName, withExtension: "svg", subdirectory: "Resources")
+        guard let url = Bundle.appResources.url(
+            forResource: resourceName,
+            withExtension: "svg",
+            subdirectory: "Resources"
+        )
             ?? Bundle.appResources.url(forResource: resourceName, withExtension: "svg")
         else {
             return nil

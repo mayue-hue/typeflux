@@ -1,7 +1,16 @@
 import Foundation
 
 enum AliCloudASRDefaults {
-    static let model = "fun-asr-realtime"
+    static let model = "paraformer-realtime-v2"
+    static let legacyModel = "fun-asr-realtime"
+    static let suggestedModels = [
+        "paraformer-realtime-v2",
+        legacyModel
+    ]
+}
+
+enum DoubaoASRDefaults {
+    static let resourceID = "volc.seedasr.sauc.duration"
 }
 
 enum GoogleCloudSpeechDefaults {
@@ -25,6 +34,7 @@ enum STTProvider: String, CaseIterable, Codable {
     case googleCloud
     case groq
     case typefluxOfficial
+    case soniox
 
     static let defaultProvider: STTProvider = .localModel
 
@@ -32,12 +42,13 @@ enum STTProvider: String, CaseIterable, Codable {
         .typefluxOfficial,
         .freeModel,
         .localModel,
+        .soniox,
         .aliCloud,
         .doubaoRealtime,
         .googleCloud,
         .whisperAPI,
         .multimodalLLM,
-        .groq,
+        .groq
     ]
 
     static let onboardingDisplayOrder: [STTProvider] = settingsDisplayOrder.filter {
@@ -66,6 +77,8 @@ enum STTProvider: String, CaseIterable, Codable {
             L("provider.stt.groq")
         case .typefluxOfficial:
             L("provider.stt.typefluxOfficial")
+        case .soniox:
+            L("provider.stt.soniox")
         }
     }
 
@@ -155,31 +168,31 @@ enum LocalSTTModel: String, CaseIterable, Codable {
             Specs(
                 summary: L("localSTT.whisperLocal.summary"),
                 parameterValue: L("localSTT.whisperLocal.parameterValue"),
-                sizeValue: L("localSTT.whisperLocal.sizeValue"),
+                sizeValue: L("localSTT.whisperLocal.sizeValue")
             )
         case .whisperLocalLarge:
             Specs(
                 summary: L("localSTT.whisperLocalLarge.summary"),
                 parameterValue: L("localSTT.whisperLocalLarge.parameterValue"),
-                sizeValue: L("localSTT.whisperLocalLarge.sizeValue"),
+                sizeValue: L("localSTT.whisperLocalLarge.sizeValue")
             )
         case .senseVoiceSmall:
             Specs(
                 summary: L("localSTT.senseVoiceSmall.summary"),
                 parameterValue: L("localSTT.senseVoiceSmall.parameterValue"),
-                sizeValue: L("localSTT.senseVoiceSmall.sizeValue"),
+                sizeValue: L("localSTT.senseVoiceSmall.sizeValue")
             )
         case .qwen3ASR:
             Specs(
                 summary: L("localSTT.qwen3ASR.summary"),
                 parameterValue: L("localSTT.qwen3ASR.parameterValue"),
-                sizeValue: L("localSTT.qwen3ASR.sizeValue"),
+                sizeValue: L("localSTT.qwen3ASR.sizeValue")
             )
         case .funASR:
             Specs(
                 summary: L("localSTT.funASR.summary"),
                 parameterValue: L("localSTT.funASR.parameterValue"),
-                sizeValue: L("localSTT.funASR.sizeValue"),
+                sizeValue: L("localSTT.funASR.sizeValue")
             )
         }
     }
@@ -226,6 +239,20 @@ enum AppearanceMode: String, CaseIterable, Codable {
             L("appearance.light")
         case .dark:
             L("appearance.dark")
+        }
+    }
+}
+
+enum OverlayStyle: String, CaseIterable, Codable {
+    case liquidGlass
+    case classic
+
+    var displayName: String {
+        switch self {
+        case .liquidGlass:
+            L("overlayStyle.liquidGlass")
+        case .classic:
+            L("overlayStyle.classic")
         }
     }
 }

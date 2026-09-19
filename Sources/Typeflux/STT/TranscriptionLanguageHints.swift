@@ -2,6 +2,15 @@ import Foundation
 import Speech
 
 enum TranscriptionLanguageHints {
+    static func preferredWhisperLanguageCode(
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> String? {
+        guard let language = preferredLanguages.first?.lowercased() else { return nil }
+        if language.hasPrefix("zh") { return "zh" }
+        if language.hasPrefix("en") { return "en" }
+        return nil
+    }
+
     static func speechRecognizerLocale() -> Locale? {
         for identifier in preferredLocaleCandidates() {
             let locale = Locale(identifier: identifier)
@@ -15,7 +24,7 @@ enum TranscriptionLanguageHints {
     static func remotePrompt(vocabularyTerms: [String]) -> String? {
         let sections = [
             languageBiasPrompt(),
-            PromptCatalog.transcriptionVocabularyHint(terms: vocabularyTerms),
+            PromptCatalog.transcriptionVocabularyHint(terms: vocabularyTerms)
         ]
         .compactMap { section in
             let trimmed = section?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

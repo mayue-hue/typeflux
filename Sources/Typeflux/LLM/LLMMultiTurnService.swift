@@ -20,7 +20,7 @@ struct LLMTokenUsage: Codable, Equatable {
         LLMTokenUsage(
             promptTokens: lhs.promptTokens + rhs.promptTokens,
             completionTokens: lhs.completionTokens + rhs.completionTokens,
-            totalTokens: lhs.totalTokens + rhs.totalTokens,
+            totalTokens: lhs.totalTokens + rhs.totalTokens
         )
     }
 }
@@ -52,6 +52,6 @@ protocol LLMMultiTurnService: Sendable {
     func complete(
         messages: [AgentMessage],
         tools: [LLMAgentTool],
-        config: LLMCallConfig,
+        config: LLMCallConfig
     ) async throws -> AgentTurnResult
 }

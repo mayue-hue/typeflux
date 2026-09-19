@@ -24,6 +24,25 @@ final class CloudRequestExecutorTests: XCTestCase {
         XCTAssertEqual(calls, [urlA])
     }
 
+    func testExecuteDoesNotMixBusinessRequestDurationIntoProbeLatency() async throws {
+        let session = StubSession()
+        await session.setHandler { request in
+            (Data("ok".utf8), Self.httpResponse(url: request.url!, status: 200))
+        }
+        let selector = CloudEndpointSelector(baseURLs: [urlA], prober: NoOpProber())
+        await selector.reportSuccess(urlA, latencyMs: 123)
+        let executor = CloudRequestExecutor(selector: selector, session: session)
+
+        _ = try await executor.execute { base in
+            URLRequest(url: base.appendingPathComponent("api/v1/me"))
+        }
+
+        let status = await selector.snapshot()
+        XCTAssertEqual(status[0].latencyMs, 123)
+        XCTAssertEqual(status[0].consecutiveFailures, 0)
+        XCTAssertNil(status[0].lastError)
+    }
+
     func testExecuteAddsCloudClientHeaders() async throws {
         let session = StubSession()
         await session.setHandler { request in
@@ -101,6 +120,35 @@ final class CloudRequestExecutorTests: XCTestCase {
         XCTAssertEqual(calls, [urlA, urlB])
     }
 
+    func testExecuteDoesNotFailoverOrReportEndpointFailureOnBillingError() async throws {
+        let billingError = TypefluxCloudBillingError(reason: .subscriptionRequired, serverMessage: nil)
+        let session = StubSession()
+        await session.setHandler { _ in
+            throw billingError
+        }
+        let selector = CloudEndpointSelector(baseURLs: [urlA, urlB], prober: NoOpProber())
+        let executor = CloudRequestExecutor(selector: selector, session: session)
+
+        do {
+            _ = try await executor.execute(apiPath: "/api/v1/asr/token") { base in
+                URLRequest(url: base.appendingPathComponent("api/v1/asr/token"))
+            }
+            XCTFail("Expected billing error")
+        } catch let error as TypefluxCloudBillingError {
+            XCTAssertEqual(error, billingError)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let calls = await session.callOrder
+        XCTAssertEqual(calls, [urlA])
+        let status = await selector.snapshot()
+        XCTAssertEqual(status[0].consecutiveFailures, 0)
+        XCTAssertNil(status[0].lastError)
+        XCTAssertEqual(status[1].consecutiveFailures, 0)
+        XCTAssertNil(status[1].lastError)
+    }
+
     func testExecuteThrowsAllEndpointsFailedWhenEveryAttemptFails() async throws {
         let session = StubSession()
         await session.setHandler { request in
@@ -114,7 +162,7 @@ final class CloudRequestExecutorTests: XCTestCase {
                 URLRequest(url: base.appendingPathComponent("api/v1/me"))
             }
             XCTFail("Expected allEndpointsFailed")
-        } catch CloudRequestExecutorError.allEndpointsFailed(let lastError) {
+        } catch let CloudRequestExecutorError.allEndpointsFailed(lastError) {
             // Last error should reference an HTTP 5xx failure.
             let nsErr = lastError as NSError
             XCTAssertEqual(nsErr.domain, "CloudRequestExecutor")
@@ -175,8 +223,8 @@ final class CloudRequestExecutorTests: XCTestCase {
         await selector.reportSuccess(urlB, latencyMs: 50)
 
         let executor = CloudRequestExecutor(selector: selector, session: session)
-        _ = try await executor.execute(apiPath: "/api/v1/asr/aliyun/token") { base in
-            URLRequest(url: base.appendingPathComponent("api/v1/asr/aliyun/token"))
+        _ = try await executor.execute(apiPath: "/api/v1/asr/token") { base in
+            URLRequest(url: base.appendingPathComponent("api/v1/asr/token"))
         }
 
         let calls = await session.callOrder
@@ -217,6 +265,7 @@ private actor StubSession: CloudHTTPSession {
     private var handler: Handler = { _ in
         (Data(), URLResponse())
     }
+
     private(set) var callOrder: [URL] = []
 
     func setHandler(_ handler: @escaping Handler) {
@@ -239,7 +288,7 @@ private actor StubSession: CloudHTTPSession {
 }
 
 private struct NoOpProber: CloudEndpointProbing {
-    func probe(baseURL: URL, nonce: String, timeout: TimeInterval) async throws -> CloudEndpointProbeResult {
+    func probe(baseURL _: URL, nonce _: String, timeout _: TimeInterval) async throws -> CloudEndpointProbeResult {
         throw CloudEndpointProbeError.timedOut
     }
 }

@@ -23,7 +23,10 @@ final class AutoUpdater {
 
     private static let autoCheckInterval: TimeInterval = 3 * 3600
 
-    private var websiteURL: URL? { URL(string: AppServerConfiguration.apiBaseURL) }
+    private var websiteURL: URL? {
+        URL(string: AppServerConfiguration.apiBaseURL)
+    }
+
     private var initialAutoCheckWorkItem: DispatchWorkItem?
     private var autoCheckTimer: Timer?
     private weak var settingsStore: SettingsStore?
@@ -50,12 +53,13 @@ final class AutoUpdater {
         initialAutoCheckWorkItem = initialCheck
         DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: initialCheck)
 
-        autoCheckTimer = Timer.scheduledTimer(withTimeInterval: Self.autoCheckInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard self?.settingsStore?.autoUpdateEnabled == true else { return }
-                self?.checkForUpdates(manual: false)
+        autoCheckTimer = Timer
+            .scheduledTimer(withTimeInterval: Self.autoCheckInterval, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard self?.settingsStore?.autoUpdateEnabled == true else { return }
+                    self?.checkForUpdates(manual: false)
+                }
             }
-        }
     }
 
     func stopAutoCheck() {
@@ -77,9 +81,15 @@ final class AutoUpdater {
             let executor = CloudRequestExecutor()
             do {
                 let (data, _) = try await executor.execute(apiPath: "/api/v1/app/update") { baseURL in
-                    var components = URLComponents(url: AuthEndpointResolver.resolve(baseURL: baseURL, path: "/api/v1/app/update"), resolvingAgainstBaseURL: false) ?? URLComponents()
+                    var components = URLComponents(
+                        url: AuthEndpointResolver.resolve(baseURL: baseURL, path: "/api/v1/app/update"),
+                        resolvingAgainstBaseURL: false
+                    ) ?? URLComponents()
                     components.queryItems = AutoUpdateRequestSupport.queryItems(currentVersion: currentVersion)
-                    let url = components.url ?? AuthEndpointResolver.resolve(baseURL: baseURL, path: "/api/v1/app/update")
+                    let url = components.url ?? AuthEndpointResolver.resolve(
+                        baseURL: baseURL,
+                        path: "/api/v1/app/update"
+                    )
                     var request = URLRequest(url: url)
                     request.httpMethod = "GET"
                     return request
@@ -89,24 +99,24 @@ final class AutoUpdater {
                 do {
                     envelope = try JSONDecoder().decode(UpdateEnvelope.self, from: data)
                 } catch {
-                    if manual { self.showCheckFailedAlert(message: error.localizedDescription) }
+                    if manual { showCheckFailedAlert(message: error.localizedDescription) }
                     return
                 }
 
                 guard let info = envelope.data else {
-                    if manual { self.showCheckFailedAlert(message: envelope.message ?? L("updater.checkFailed.noData")) }
+                    if manual { showCheckFailedAlert(message: envelope.message ?? L("updater.checkFailed.noData")) }
                     return
                 }
 
                 if info.shouldUpdate {
-                    self.prepareUpdate(info: info, manual: manual)
+                    prepareUpdate(info: info, manual: manual)
                 } else if manual {
-                    self.showUpToDateAlert()
+                    showUpToDateAlert()
                 }
             } catch is CancellationError {
                 return
             } catch {
-                if manual { self.showCheckFailedAlert(message: error.localizedDescription) }
+                if manual { showCheckFailedAlert(message: error.localizedDescription) }
             }
         }
     }
@@ -162,7 +172,7 @@ final class AutoUpdater {
         )
         controller.onAction = { [weak self, weak controller] action in
             self?.updateAlertWindowController = nil
-            _ = controller  // silence unused-capture warning
+            _ = controller // silence unused-capture warning
             switch action {
             case .update:
                 if let downloadedArchiveURL, let sourceURL {
@@ -215,7 +225,7 @@ final class AutoUpdater {
 
             NetworkDebugLogger.logError(
                 context: "Auto update download failed; retrying through GitHub proxy",
-                error: error,
+                error: error
             )
             return try await downloadFile(from: proxyURL)
         }
@@ -224,26 +234,25 @@ final class AutoUpdater {
     private static func downloadFile(from url: URL) async throws -> URL {
         let (tempFileURL, response) = try await URLSession.shared.download(from: url)
         guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode)
+              (200 ..< 300).contains(httpResponse.statusCode)
         else {
             throw UpdateError.downloadFailed
         }
         return tempFileURL
     }
 
-    // Runs off the main actor — only does file I/O and process launching.
-    nonisolated private static func performInstall(from archiveURL: URL, sourceURL: URL, relaunch: Bool) throws {
+    /// Runs off the main actor — only does file I/O and process launching.
+    private nonisolated static func performInstall(from archiveURL: URL, sourceURL: URL, relaunch: Bool) throws {
         let fm = FileManager.default
         let tempDir = fm.temporaryDirectory.appendingPathComponent("typeflux-update-\(UUID().uuidString)")
         try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
         do {
-            let newAppURL: URL
-            switch AutoUpdateArchiveInstaller.archiveKind(for: sourceURL) {
+            let newAppURL: URL = switch AutoUpdateArchiveInstaller.archiveKind(for: sourceURL) {
             case .dmg:
-                newAppURL = try AutoUpdateArchiveInstaller.extractAppFromDMG(archiveURL, into: tempDir)
+                try AutoUpdateArchiveInstaller.extractAppFromDMG(archiveURL, into: tempDir)
             case .zip:
-                newAppURL = try AutoUpdateArchiveInstaller.extractAppFromZip(archiveURL, into: tempDir)
+                try AutoUpdateArchiveInstaller.extractAppFromZip(archiveURL, into: tempDir)
             }
 
             guard fm.fileExists(atPath: newAppURL.path) else {

@@ -35,7 +35,7 @@ struct SystemGlobeKeyPreferenceReader: GlobeKeyPreferenceReading {
             Self.preferenceKey as CFString,
             Self.preferenceDomain as CFString,
             kCFPreferencesCurrentUser,
-            kCFPreferencesAnyHost,
+            kCFPreferencesAnyHost
         )
         if let number = raw as? NSNumber {
             return GlobeKeyUsage(rawValue: number.intValue)

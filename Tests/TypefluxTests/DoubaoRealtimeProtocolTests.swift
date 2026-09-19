@@ -1,5 +1,5 @@
-@testable import Typeflux
 import Darwin
+@testable import Typeflux
 import XCTest
 
 final class DoubaoRealtimeProtocolTests: XCTestCase {
@@ -24,9 +24,9 @@ final class DoubaoRealtimeProtocolTests: XCTestCase {
                 "text": "你好世界",
                 "utterances": [
                     ["text": "你好", "definite": true],
-                    ["text": "世界", "definite": true],
-                ],
-            ],
+                    ["text": "世界", "definite": true]
+                ]
+            ]
         ]
         let payloadData = try JSONSerialization.data(withJSONObject: payload)
         let data = DoubaoProtocol.encodeMessage(
@@ -34,9 +34,9 @@ final class DoubaoRealtimeProtocolTests: XCTestCase {
                 messageType: .serverResponse,
                 flags: .asyncFinal,
                 serialization: .json,
-                compression: .none,
+                compression: .none
             ),
-            payload: payloadData,
+            payload: payloadData
         )
 
         let response = try DoubaoProtocol.decodeServerResponse(data)
@@ -49,20 +49,20 @@ final class DoubaoRealtimeProtocolTests: XCTestCase {
         let error = NSError(
             domain: NSPOSIXErrorDomain,
             code: Int(ENOTCONN),
-            userInfo: [NSLocalizedDescriptionKey: "Socket is not connected"],
+            userInfo: [NSLocalizedDescriptionKey: "Socket is not connected"]
         )
 
         XCTAssertTrue(
             DoubaoRealtimeCompletionPolicy.shouldTreatReceiveErrorAsCompletedAfterAudioEnd(
                 error,
-                didSendAudioEnd: true,
-            ),
+                didSendAudioEnd: true
+            )
         )
         XCTAssertFalse(
             DoubaoRealtimeCompletionPolicy.shouldTreatReceiveErrorAsCompletedAfterAudioEnd(
                 error,
-                didSendAudioEnd: false,
-            ),
+                didSendAudioEnd: false
+            )
         )
     }
 
@@ -70,14 +70,14 @@ final class DoubaoRealtimeProtocolTests: XCTestCase {
         let error = NSError(
             domain: NSURLErrorDomain,
             code: NSURLErrorTimedOut,
-            userInfo: [NSLocalizedDescriptionKey: "The request timed out."],
+            userInfo: [NSLocalizedDescriptionKey: "The request timed out."]
         )
 
         XCTAssertFalse(
             DoubaoRealtimeCompletionPolicy.shouldTreatReceiveErrorAsCompletedAfterAudioEnd(
                 error,
-                didSendAudioEnd: true,
-            ),
+                didSendAudioEnd: true
+            )
         )
     }
 }
@@ -92,7 +92,7 @@ final class DoubaoProtocolExtendedTests: XCTestCase {
             messageType: .serverResponse,
             flags: .asyncFinal,
             serialization: .json,
-            compression: .none,
+            compression: .none
         )
         let encoded = original.encode()
         let decoded = try DoubaoHeader.decode(from: encoded)
@@ -108,8 +108,7 @@ final class DoubaoProtocolExtendedTests: XCTestCase {
     func testDoubaoHeaderDecodeThrowsOnTooShortData() {
         XCTAssertThrowsError(try DoubaoHeader.decode(from: Data([0x11]))) { error in
             if let protoError = error as? DoubaoProtocolError,
-               case .headerTooShort = protoError
-            {
+               case .headerTooShort = protoError {
                 // expected
             } else {
                 XCTFail("Expected headerTooShort, got \(error)")
@@ -138,7 +137,7 @@ final class DoubaoProtocolExtendedTests: XCTestCase {
             messageType: .audioOnlyRequest,
             flags: .noSequence,
             serialization: .none,
-            compression: .none,
+            compression: .none
         )
         let data = header.encode()
         XCTAssertEqual(data.count, 4)
@@ -225,7 +224,7 @@ final class DoubaoProtocolExtendedTests: XCTestCase {
             messageType: .audioOnlyRequest,
             flags: .noSequence,
             serialization: .none,
-            compression: .none,
+            compression: .none
         )
         let payload = Data([0x01, 0x02, 0x03])
         let message = DoubaoProtocol.encodeMessage(header: header, payload: payload)
@@ -239,7 +238,7 @@ final class DoubaoProtocolExtendedTests: XCTestCase {
             messageType: .audioOnlyRequest,
             flags: .positiveSequence,
             serialization: .none,
-            compression: .none,
+            compression: .none
         )
         let payload = Data([0xAA, 0xBB])
         let message = DoubaoProtocol.encodeMessage(header: header, payload: payload, sequenceNumber: 42)

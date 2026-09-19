@@ -25,56 +25,75 @@ final class DIContainer {
     let localModelManager: LocalModelManager
     let bundledModelAutoSetup: BundledModelAutoSetup
     let autoModelDownloadService: AutoModelDownloadService
+    let analyticsReporter: AnalyticsEventReporting
+    let permissionStatusAnalyticsMonitor: PermissionStatusAnalyticsMonitor
+    let usageDailySummaryReporter: UsageDailySummaryReporter
     let agentJobStore: AgentJobStore
     let agentExecutionRegistry: AgentExecutionRegistry
     let agentJobsWindowController: AgentJobsWindowController
     let mcpRegistry: MCPRegistry
     let cloudLoginSyncCoordinator: CloudLoginSyncCoordinator
+    let cloudDataSyncCoordinator: CloudDataSyncCoordinator
+    let outputPostProcessor: OutputPostProcessing
 
+    // swiftlint:disable:next function_body_length
     init() {
         hotkeyService = EventTapHotkeyService(settingsStore: settingsStore)
-        audioRecorder = AVFoundationAudioRecorder(
+        audioRecorder = SwitchableAudioRecorder(
             settingsStore: settingsStore,
-            audioDeviceManager: audioDeviceManager,
+            audioDeviceManager: audioDeviceManager
         )
-        overlayController = OverlayController(appState: appState)
+        overlayController = OverlayController(appState: appState, settingsStore: settingsStore)
         clipboard = SystemClipboardService()
-        askAnswerWindowController = AskAnswerWindowController(clipboard: clipboard, settingsStore: settingsStore)
+        outputPostProcessor = OpenCCOutputPostProcessor(settingsStore: settingsStore)
+        askAnswerWindowController = AskAnswerWindowController(
+            clipboard: clipboard,
+            settingsStore: settingsStore,
+            outputPostProcessor: outputPostProcessor
+        )
         agentClarificationWindowController = AgentClarificationWindowController(settingsStore: settingsStore)
         soundEffectPlayer = SoundEffectPlayer(settingsStore: settingsStore)
-        textInjector = AXTextInjector(settingsStore: settingsStore)
-        Logger(subsystem: "ai.gulu.app.typeflux", category: "DIContainer").debug("DIContainer initialized — Logger test message")
+        textInjector = AXTextInjector()
+        Logger(subsystem: "ai.gulu.app.typeflux", category: "DIContainer")
+            .debug("DIContainer initialized — Logger test message")
         historyStore = SQLiteHistoryStore()
         agentJobStore = SQLiteAgentJobStore()
         agentExecutionRegistry = AgentExecutionRegistry()
         agentJobsWindowController = AgentJobsWindowController(
             settingsStore: settingsStore,
             jobStore: agentJobStore,
-            executionRegistry: agentExecutionRegistry,
+            executionRegistry: agentExecutionRegistry
         )
         mcpRegistry = MCPRegistry()
-        ollamaModelManager = OllamaLocalModelManager()
+        analyticsReporter = SettingsAwareAnalyticsEventReporter(settingsStore: settingsStore)
+        permissionStatusAnalyticsMonitor = PermissionStatusAnalyticsMonitor(
+            defaults: settingsStore.defaults,
+            reporter: analyticsReporter
+        )
+        usageDailySummaryReporter = UsageDailySummaryReporter(
+            defaults: settingsStore.defaults,
+            reporter: analyticsReporter
+        )
+        ollamaModelManager = OllamaLocalModelManager(analyticsReporter: analyticsReporter)
         llmAgentService = LLMAgentRouter(
             settingsStore: settingsStore,
             remote: OpenAICompatibleAgentService(settingsStore: settingsStore),
-            ollama: OllamaAgentService(),
+            ollama: OllamaAgentService()
         )
         notificationService = SystemLocalNotificationService.shared
-        cloudLoginSyncCoordinator = CloudLoginSyncCoordinator(
-            settingsStore: settingsStore,
-            notifications: notificationService,
-        )
-        localModelManager = LocalModelManager()
+        cloudLoginSyncCoordinator = CloudLoginSyncCoordinator(settingsStore: settingsStore)
+        cloudDataSyncCoordinator = CloudDataSyncCoordinator.shared
+        localModelManager = LocalModelManager(analyticsReporter: analyticsReporter)
         bundledModelAutoSetup = BundledModelAutoSetup(linker: localModelManager)
         autoModelDownloadService = AutoModelDownloadService(
             modelManager: localModelManager,
             settingsStore: settingsStore,
-            notificationService: notificationService,
+            notificationService: notificationService
         )
         llmService = LLMRouter(
             settingsStore: settingsStore,
             openAICompatible: OpenAICompatibleLLMService(settingsStore: settingsStore),
-            ollama: OllamaLLMService(settingsStore: settingsStore, modelManager: ollamaModelManager),
+            ollama: OllamaLLMService(settingsStore: settingsStore, modelManager: ollamaModelManager)
         )
         sttRouter = STTRouter(
             settingsStore: settingsStore,
@@ -90,10 +109,14 @@ final class DIContainer {
                 settingsStore: settingsStore,
                 baseURLOverride: "https://api.groq.com/openai/v1",
                 apiKeyOverride: { [settingsStore] in settingsStore.groqSTTAPIKey },
-                modelOverride: { [settingsStore] in settingsStore.groqSTTModel },
+                modelOverride: { [settingsStore] in settingsStore.groqSTTModel }
             ),
+            soniox: SonioxTranscriber(settingsStore: settingsStore),
             typefluxOfficial: TypefluxOfficialTranscriber(),
-            autoModelDownloadService: autoModelDownloadService,
+            typefluxCloudLoginFallbackLocalModel: DefaultSenseVoiceFallbackTranscriber(
+                modelManager: localModelManager
+            ),
+            autoModelDownloadService: autoModelDownloadService
         )
     }
 }

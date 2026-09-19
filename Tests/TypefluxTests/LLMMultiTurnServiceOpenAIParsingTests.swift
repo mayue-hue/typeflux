@@ -55,8 +55,8 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
     func testParseOpenAITurnReturnsPureTextResponse() {
         let data = jsonData([
             "choices": [
-                ["message": ["role": "assistant", "content": "Hello, world!"]],
-            ],
+                ["message": ["role": "assistant", "content": "Hello, world!"]]
+            ]
         ])
         let result = service.parseOpenAITurn(from: data)
         guard case let .text(text) = result else {
@@ -79,13 +79,13 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                                 "type": "function",
                                 "function": [
                                     "name": "get_weather",
-                                    "arguments": #"{"location":"NYC"}"#,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                    "arguments": #"{"location":"NYC"}"#
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseOpenAITurn(from: data)
         guard case let .toolCalls(calls) = result else {
@@ -111,13 +111,13 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                                 "type": "function",
                                 "function": [
                                     "name": "search",
-                                    "arguments": #"{"query":"test"}"#,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                    "arguments": #"{"query":"test"}"#
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseOpenAITurn(from: data)
         guard case let .textWithToolCalls(text, calls) = result else {
@@ -142,13 +142,13 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                                 "type": "function",
                                 "function": [
                                     "name": "my_tool",
-                                    "arguments": #"{}"#,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                    "arguments": #"{}"#
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseOpenAITurn(from: data)
         guard case let .toolCalls(calls) = result else {
@@ -164,10 +164,32 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                 [
                     "message": [
                         "role": "assistant",
-                        "content": "<think>reasoning here</think>Final answer",
-                    ],
-                ],
-            ],
+                        "content": "<think>reasoning here</think>Final answer"
+                    ]
+                ]
+            ]
+        ])
+        let result = service.parseOpenAITurn(from: data)
+        guard case let .text(text) = result else {
+            XCTFail("Expected .text")
+            return
+        }
+        XCTAssertEqual(text, "Final answer")
+    }
+
+    func testParseOpenAITurnReadsStructuredContent() {
+        let data = jsonData([
+            "choices": [
+                [
+                    "message": [
+                        "role": "assistant",
+                        "content": [
+                            ["type": "text", "text": "<think>reasoning here</think>"],
+                            ["type": "text", "text": "Final answer"]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseOpenAITurn(from: data)
         guard case let .text(text) = result else {
@@ -191,8 +213,8 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
     func testParseAnthropicTurnReturnsTextFromTextBlock() {
         let data = jsonData([
             "content": [
-                ["type": "text", "text": "Hello from Claude!"],
-            ],
+                ["type": "text", "text": "Hello from Claude!"]
+            ]
         ])
         let result = service.parseAnthropicTurn(from: data)
         guard case let .text(text) = result else {
@@ -206,8 +228,8 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
         let data = jsonData([
             "content": [
                 ["type": "text", "text": "Part 1. "],
-                ["type": "text", "text": "Part 2."],
-            ],
+                ["type": "text", "text": "Part 2."]
+            ]
         ])
         let result = service.parseAnthropicTurn(from: data)
         guard case let .text(text) = result else {
@@ -224,9 +246,9 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                     "type": "tool_use",
                     "id": "tool_abc",
                     "name": "calculator",
-                    "input": ["expression": "2+2"],
-                ],
-            ],
+                    "input": ["expression": "2+2"]
+                ]
+            ]
         ])
         let result = service.parseAnthropicTurn(from: data)
         guard case let .toolCalls(calls) = result else {
@@ -247,9 +269,9 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                     "type": "tool_use",
                     "id": "tool_xyz",
                     "name": "compute",
-                    "input": ["x": 42],
-                ],
-            ],
+                    "input": ["x": 42]
+                ]
+            ]
         ])
         let result = service.parseAnthropicTurn(from: data)
         guard case let .textWithToolCalls(text, calls) = result else {
@@ -267,9 +289,9 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                 [
                     "type": "tool_use",
                     // Missing "id" and "name"
-                    "input": ["x": 1],
-                ],
-            ],
+                    "input": ["x": 1]
+                ]
+            ]
         ])
         let result = service.parseAnthropicTurn(from: data)
         guard case let .text(text) = result else {
@@ -296,11 +318,11 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                 [
                     "content": [
                         "parts": [
-                            ["text": "Gemini says hi!"],
-                        ],
-                    ],
-                ],
-            ],
+                            ["text": "Gemini says hi!"]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseGeminiTurn(from: data)
         guard case let .text(text) = result else {
@@ -317,11 +339,11 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                     "content": [
                         "parts": [
                             ["text": "Hello "],
-                            ["text": "World"],
-                        ],
-                    ],
-                ],
-            ],
+                            ["text": "World"]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseGeminiTurn(from: data)
         guard case let .text(text) = result else {
@@ -340,13 +362,13 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                             [
                                 "functionCall": [
                                     "name": "search_web",
-                                    "args": ["query": "Swift testing"],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                    "args": ["query": "Swift testing"]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseGeminiTurn(from: data)
         guard case let .toolCalls(calls) = result else {
@@ -369,13 +391,13 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                             [
                                 "functionCall": [
                                     "name": "lookup",
-                                    "args": ["term": "XCTest"],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                    "args": ["term": "XCTest"]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseGeminiTurn(from: data)
         guard case let .textWithToolCalls(text, calls) = result else {
@@ -396,14 +418,14 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
                         "parts": [
                             [
                                 "functionCall": [
-                                    "name": "no_args_tool",
+                                    "name": "no_args_tool"
                                     // no "args" key
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
         ])
         let result = service.parseGeminiTurn(from: data)
         guard case let .toolCalls(calls) = result else {
@@ -463,7 +485,7 @@ final class LLMMultiTurnServiceOpenAIParsingTests: XCTestCase {
         let schema = LLMJSONSchema(name: "get_info", schema: [
             "type": .string("object"),
             "properties": .object([:]),
-            "required": .array([]),
+            "required": .array([])
         ])
         let tools = [LLMAgentTool(name: "get_info", description: "Gets info", inputSchema: schema)]
         let config = LLMCallConfig(forcedToolName: nil, parallelToolCalls: false, temperature: nil)

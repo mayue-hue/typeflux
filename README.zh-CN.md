@@ -9,6 +9,8 @@
 
 [English](./README.md) | 简体中文
 
+[![观看视频](https://img.youtube.com/vi/ZxWWUOEgaJ4/maxresdefault.jpg)](https://youtu.be/ZxWWUOEgaJ4)
+
 ![product-image](./assets/product-image.png)
 
 [查看更多截图](./docs/SCREENSHOTS.md)
@@ -148,7 +150,7 @@ swift test        # 运行测试
 - [X](https://x.com/mylxsw)
 - 微信群：
 
-  <img src="./assets/wechat-group-20260506.jpg" alt="Typeflux 微信群二维码" width="260">
+  <img src="./assets/wechat-group-20260527.jpg" alt="Typeflux 微信群二维码" width="260">
 
 ## 贡献
 

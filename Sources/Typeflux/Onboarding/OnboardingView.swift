@@ -34,7 +34,7 @@ struct OnboardingView: View {
 
     private let languageColumns = [
         GridItem(.flexible(), spacing: 18),
-        GridItem(.flexible(), spacing: 18),
+        GridItem(.flexible(), spacing: 18)
     ]
 
     var body: some View {
@@ -52,7 +52,7 @@ struct OnboardingView: View {
         .environment(\.locale, localization.locale)
         .alert(
             L("onboarding.permissions.incompleteAlert.title"),
-            isPresented: $viewModel.showIncompletePermissionsAlert,
+            isPresented: $viewModel.showIncompletePermissionsAlert
         ) {
             Button(L("common.ok"), role: .cancel) {}
         } message: {
@@ -60,11 +60,30 @@ struct OnboardingView: View {
         }
         .alert(
             L("onboarding.shortcuts.replacement.appliedAlert.title"),
-            isPresented: $viewModel.showShortcutReplacementAppliedAlert,
+            isPresented: $viewModel.showShortcutReplacementAppliedAlert
         ) {
             Button(L("common.ok"), role: .cancel) {}
         } message: {
             Text(shortcutReplacementAppliedAlertMessage)
+        }
+        .alert(
+            L("onboarding.sttConfig.incompleteAlert.title"),
+            isPresented: $viewModel.showIncompleteSTTConfigurationAlert
+        ) {
+            Button(L("common.ok"), role: .cancel) {}
+        } message: {
+            Text(L("onboarding.sttConfig.incompleteAlert.message"))
+        }
+        .alert(
+            L("onboarding.llmConfig.incompleteAlert.title"),
+            isPresented: $viewModel.showIncompleteLLMConfigurationAlert
+        ) {
+            Button(L("onboarding.llmConfig.incompleteAlert.skip"), role: .cancel) {
+                viewModel.skipIncompleteLLMConfiguration()
+            }
+            Button(L("onboarding.llmConfig.incompleteAlert.continueConfig")) {}
+        } message: {
+            Text(L("onboarding.llmConfig.incompleteAlert.message"))
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             if viewModel.currentStep == .permissions {
@@ -88,21 +107,21 @@ struct OnboardingView: View {
                         : Color(red: 0.985, green: 0.982, blue: 0.976),
                     isDarkMode
                         ? Color(red: 0.06, green: 0.06, blue: 0.07)
-                        : Color(red: 0.94, green: 0.95, blue: 0.965),
+                        : Color(red: 0.94, green: 0.95, blue: 0.965)
                 ],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing,
+                endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
             RadialGradient(
                 colors: [
                     StudioTheme.accent.opacity(isDarkMode ? 0.16 : 0.10),
-                    Color.clear,
+                    Color.clear
                 ],
                 center: .topTrailing,
                 startRadius: 24,
-                endRadius: 460,
+                endRadius: 460
             )
             .ignoresSafeArea()
         }
@@ -210,7 +229,7 @@ struct OnboardingView: View {
                 editorialStepHeader(
                     title: L("onboarding.language.title"),
                     subtitle: L("onboarding.language.subtitle"),
-                    alignCenter: false,
+                    alignCenter: false
                 )
 
                 LazyVGrid(columns: languageColumns, alignment: .leading, spacing: 18) {
@@ -239,7 +258,7 @@ struct OnboardingView: View {
                         title: L("onboarding.account.title"),
                         subtitle: L("onboarding.account.subtitle"),
                         alignCenter: true,
-                        showStepCounter: false,
+                        showStepCounter: false
                     )
                 }
 
@@ -337,8 +356,8 @@ struct OnboardingView: View {
                         LinearGradient(
                             colors: [StudioTheme.accent.opacity(0.72), StudioTheme.accent],
                             startPoint: .topLeading,
-                            endPoint: .bottomTrailing,
-                        ),
+                            endPoint: .bottomTrailing
+                        )
                     )
                     .frame(width: 28, height: 28)
                     .shadow(color: StudioTheme.accent.opacity(0.45), radius: 16, x: 0, y: 6)
@@ -356,7 +375,7 @@ struct OnboardingView: View {
                 eyebrow: "Step 03",
                 title: L("onboarding.models.stt.title"),
                 subtitle: L("onboarding.sttProvider.subtitle"),
-                alignCenter: false,
+                alignCenter: false
             )
 
             HStack(alignment: .top, spacing: 18) {
@@ -372,7 +391,7 @@ struct OnboardingView: View {
                             title: provider.displayName,
                             description: sttProviderDescription(provider),
                             badge: sttProviderBadge(provider),
-                            isSelected: viewModel.sttProvider == provider,
+                            isSelected: viewModel.sttProvider == provider
                         ) {
                             withAnimation(.easeOut(duration: 0.18)) {
                                 viewModel.selectSTTProvider(provider)
@@ -385,6 +404,9 @@ struct OnboardingView: View {
                 sttConfigPanel
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+        }
+        .alert(L("settings.shortcuts.auxiliaryConflict"), isPresented: $viewModel.shortcutReplacementConflict) {
+            Button(L("common.ok"), role: .cancel) {}
         }
         .frame(maxWidth: 920, alignment: .leading)
         .frame(maxWidth: .infinity)
@@ -426,6 +448,8 @@ struct OnboardingView: View {
             googleCloudConfigFields
         case .groq:
             groqSTTConfigFields
+        case .soniox:
+            sonioxConfigFields
         case .appleSpeech, .typefluxOfficial:
             EmptyView()
         }
@@ -437,7 +461,7 @@ struct OnboardingView: View {
                 eyebrow: "Configuration",
                 title: L("onboarding.models.llm.title"),
                 subtitle: L("onboarding.llmProvider.subtitle"),
-                alignCenter: false,
+                alignCenter: false
             )
 
             HStack(alignment: .top, spacing: 18) {
@@ -450,14 +474,14 @@ struct OnboardingView: View {
                                 (
                                     title: provider.displayName,
                                     providerID: provider.studioProviderID,
-                                    remoteProvider: Optional(provider),
+                                    remoteProvider: Optional(provider)
                                 )
                             } + [
                                 (
                                     title: LLMProvider.ollama.displayName,
                                     providerID: StudioModelProviderID.ollama,
-                                    remoteProvider: nil,
-                                ),
+                                    remoteProvider: nil
+                                )
                             ]
                     ).sorted { lhs, rhs in
                         lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
@@ -478,7 +502,7 @@ struct OnboardingView: View {
                                             ? L("settings.models.badge.api")
                                             : L("settings.models.badge.native")
                                     ),
-                                isSelected: isSelected,
+                                isSelected: isSelected
                             ) {
                                 withAnimation(.easeOut(duration: 0.18)) {
                                     viewModel.selectLLMRemoteProvider(provider)
@@ -490,7 +514,7 @@ struct OnboardingView: View {
                                 title: L("provider.llm.ollama"),
                                 description: L("settings.models.card.ollama.summary"),
                                 badge: L("settings.models.badge.local"),
-                                isSelected: viewModel.llmProvider == .ollama,
+                                isSelected: viewModel.llmProvider == .ollama
                             ) {
                                 withAnimation(.easeOut(duration: 0.18)) {
                                     viewModel.selectOllama()
@@ -510,7 +534,7 @@ struct OnboardingView: View {
                             title: provider.displayName,
                             description: L("settings.models.card.\(provider.rawValue).summary"),
                             badge: L("settings.models.badge.api"),
-                            isSelected: isSelected,
+                            isSelected: isSelected
                         ) {
                             withAnimation(.easeOut(duration: 0.18)) {
                                 viewModel.selectLLMRemoteProvider(provider)
@@ -535,23 +559,23 @@ struct OnboardingView: View {
                     label: L("settings.models.whisper.endpoint"),
                     placeholder: OpenAIAudioModelCatalog.whisperEndpoints[0],
                     text: $viewModel.whisperBaseURL,
-                    suggestions: OpenAIAudioModelCatalog.whisperEndpoints,
+                    suggestions: OpenAIAudioModelCatalog.whisperEndpoints
                 )
                 StudioTextInputCard(
                     label: L("common.apiKey"),
                     placeholder: "sk-...",
                     text: $viewModel.whisperAPIKey,
-                    secure: true,
+                    secure: true
                 )
                 StudioSuggestedTextInputCard(
                     label: L("common.model"),
                     placeholder: OpenAIAudioModelCatalog.defaultWhisperModel(
-                        forEndpoint: viewModel.whisperBaseURL,
+                        forEndpoint: viewModel.whisperBaseURL
                     ),
                     text: $viewModel.whisperModel,
                     suggestions: OpenAIAudioModelCatalog.suggestedWhisperModels(
-                        forEndpoint: viewModel.whisperBaseURL,
-                    ),
+                        forEndpoint: viewModel.whisperBaseURL
+                    )
                 )
             }
         }
@@ -569,7 +593,7 @@ struct OnboardingView: View {
                     StudioMenuPicker(
                         options: FreeSTTModelRegistry.suggestedModelNames.map { ($0, $0) },
                         selection: $viewModel.freeSTTModel,
-                        width: 320,
+                        width: 320
                     )
                 }
 
@@ -587,7 +611,7 @@ struct OnboardingView: View {
                 let isSelected = viewModel.localSTTModel == model
 
                 Button {
-                    viewModel.localSTTModel = model
+                    viewModel.selectLocalSTTModel(model)
                 } label: {
                     HStack(spacing: 14) {
                         languageSelectionIndicator(isSelected: isSelected)
@@ -619,7 +643,7 @@ struct OnboardingView: View {
                             .padding(.vertical, 6)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(isSelected ? onboardingSelectedBadgeFill : onboardingBadgeFill),
+                                    .fill(isSelected ? onboardingSelectedBadgeFill : onboardingBadgeFill)
                             )
                     }
                     .padding(.horizontal, 18)
@@ -652,7 +676,7 @@ struct OnboardingView: View {
             .padding(.vertical, 4)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color.green.opacity(0.16)),
+                    .fill(Color.green.opacity(0.16))
             )
     }
 
@@ -663,19 +687,19 @@ struct OnboardingView: View {
                     label: L("settings.models.remote.baseURL"),
                     placeholder: OpenAIAudioModelCatalog.multimodalEndpoints[0],
                     text: $viewModel.multimodalLLMBaseURL,
-                    suggestions: OpenAIAudioModelCatalog.multimodalEndpoints,
+                    suggestions: OpenAIAudioModelCatalog.multimodalEndpoints
                 )
                 StudioTextInputCard(
                     label: L("common.apiKey"),
                     placeholder: "sk-...",
                     text: $viewModel.multimodalLLMAPIKey,
-                    secure: true,
+                    secure: true
                 )
                 StudioSuggestedTextInputCard(
                     label: L("common.model"),
                     placeholder: OpenAIAudioModelCatalog.multimodalModels[0],
                     text: $viewModel.multimodalLLMModel,
-                    suggestions: OpenAIAudioModelCatalog.multimodalModels,
+                    suggestions: OpenAIAudioModelCatalog.multimodalModels
                 )
             }
         }
@@ -688,7 +712,7 @@ struct OnboardingView: View {
                     label: L("common.apiKey"),
                     placeholder: "sk-...",
                     text: $viewModel.aliCloudAPIKey,
-                    secure: true,
+                    secure: true
                 )
             }
         }
@@ -700,13 +724,18 @@ struct OnboardingView: View {
                 StudioTextInputCard(
                     label: L("settings.models.doubao.appID"),
                     placeholder: "",
-                    text: $viewModel.doubaoAppID,
+                    text: $viewModel.doubaoAppID
+                )
+                StudioTextInputCard(
+                    label: L("settings.models.doubao.resourceID"),
+                    placeholder: DoubaoASRDefaults.resourceID,
+                    text: $viewModel.doubaoResourceID
                 )
                 StudioTextInputCard(
                     label: L("settings.models.doubao.accessToken"),
                     placeholder: "",
                     text: $viewModel.doubaoAccessToken,
-                    secure: true,
+                    secure: true
                 )
             }
         }
@@ -718,13 +747,13 @@ struct OnboardingView: View {
                 StudioTextInputCard(
                     label: L("settings.models.googleCloud.projectID"),
                     placeholder: "my-gcp-project",
-                    text: $viewModel.googleCloudProjectID,
+                    text: $viewModel.googleCloudProjectID
                 )
                 StudioSuggestedTextInputCard(
                     label: L("common.model"),
                     placeholder: GoogleCloudSpeechDefaults.model,
                     text: $viewModel.googleCloudModel,
-                    suggestions: GoogleCloudSpeechDefaults.suggestedModels,
+                    suggestions: GoogleCloudSpeechDefaults.suggestedModels
                 )
                 HStack(spacing: 12) {
                     StudioButton(
@@ -733,8 +762,9 @@ struct OnboardingView: View {
                             : L("settings.models.googleCloud.oauth.authorize"),
                         systemImage: "person.crop.circle.badge.checkmark",
                         variant: .secondary,
-                        isDisabled: AppServerConfiguration.googleCloudOAuthClientID.isEmpty || isAuthorizingGoogleCloudOAuth,
-                        isLoading: isAuthorizingGoogleCloudOAuth,
+                        isDisabled: AppServerConfiguration.googleCloudOAuthClientID
+                            .isEmpty || isAuthorizingGoogleCloudOAuth,
+                        isLoading: isAuthorizingGoogleCloudOAuth
                     ) {
                         authorizeGoogleCloudFromOnboarding()
                     }
@@ -743,7 +773,7 @@ struct OnboardingView: View {
                         StudioButton(
                             title: L("settings.models.googleCloud.oauth.disconnect"),
                             systemImage: "xmark.circle",
-                            variant: .ghost,
+                            variant: .ghost
                         ) {
                             GoogleCloudSpeechOAuthTokenStore.clear()
                             googleCloudOAuthAuthorized = false
@@ -772,7 +802,7 @@ struct OnboardingView: View {
                 let token = try await GoogleOAuthService.authorizeGoogleCloud(
                     clientID: AppServerConfiguration.googleCloudOAuthClientID,
                     clientSecret: AppServerConfiguration.googleCloudOAuthClientSecret.isEmpty
-                        ? nil : AppServerConfiguration.googleCloudOAuthClientSecret,
+                        ? nil : AppServerConfiguration.googleCloudOAuthClientSecret
                 )
                 GoogleCloudSpeechOAuthTokenStore.save(token)
                 viewModel.googleCloudAPIKey = ""
@@ -790,13 +820,32 @@ struct OnboardingView: View {
                     label: L("common.apiKey"),
                     placeholder: "gsk_...",
                     text: $viewModel.groqSTTAPIKey,
-                    secure: true,
+                    secure: true
                 )
                 StudioSuggestedTextInputCard(
                     label: L("common.model"),
                     placeholder: OpenAIAudioModelCatalog.groqWhisperModels[0],
                     text: $viewModel.groqSTTModel,
-                    suggestions: OpenAIAudioModelCatalog.groqWhisperModels,
+                    suggestions: OpenAIAudioModelCatalog.groqWhisperModels
+                )
+            }
+        }
+    }
+
+    private var sonioxConfigFields: some View {
+        onboardingConfigCard {
+            VStack(spacing: 12) {
+                StudioTextInputCard(
+                    label: L("common.apiKey"),
+                    placeholder: "sk-...",
+                    text: $viewModel.sonioxAPIKey,
+                    secure: true
+                )
+                StudioSuggestedTextInputCard(
+                    label: L("common.model"),
+                    placeholder: SonioxASRDefaults.model,
+                    text: $viewModel.sonioxModel,
+                    suggestions: SonioxASRDefaults.suggestedModels
                 )
             }
         }
@@ -826,7 +875,7 @@ struct OnboardingView: View {
                                 StudioMenuPicker(
                                     options: FreeLLMModelRegistry.suggestedModelNames.map { ($0, $0) },
                                     selection: $viewModel.llmModel,
-                                    width: 320,
+                                    width: 320
                                 )
                             }
                             Text(L("settings.models.freeModel.hint"))
@@ -838,20 +887,20 @@ struct OnboardingView: View {
                                 label: L("common.apiKey"),
                                 placeholder: provider == .gemini ? "AIza..." : "sk-...",
                                 text: $viewModel.llmAPIKey,
-                                secure: true,
+                                secure: true
                             )
                             StudioSuggestedTextInputCard(
                                 label: L("settings.models.remote.baseURL"),
                                 placeholder: provider.defaultBaseURL.isEmpty
                                     ? "https://api.openai.com/v1" : provider.defaultBaseURL,
                                 text: $viewModel.llmBaseURL,
-                                suggestions: endpointSuggestions,
+                                suggestions: endpointSuggestions
                             )
                             StudioSuggestedTextInputCard(
                                 label: L("common.model"),
                                 placeholder: provider.defaultModel,
                                 text: $viewModel.llmModel,
-                                suggestions: modelSuggestions,
+                                suggestions: modelSuggestions
                             )
                         }
                     }
@@ -868,14 +917,14 @@ struct OnboardingView: View {
                     placeholder: "http://127.0.0.1:11434",
                     text: $viewModel.ollamaBaseURL,
                     suggestions: [viewModel.ollamaBaseURL, "http://127.0.0.1:11434", "http://localhost:11434"]
-                        .filter { !$0.isEmpty },
+                        .filter { !$0.isEmpty }
                 )
                 StudioSuggestedTextInputCard(
                     label: L("common.model"),
                     placeholder: "qwen2.5:7b",
                     text: $viewModel.ollamaModel,
                     suggestions: [viewModel.ollamaModel, "qwen2.5:7b", "llama3.2:3b", "gemma3:4b"]
-                        .filter { !$0.isEmpty },
+                        .filter { !$0.isEmpty }
                 )
             }
         }
@@ -942,7 +991,7 @@ struct OnboardingView: View {
                         systemImage: viewModel.sttConnectionTestState == .testing ? nil : "network",
                         variant: .secondary,
                         isDisabled: viewModel.sttConnectionTestState == .testing,
-                        isLoading: viewModel.sttConnectionTestState == .testing,
+                        isLoading: viewModel.sttConnectionTestState == .testing
                     ) {
                         viewModel.testSTTConnection()
                     }
@@ -985,8 +1034,7 @@ struct OnboardingView: View {
             if llmProviderSupportsTest {
                 HStack(spacing: 12) {
                     if let url = llmProviderAPIKeyURL(viewModel.llmRemoteProvider),
-                       viewModel.llmProvider != .ollama
-                    {
+                       viewModel.llmProvider != .ollama {
                         Link(destination: url) {
                             HStack(spacing: 5) {
                                 Image(systemName: "key")
@@ -1008,7 +1056,7 @@ struct OnboardingView: View {
                         systemImage: viewModel.llmConnectionTestState == .testing ? nil : "network",
                         variant: .secondary,
                         isDisabled: viewModel.llmConnectionTestState == .testing,
-                        isLoading: viewModel.llmConnectionTestState == .testing,
+                        isLoading: viewModel.llmConnectionTestState == .testing
                     ) {
                         viewModel.testLLMConnection()
                     }
@@ -1032,7 +1080,7 @@ struct OnboardingView: View {
 
     private func sttProviderSupportsTest(_ provider: STTProvider) -> Bool {
         switch provider {
-        case .whisperAPI, .multimodalLLM, .aliCloud, .doubaoRealtime, .googleCloud, .groq, .freeModel:
+        case .whisperAPI, .multimodalLLM, .aliCloud, .doubaoRealtime, .googleCloud, .groq, .soniox, .freeModel:
             true
         case .localModel, .appleSpeech, .typefluxOfficial:
             false
@@ -1045,6 +1093,8 @@ struct OnboardingView: View {
             URL(string: "https://platform.openai.com/api-keys")
         case .groq:
             URL(string: "https://console.groq.com/keys")
+        case .soniox:
+            URL(string: "https://console.soniox.com/")
         case .aliCloud:
             URL(string: "https://bailian.console.aliyun.com/")
         case .doubaoRealtime:
@@ -1131,13 +1181,23 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(onboardingMutedSurface),
+                                .fill(onboardingMutedSurface)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(onboardingSubtleBorder, lineWidth: 1),
+                                .stroke(onboardingSubtleBorder, lineWidth: 1)
                         )
                 }
+            }
+        case let .notice(message):
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(onboardingSecondaryText)
+                    .font(.system(size: 13))
+                Text(message)
+                    .font(.studioBody(12))
+                    .foregroundStyle(onboardingSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         case let .failure(message):
             HStack(alignment: .top, spacing: 6) {
@@ -1162,6 +1222,7 @@ struct OnboardingView: View {
         case .doubaoRealtime: .doubaoRealtime
         case .googleCloud: .googleCloud
         case .groq: .groqSTT
+        case .soniox: .soniox
         case .appleSpeech: .appleSpeech
         case .typefluxOfficial: .typefluxOfficial
         }
@@ -1172,7 +1233,7 @@ struct OnboardingView: View {
         let url = Bundle.appResources.url(
             forResource: name,
             withExtension: "png",
-            subdirectory: "Resources/Providers",
+            subdirectory: "Resources/Providers"
         )
             ?? Bundle.appResources.url(forResource: name, withExtension: "png", subdirectory: "Providers")
             ?? Bundle.appResources.url(forResource: name, withExtension: "png")
@@ -1237,6 +1298,7 @@ struct OnboardingView: View {
         case .multimodalLLM: "brain.filled.head.profile"
         case .aliCloud: "antenna.radiowaves.left.and.right"
         case .doubaoRealtime: "bolt.horizontal.circle"
+        case .soniox: "waveform.and.mic"
         case .typefluxOfficial: "infinity"
         case .typefluxCloud: "infinity"
         }
@@ -1260,6 +1322,7 @@ struct OnboardingView: View {
         case .doubaoRealtime: L("settings.models.card.doubao.summary")
         case .googleCloud: L("settings.models.card.googleCloud.summary")
         case .groq: L("settings.models.card.groq.summary")
+        case .soniox: L("settings.models.card.soniox.summary")
         case .appleSpeech: ""
         case .typefluxOfficial: L("settings.models.card.typefluxOfficial.summary")
         }
@@ -1271,7 +1334,7 @@ struct OnboardingView: View {
         description: String,
         badge: String,
         isSelected: Bool,
-        action: @escaping () -> Void,
+        action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
@@ -1298,7 +1361,7 @@ struct OnboardingView: View {
                     .padding(.vertical, 6)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(isSelected ? onboardingSelectedBadgeFill : onboardingBadgeFill),
+                            .fill(isSelected ? onboardingSelectedBadgeFill : onboardingBadgeFill)
                     )
 
                 languageSelectionIndicator(isSelected: isSelected)
@@ -1315,11 +1378,11 @@ struct OnboardingView: View {
 
     private func providerIconBadge(for providerID: StudioModelProviderID, isSelected: Bool) -> some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(providerIconBadgeBackground(for: providerID, isSelected: isSelected))
+            .fill(StudioTheme.modelProviderIconPlate)
             .frame(width: 38, height: 38)
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(providerIconBadgeBorder(for: providerID, isSelected: isSelected), lineWidth: 1),
+                    .stroke(providerIconBadgeBorder(isSelected: isSelected), lineWidth: 1)
             )
             .overlay(
                 Group {
@@ -1328,7 +1391,7 @@ struct OnboardingView: View {
                             size: 30,
                             symbolSize: 15,
                             backgroundShape: .circle,
-                            showsBorder: true,
+                            showsBorder: true
                         )
                     } else if let image = loadProviderLogo(for: providerID) {
                         Image(nsImage: image)
@@ -1339,40 +1402,16 @@ struct OnboardingView: View {
                     } else {
                         Image(systemName: providerSymbol(for: providerID))
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(isSelected ? StudioTheme.accent : onboardingSecondaryText)
+                            .foregroundStyle(
+                                isSelected ? StudioTheme.accent : StudioTheme.modelProviderFallbackSymbol
+                            )
                     }
-                },
+                }
             )
     }
 
-    private func providerIconBadgeBackground(for providerID: StudioModelProviderID, isSelected: Bool) -> LinearGradient {
-        switch OnboardingProviderStyle.iconPlateStyle(for: providerID) {
-        case .light:
-            let top = isSelected
-                ? StudioTheme.accent.opacity(0.18)
-                : Color.white.opacity(0.92)
-            let bottom = isSelected
-                ? StudioTheme.accent.opacity(0.34)
-                : Color(red: 0.84, green: 0.87, blue: 0.93).opacity(0.84)
-            return LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
-        case .neutral:
-            let top = isDarkMode
-                ? Color.white.opacity(isSelected ? 0.1 : 0.07)
-                : StudioTheme.surface.opacity(isSelected ? 0.96 : 0.92)
-            let bottom = isDarkMode
-                ? Color(red: 0.12, green: 0.13, blue: 0.17).opacity(isSelected ? 0.72 : 0.82)
-                : StudioTheme.surfaceMuted.opacity(isSelected ? 0.98 : 0.94)
-            return LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
-    }
-
-    private func providerIconBadgeBorder(for providerID: StudioModelProviderID, isSelected: Bool) -> Color {
-        switch OnboardingProviderStyle.iconPlateStyle(for: providerID) {
-        case .light:
-            isDarkMode ? Color.white.opacity(isSelected ? 0.28 : 0.18) : StudioTheme.border.opacity(isSelected ? 0.9 : 0.72)
-        case .neutral:
-            isDarkMode ? Color.white.opacity(isSelected ? 0.12 : 0.08) : StudioTheme.border.opacity(isSelected ? 0.85 : 0.72)
-        }
+    private func providerIconBadgeBorder(isSelected: Bool) -> Color {
+        isSelected ? StudioTheme.accent.opacity(0.55) : Color.black.opacity(0.12)
     }
 
     private func permissionsStep(contentHeight: CGFloat) -> some View {
@@ -1383,7 +1422,7 @@ struct OnboardingView: View {
                 editorialStepHeader(
                     title: L("onboarding.permissions.title"),
                     subtitle: L("onboarding.permissions.subtitle"),
-                    alignCenter: false,
+                    alignCenter: false
                 )
 
                 VStack(spacing: 10) {
@@ -1439,7 +1478,7 @@ struct OnboardingView: View {
                     .padding(.vertical, 7)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(StudioTheme.success.opacity(0.12)),
+                            .fill(StudioTheme.success.opacity(0.12))
                     )
             } else {
                 StudioButton(
@@ -1447,7 +1486,7 @@ struct OnboardingView: View {
                     systemImage: "lock.open.display",
                     variant: .primary,
                     isDisabled: isRequesting,
-                    isLoading: isRequesting,
+                    isLoading: isRequesting
                 ) {
                     viewModel.requestPermission(snapshot.id)
                 }
@@ -1467,7 +1506,7 @@ struct OnboardingView: View {
                 .frame(width: 34, height: 34)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(StudioTheme.accent.opacity(isDarkMode ? 0.16 : 0.10)),
+                        .fill(StudioTheme.accent.opacity(isDarkMode ? 0.16 : 0.10))
                 )
 
             VStack(alignment: .leading, spacing: 5) {
@@ -1484,11 +1523,11 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(onboardingMutedSurface),
+                .fill(onboardingMutedSurface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(onboardingSubtleBorder, lineWidth: 1),
+                .stroke(onboardingSubtleBorder, lineWidth: 1)
         )
     }
 
@@ -1505,7 +1544,7 @@ struct OnboardingView: View {
             editorialStepHeader(
                 title: L("onboarding.shortcuts.title"),
                 subtitle: L("onboarding.shortcuts.subtitle"),
-                alignCenter: false,
+                alignCenter: false
             )
 
             VStack(spacing: shortcutsSectionSpacing) {
@@ -1514,23 +1553,48 @@ struct OnboardingView: View {
                         title: L("settings.shortcuts.activation.title"),
                         subtitle: L("onboarding.shortcuts.activation.hint"),
                         binding: viewModel.activationHotkey,
-                        expanded: true,
+                        expanded: true
+                    )
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let binding = viewModel.auxiliaryHotkey {
+                            shortcutCard(
+                                title: L("settings.shortcuts.auxiliary.title"),
+                                subtitle: L("onboarding.shortcuts.auxiliary.hint"),
+                                binding: binding,
+                                expanded: true
+                            )
+                        } else {
+                            Text(L("settings.shortcuts.auxiliary.title"))
+                            Text(L("onboarding.shortcuts.auxiliary.unset"))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                HStack(alignment: .top, spacing: shortcutsSectionSpacing) {
+                    shortcutCard(
+                        title: L("settings.shortcuts.persona.title"),
+                        subtitle: L("onboarding.shortcuts.persona.hint"),
+                        binding: HotkeyBinding.defaultPersona,
+                        expanded: true
                     )
 
                     shortcutCard(
-                        title: L("settings.shortcuts.ask.title"),
-                        subtitle: L("onboarding.shortcuts.ask.hint"),
-                        binding: viewModel.askHotkey ?? .defaultAsk,
-                        expanded: true,
+                        title: L("settings.shortcuts.history.title"),
+                        subtitle: L("onboarding.shortcuts.history.hint"),
+                        binding: viewModel.historyHotkey,
+                        expanded: true
                     )
                 }
-
-                shortcutWideCard(
-                    title: L("settings.shortcuts.persona.title"),
-                    subtitle: L("onboarding.shortcuts.persona.hint"),
-                    binding: HotkeyBinding.defaultPersona,
-                )
             }
+
+            shortcutCard(
+                title: L("settings.shortcuts.ask.title"),
+                subtitle: L("onboarding.shortcuts.ask.hint"),
+                binding: viewModel.askHotkey ?? .defaultAsk,
+                expanded: true
+            )
 
             if viewModel.externalKeyboardShortcutReplacement == nil {
                 externalKeyboardShortcutNotice
@@ -1547,7 +1611,7 @@ struct OnboardingView: View {
         title: String,
         subtitle: String,
         binding: HotkeyBinding,
-        expanded: Bool,
+        expanded: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 16) {
@@ -1570,35 +1634,6 @@ struct OnboardingView: View {
         }
         .padding(18)
         .frame(maxWidth: expanded ? .infinity : nil, minHeight: 96, alignment: .topLeading)
-        .background(onboardingCardFill)
-        .overlay(onboardingCardStroke)
-    }
-
-    private func shortcutWideCard(
-        title: String,
-        subtitle: String,
-        binding: HotkeyBinding,
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 16) {
-                Text(title)
-                    .font(.studioDisplay(16, weight: .bold))
-                    .foregroundStyle(onboardingPrimaryText)
-                    .lineLimit(1)
-
-                Spacer()
-
-                hotkeySequence(binding)
-                    .fixedSize()
-            }
-
-            Text(subtitle)
-                .font(.studioBody(12))
-                .foregroundStyle(onboardingSecondaryText)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(18)
         .background(onboardingCardFill)
         .overlay(onboardingCardStroke)
     }
@@ -1647,7 +1682,7 @@ struct OnboardingView: View {
                         StudioButton(
                             title: L("onboarding.shortcuts.globeKeyNotice.button"),
                             systemImage: "arrow.up.forward.app",
-                            variant: .secondary,
+                            variant: .secondary
                         ) {
                             viewModel.openKeyboardSystemSettings()
                         }
@@ -1667,11 +1702,11 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(accent.opacity(isDarkMode ? 0.10 : 0.06)),
+                .fill(accent.opacity(isDarkMode ? 0.10 : 0.06))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(accent.opacity(isDarkMode ? 0.32 : 0.20), lineWidth: 1),
+                .stroke(accent.opacity(isDarkMode ? 0.32 : 0.20), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.25), value: isReady)
     }
@@ -1693,7 +1728,7 @@ struct OnboardingView: View {
                     .foregroundStyle(onboardingPrimaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(L("onboarding.shortcuts.externalKeyboard.message"))
+                Text(L("onboarding.shortcuts.externalKeyboard.message") + "\n" + L("onboarding.shortcuts.auxiliary.externalKeyboard"))
                     .font(.studioBody(13))
                     .foregroundStyle(onboardingSecondaryText)
                     .lineSpacing(3)
@@ -1710,11 +1745,11 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(StudioTheme.accent.opacity(isDarkMode ? 0.09 : 0.05)),
+                .fill(StudioTheme.accent.opacity(isDarkMode ? 0.09 : 0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(StudioTheme.accent.opacity(isDarkMode ? 0.28 : 0.18), lineWidth: 1),
+                .stroke(StudioTheme.accent.opacity(isDarkMode ? 0.28 : 0.18), lineWidth: 1)
         )
     }
 
@@ -1743,7 +1778,7 @@ struct OnboardingView: View {
                     StudioButton(
                         title: L("onboarding.shortcuts.replacement.restore"),
                         systemImage: "arrow.uturn.backward",
-                        variant: .secondary,
+                        variant: .secondary
                     ) {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             viewModel.restoreDefaultFNShortcuts()
@@ -1759,28 +1794,28 @@ struct OnboardingView: View {
                         replacementName
                     )
                 )
-                    .font(.studioBody(13))
-                    .foregroundStyle(onboardingSecondaryText)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.studioBody(13))
+                .foregroundStyle(onboardingSecondaryText)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(StudioTheme.success.opacity(isDarkMode ? 0.10 : 0.06)),
+                .fill(StudioTheme.success.opacity(isDarkMode ? 0.10 : 0.06))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(StudioTheme.success.opacity(isDarkMode ? 0.32 : 0.20), lineWidth: 1),
+                .stroke(StudioTheme.success.opacity(isDarkMode ? 0.32 : 0.20), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.25), value: viewModel.externalKeyboardShortcutReplacement)
     }
 
     private func externalKeyboardReplacementButton(
-        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement,
+        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement
     ) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -1809,25 +1844,28 @@ struct OnboardingView: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(StudioTheme.accent.opacity(isDarkMode ? 0.26 : 0.18), lineWidth: 1)
-                    ),
+                    )
             )
         }
         .buttonStyle(StudioInteractiveButtonStyle())
     }
 
     private var shortcutReplacementAppliedAlertMessage: String {
+        let auxiliaryMessage = viewModel.auxiliaryHotkey.map {
+            L("onboarding.shortcuts.auxiliary.active", HotkeyFormat.display($0))
+        } ?? L("onboarding.shortcuts.auxiliary.unset")
         if let replacement = viewModel.externalKeyboardShortcutReplacement {
             return String(
                 format: L("onboarding.shortcuts.replacement.appliedAlert.message"),
                 shortcutReplacementName(replacement),
-                shortcutReplacementName(replacement),
-            )
+                shortcutReplacementName(replacement)
+            ) + "\n\n" + auxiliaryMessage
         }
-        return L("onboarding.shortcuts.replacement.restoredAlert.message")
+        return L("onboarding.shortcuts.replacement.restoredAlert.message") + "\n\n" + auxiliaryMessage
     }
 
     private func shortcutReplacementName(
-        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement?,
+        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement?
     ) -> String {
         switch replacement {
         case .rightCommand:
@@ -1840,7 +1878,7 @@ struct OnboardingView: View {
     }
 
     private func shortcutReplacementButtonTitle(
-        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement,
+        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement
     ) -> String {
         switch replacement {
         case .rightCommand:
@@ -1851,7 +1889,7 @@ struct OnboardingView: View {
     }
 
     private func shortcutReplacementKeycap(
-        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement,
+        _ replacement: OnboardingViewModel.ExternalKeyboardShortcutReplacement
     ) -> String {
         switch replacement {
         case .rightCommand:
@@ -1898,11 +1936,11 @@ struct OnboardingView: View {
             .frame(height: 30)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(onboardingMutedSurface),
+                    .fill(onboardingMutedSurface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(onboardingSubtleBorder, lineWidth: 1),
+                    .stroke(onboardingSubtleBorder, lineWidth: 1)
             )
     }
 
@@ -1911,7 +1949,7 @@ struct OnboardingView: View {
             if viewModel.canGoBack {
                 footerSecondaryButton(
                     title: L("onboarding.action.back"),
-                    systemImage: "arrow.left",
+                    systemImage: "arrow.left"
                 ) {
                     viewModel.goBack()
                 }
@@ -1920,7 +1958,10 @@ struct OnboardingView: View {
             Spacer()
 
             if viewModel.currentStep == .account {
-                footerTertiaryButton(title: L("onboarding.account.skip")) {
+                footerTertiaryButton(
+                    title: L("onboarding.account.skip"),
+                    foregroundColor: onboardingAccountSkipText
+                ) {
                     viewModel.continueWithoutCloudAccount()
                 }
             } else if viewModel.isSkippable {
@@ -1937,7 +1978,7 @@ struct OnboardingView: View {
                 }
             } else {
                 footerPrimaryButton(
-                    title: viewModel.isLastStep ? L("onboarding.action.getStarted") : L("onboarding.action.continue"),
+                    title: viewModel.isLastStep ? L("onboarding.action.getStarted") : L("onboarding.action.continue")
                 ) {
                     viewModel.advance()
                 }
@@ -1947,11 +1988,11 @@ struct OnboardingView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(onboardingFooterSurface),
+                .fill(onboardingFooterSurface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(onboardingBorder, lineWidth: 1),
+                .stroke(onboardingBorder, lineWidth: 1)
         )
     }
 
@@ -1969,11 +2010,11 @@ struct OnboardingView: View {
             .frame(height: 38)
             .background(
                 Capsule(style: .continuous)
-                    .fill(StudioTheme.accent),
+                    .fill(StudioTheme.accent)
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(onboardingPrimaryButtonStroke, lineWidth: 1),
+                    .stroke(onboardingPrimaryButtonStroke, lineWidth: 1)
             )
         }
         .buttonStyle(StudioInteractiveButtonStyle())
@@ -1992,22 +2033,26 @@ struct OnboardingView: View {
             .padding(.horizontal, 14)
             .background(
                 Capsule(style: .continuous)
-                    .fill(onboardingMutedSurface),
+                    .fill(onboardingMutedSurface)
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(onboardingSubtleBorder, lineWidth: 1),
+                    .stroke(onboardingSubtleBorder, lineWidth: 1)
             )
         }
         .buttonStyle(StudioInteractiveButtonStyle())
     }
 
-    private func footerTertiaryButton(title: String, action: @escaping () -> Void) -> some View {
+    private func footerTertiaryButton(
+        title: String,
+        foregroundColor: Color? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Text(title.uppercased())
                 .font(.studioBody(11, weight: .bold))
                 .tracking(1.0)
-                .foregroundStyle(onboardingSecondaryText)
+                .foregroundStyle(foregroundColor ?? onboardingSecondaryText)
                 .frame(height: 38)
                 .padding(.horizontal, 10)
         }
@@ -2020,7 +2065,7 @@ struct OnboardingView: View {
         subtitle: String,
         alignCenter: Bool,
         trailing: AnyView? = nil,
-        showStepCounter: Bool = true,
+        showStepCounter: Bool = true
     ) -> some View {
         Group {
             if alignCenter {
@@ -2095,11 +2140,11 @@ struct OnboardingView: View {
             .padding(.vertical, 6)
             .background(
                 Capsule(style: .continuous)
-                    .fill(onboardingMutedSurface),
+                    .fill(onboardingMutedSurface)
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(onboardingSubtleBorder, lineWidth: 1),
+                    .stroke(onboardingSubtleBorder, lineWidth: 1)
             )
     }
 
@@ -2118,7 +2163,7 @@ struct OnboardingView: View {
             .fill(
                 isSelected
                     ? onboardingSelectedCardSurface
-                    : onboardingCardSurface,
+                    : onboardingCardSurface
             )
     }
 
@@ -2160,6 +2205,10 @@ struct OnboardingView: View {
 
     private var onboardingTertiaryText: Color {
         StudioTheme.textTertiary.opacity(isDarkMode ? 0.94 : 0.98)
+    }
+
+    private var onboardingAccountSkipText: Color {
+        StudioTheme.textTertiary.opacity(isDarkMode ? 0.56 : 0.62)
     }
 
     private var onboardingCardSurface: Color {
@@ -2225,5 +2274,4 @@ struct OnboardingView: View {
     private var onboardingSelectedBadgeFill: Color {
         isDarkMode ? Color.white.opacity(0.08) : StudioTheme.accentSoft
     }
-
 }

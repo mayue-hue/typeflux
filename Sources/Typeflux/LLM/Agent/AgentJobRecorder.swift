@@ -25,7 +25,7 @@ final class AgentJobRecorder: AgentStepMonitor, @unchecked Sendable {
             createdAt: Date(),
             status: .running,
             userPrompt: userPrompt,
-            selectedText: selectedText,
+            selectedText: selectedText
         )
         try? await store.save(job)
     }
@@ -40,20 +40,20 @@ final class AgentJobRecorder: AgentStepMonitor, @unchecked Sendable {
         toolCallName: String,
         toolCallArgumentsJSON: String,
         resultContent: String,
-        durationMs: Int64,
+        durationMs: Int64
     ) async {
         let phase1ToolCall = AgentJobToolCall(
             id: "phase1-routing",
             name: toolCallName,
             argumentsJSON: toolCallArgumentsJSON,
             resultContent: resultContent,
-            isError: false,
+            isError: false
         )
         let step = AgentJobStep(
             stepIndex: 0,
             toolCalls: [phase1ToolCall],
             assistantText: nil,
-            durationMs: durationMs,
+            durationMs: durationMs
         )
 
         let currentSteps = appendStepAndSnapshot(step)
@@ -91,12 +91,12 @@ final class AgentJobRecorder: AgentStepMonitor, @unchecked Sendable {
                     name: toolCall?.name ?? "unknown",
                     argumentsJSON: toolCall?.argumentsJSON ?? "{}",
                     resultContent: result.content,
-                    isError: result.isError,
+                    isError: result.isError
                 )
             },
             assistantText: step.assistantMessage.text,
             durationMs: step.durationMs,
-            tokenUsage: step.tokenUsage,
+            tokenUsage: step.tokenUsage
         )
 
         let currentSteps = appendStepAndSnapshot(jobStep)

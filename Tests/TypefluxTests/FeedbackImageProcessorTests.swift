@@ -1,10 +1,10 @@
-@testable import Typeflux
 import AppKit
+@testable import Typeflux
 import XCTest
 
 final class FeedbackImageProcessorTests: XCTestCase {
     func testPrepareCompressesImageToJPEGWithinMaxDimension() throws {
-        let imageURL = try makeTemporaryPNG(width: 2_400, height: 1_200)
+        let imageURL = try makeTemporaryPNG(width: 2400, height: 1200)
         defer { try? FileManager.default.removeItem(at: imageURL.deletingLastPathComponent()) }
 
         let prepared = try FeedbackImageProcessor.prepare(url: imageURL)
@@ -28,7 +28,7 @@ final class FeedbackImageProcessorTests: XCTestCase {
         NSRect(x: 0, y: 0, width: width, height: height).fill()
         image.unlockFocus()
 
-        let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+        let rep = try XCTUnwrap(try NSBitmapImageRep(data: XCTUnwrap(image.tiffRepresentation)))
         let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
         let url = directory.appendingPathComponent("feedback-source.png")
         try data.write(to: url)

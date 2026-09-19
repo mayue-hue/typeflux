@@ -10,7 +10,7 @@ actor AgentLoop {
     init(
         llmService: LLMMultiTurnService,
         toolRegistry: AgentToolRegistry,
-        config: AgentConfig = .default,
+        config: AgentConfig = .default
     ) {
         self.llmService = llmService
         self.toolRegistry = toolRegistry
@@ -29,13 +29,13 @@ actor AgentLoop {
     /// - Returns: Agent execution result.
     func run(
         messages: [AgentMessage],
-        streamHandler: ((String) -> Void)? = nil,
+        streamHandler: ((String) -> Void)? = nil
     ) async throws -> AgentResult {
         var accumulatedMessages = messages
         var accumulatedText = ""
         var steps: [AgentStep] = []
         let startTime = DispatchTime.now()
-        var cumulativeTokenUsage: LLMTokenUsage? = nil
+        var cumulativeTokenUsage: LLMTokenUsage?
 
         for stepIndex in config.initialStepIndex ..< (config.initialStepIndex + config.maxSteps) {
             let stepStart = DispatchTime.now()
@@ -43,13 +43,13 @@ actor AgentLoop {
             let callConfig = LLMCallConfig(
                 forcedToolName: nil,
                 parallelToolCalls: config.allowParallelToolCalls,
-                temperature: config.temperature,
+                temperature: config.temperature
             )
 
             let turnResult = try await llmService.complete(
                 messages: accumulatedMessages,
                 tools: toolRegistry.definitions,
-                config: callConfig,
+                config: callConfig
             )
 
             // Accumulate token usage across all LLM calls
@@ -69,7 +69,7 @@ actor AgentLoop {
                     outcome: outcome,
                     steps: steps,
                     totalDurationMs: elapsedMs(from: startTime),
-                    totalTokenUsage: cumulativeTokenUsage,
+                    totalTokenUsage: cumulativeTokenUsage
                 )
 
             case let .toolCalls(toolCalls):
@@ -82,7 +82,7 @@ actor AgentLoop {
                     accumulatedMessages: &accumulatedMessages,
                     steps: steps,
                     totalStart: startTime,
-                    cumulativeTokenUsage: cumulativeTokenUsage,
+                    cumulativeTokenUsage: cumulativeTokenUsage
                 )
                 steps = newSteps
                 if let result = terminationResult {
@@ -104,7 +104,7 @@ actor AgentLoop {
                     accumulatedMessages: &accumulatedMessages,
                     steps: steps,
                     totalStart: startTime,
-                    cumulativeTokenUsage: cumulativeTokenUsage,
+                    cumulativeTokenUsage: cumulativeTokenUsage
                 )
                 steps = newSteps
                 if let result = terminationResult {
@@ -120,7 +120,7 @@ actor AgentLoop {
             outcome: outcome,
             steps: steps,
             totalDurationMs: elapsedMs(from: startTime),
-            totalTokenUsage: cumulativeTokenUsage,
+            totalTokenUsage: cumulativeTokenUsage
         )
     }
 
@@ -135,7 +135,7 @@ actor AgentLoop {
         accumulatedMessages: inout [AgentMessage],
         steps: [AgentStep],
         totalStart: DispatchTime,
-        cumulativeTokenUsage: LLMTokenUsage?,
+        cumulativeTokenUsage: LLMTokenUsage?
     ) async throws -> ([AgentStep], AgentResult?) {
         var updatedSteps = steps
         let assistantMsg = AgentAssistantMessage(text: assistantText, toolCalls: toolCalls)
@@ -149,19 +149,19 @@ actor AgentLoop {
                     assistantMessage: assistantMsg,
                     toolResults: [],
                     durationMs: elapsedMs(from: stepStart),
-                    tokenUsage: tokenUsage,
+                    tokenUsage: tokenUsage
                 )
                 updatedSteps.append(step)
                 await stepMonitor?.agentDidCompleteStep(step)
                 let outcome = AgentOutcome.terminationTool(
                     name: toolCall.name,
-                    argumentsJSON: toolCall.argumentsJSON,
+                    argumentsJSON: toolCall.argumentsJSON
                 )
                 return (updatedSteps, AgentResult(
                     outcome: outcome,
                     steps: updatedSteps,
                     totalDurationMs: elapsedMs(from: totalStart),
-                    totalTokenUsage: cumulativeTokenUsage,
+                    totalTokenUsage: cumulativeTokenUsage
                 ))
             }
         }
@@ -175,7 +175,7 @@ actor AgentLoop {
                 let result = try await toolRegistry.execute(
                     name: toolCall.name,
                     arguments: toolCall.argumentsJSON,
-                    toolCallId: toolCall.id,
+                    toolCallId: toolCall.id
                 )
                 toolResults.append(result)
                 accumulatedMessages.append(.toolResult(result))
@@ -193,7 +193,7 @@ actor AgentLoop {
             assistantMessage: assistantMsg,
             toolResults: toolResults,
             durationMs: elapsedMs(from: stepStart),
-            tokenUsage: tokenUsage,
+            tokenUsage: tokenUsage
         )
         updatedSteps.append(step)
         await stepMonitor?.agentDidCompleteStep(step)
@@ -208,7 +208,7 @@ actor AgentLoop {
                     let result = try await self.toolRegistry.execute(
                         name: toolCall.name,
                         arguments: toolCall.argumentsJSON,
-                        toolCallId: toolCall.id,
+                        toolCallId: toolCall.id
                     )
                     return (index, result)
                 }

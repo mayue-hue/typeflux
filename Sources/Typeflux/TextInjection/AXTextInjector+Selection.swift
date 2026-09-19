@@ -3,14 +3,14 @@ import ApplicationServices
 import Foundation
 import SQLite3
 
-// swiftlint:disable file_length function_body_length opening_brace
+// swiftlint:disable file_length function_body_length
 extension AXTextInjector {
     func focusResolutionCandidate(for element: AXUIElement) -> FocusResolutionCandidate {
         FocusResolutionCandidate(
             role: copyStringAttribute(kAXRoleAttribute as String, from: element),
             isEditable: isLikelyEditable(element: element),
             isFocused: copyBooleanAttribute(kAXFocusedAttribute as String, from: element),
-            selectedRange: copySelectedTextRange(from: element),
+            selectedRange: copySelectedTextRange(from: element)
         )
     }
 
@@ -29,7 +29,7 @@ extension AXTextInjector {
             let childLines = subtreeSummary(
                 of: child,
                 depthRemaining: depthRemaining - 1,
-                maxChildren: maxChildren,
+                maxChildren: maxChildren
             )
             lines.append(contentsOf: childLines.map { "child[\(index)] " + $0 })
         }
@@ -43,7 +43,7 @@ extension AXTextInjector {
 
     func findBestEditableDescendant(
         in element: AXUIElement,
-        depthRemaining: Int,
+        depthRemaining: Int
     ) -> AXUIElement? {
         guard depthRemaining >= 0 else { return nil }
 
@@ -83,131 +83,152 @@ extension AXTextInjector {
             [Focus Resolution] \(context)
             root: \(elementSummary(rootElement))
             resolved: \(resolvedSummary)
-            """,
+            """
         )
     }
 
     func focusedElement() -> AXUIElement? {
         if let processID = frontmostProcessID(),
-           let focused = focusedElement(for: processID)
-        {
+           let focused = focusedElement(for: processID) {
             return focused
         }
 
         return systemFocusedElement()
     }
 
-    func readSelectedText() -> (text: String, context: SelectionContext)? {
-        guard let element = focusedElement() else {
+    func readSelectedText(
+        processID: pid_t?,
+        processName: String?
+    ) -> (text: String, context: SelectionContext)? {
+        guard let processID else {
+            return nil
+        }
+        let application = AXUIElementCreateApplication(processID)
+        AXUIElementSetMessagingTimeout(application, Self.replacementAXMessagingTimeout)
+        guard let element = deliveryFocusedElement(for: processID) else {
             return nil
         }
 
         let role = copyStringAttribute(kAXRoleAttribute as String, from: element)
-        let isNativeText = Self.nativeEditableRoles.contains(role ?? "")
-        let isSettable = isAttributeSettable(kAXSelectedTextRangeAttribute as CFString, on: element)
-            || isAttributeSettable(kAXValueAttribute as CFString, on: element)
-            || isAttributeSettable(kAXSelectedTextAttribute as CFString, on: element)
-
-        if !isNativeText, !isSettable {
-            return nil
-        }
-
         let range = copySelectedTextRange(from: element)
-        if let range, range.length == 0 {
-            return nil
-        }
+        guard let text = Self.validSelectionText(
+            selectedText: copyTextAttribute(kAXSelectedTextAttribute as String, from: element),
+            selectedRange: range,
+            value: copyTextAttribute(kAXValueAttribute as String, from: element),
+            placeholder: copyTextAttribute(kAXPlaceholderValueAttribute as String, from: element),
+            title: copyTextAttribute(kAXTitleAttribute as String, from: element),
+            role: role
+        ) else { return nil }
 
-        guard let text = copyStringAttribute(kAXSelectedTextAttribute, from: element) else {
-            return nil
-        }
-
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            return nil
-        }
-
-        if let placeholder = copyStringAttribute(kAXPlaceholderValueAttribute as String, from: element),
-           placeholder == text
-        {
-            return nil
-        }
-        if let title = copyStringAttribute(kAXTitleAttribute as String, from: element),
-           title == text
-        {
-            return nil
-        }
-
-        if range == nil, role == "AXWebArea" || role == "AXGroup" || role == "AXUnknown",
-           let value = copyStringAttribute(kAXValueAttribute as String, from: element),
-           value == text
-        {
-            return nil
-        }
-
-        guard let range else { return nil }
-
-        let processID = frontmostProcessID()
-        let focusedWindow = processID.flatMap(focusedWindowElement(for:))
+        let focusedWindow = focusedWindowElement(for: processID)
         let selectionWindow = containingWindow(of: element)
-        let isFocusedTarget = focusedWindow.map { window in
+        let windowMatches = focusedWindow.map { window in
             selectionWindow.map { selection in windowsMatch(window, selection) } ?? true
-        } ?? false
+        } ?? true
+        let isFocusedTarget = frontmostProcessID() == processID && windowMatches
 
         let context = SelectionContext(
             element: element,
+            windowElement: selectionWindow ?? focusedWindow,
             range: range,
             processID: processID,
-            processName: frontmostApplicationName(),
-            selectedText: trimmed,
+            processName: processName,
+            selectedText: text,
             role: role,
+            subrole: copyStringAttribute(kAXSubroleAttribute as String, from: element),
+            identifier: copyStringAttribute(kAXIdentifierAttribute as String, from: element),
+            position: copyCGPointAttribute(kAXPositionAttribute as String, from: element),
+            size: copyCGSizeAttribute(kAXSizeAttribute as String, from: element),
+            windowPosition: (selectionWindow ?? focusedWindow).flatMap {
+                copyCGPointAttribute(kAXPositionAttribute as String, from: $0)
+            },
+            windowSize: (selectionWindow ?? focusedWindow).flatMap {
+                copyCGSizeAttribute(kAXSizeAttribute as String, from: $0)
+            },
             windowTitle: selectionWindow.flatMap(windowTitle(of:)),
             isFocusedTarget: isFocusedTarget,
             source: "accessibility",
-            capturedAt: Date(),
+            capturedAt: Date()
         )
 
         return (text, context)
     }
 
+    /// Web accessibility bridges can expose a stale collapsed range while still
+    /// returning the real DOM selection. Non-empty selected text is therefore
+    /// positive context evidence; the range only controls replacement safety.
+    static func validSelectionText(
+        selectedText: String?,
+        selectedRange: CFRange?,
+        value: String?,
+        placeholder: String?,
+        title: String?,
+        role: String?
+    ) -> String? {
+        guard let selectedText else { return nil }
+        let trimmed = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalizedPlaceholder = placeholder?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedPlaceholder != trimmed, normalizedTitle != trimmed else { return nil }
+
+        let lacksPositiveRange = selectedRange?.length ?? 0 <= 0
+        let isOpaqueContainer = role == "AXWebArea" || role == "AXGroup" || role == "AXUnknown"
+        let normalizedValue = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if lacksPositiveRange, isOpaqueContainer, normalizedValue == trimmed {
+            // Several web containers expose their full value through AXSelectedText
+            // even with a collapsed caret. Do not treat that as a real selection.
+            return nil
+        }
+        return selectedText
+    }
+
     func isAttributeSettable(_ attribute: CFString, on element: AXUIElement) -> Bool {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var settable = DarwinBoolean(false)
         let status = AXUIElementIsAttributeSettable(element, attribute, &settable)
         return status == .success && settable.boolValue
     }
 
+    func processID(of element: AXUIElement) -> pid_t? {
+        var processID: pid_t = 0
+        guard AXUIElementGetPid(element, &processID) == .success else { return nil }
+        return processID
+    }
+
+    func focusedElementMatches(_ expected: AXUIElement?) -> Bool {
+        guard let expected else { return true }
+        guard let current = focusedElement() else { return false }
+        return CFEqual(expected, current)
+    }
+
     func isLikelyEditable(element: AXUIElement) -> Bool {
+        targetCapability(element: element) == .writable
+    }
+
+    func targetCapability(element: AXUIElement) -> TextTargetCapability {
         let role = copyStringAttribute(kAXRoleAttribute as String, from: element)
         let selectedRange = copySelectedTextRange(from: element)
-
-        if Self.nativeEditableRoles.contains(role ?? "") {
-            return true
-        }
-
-        if let role, Self.nonEditableFalsePositiveRoles.contains(role) {
-            return false
-        }
-
         let hasSettableTextAttributes =
             isAttributeSettable(kAXSelectedTextRangeAttribute as CFString, on: element)
                 || isAttributeSettable(kAXValueAttribute as CFString, on: element)
                 || isAttributeSettable(kAXSelectedTextAttribute as CFString, on: element)
-
-        if Self.genericEditableRoles.contains(role ?? "") {
-            return selectedRange != nil || hasSettableTextAttributes
-        }
-
-        return selectedRange != nil && hasSettableTextAttributes
+        return Self.targetCapability(
+            role: role,
+            hasSelectedRange: selectedRange != nil,
+            hasSettableTextAttributes: hasSettableTextAttributes
+        )
     }
 
     func systemFocusedElement() -> AXUIElement? {
         let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, Self.replacementAXMessagingTimeout)
         if let focused = copyElementAttribute(kAXFocusedUIElementAttribute as String, from: system),
-           let resolved = resolveFocusedElement(focused)
-        {
+           let resolved = resolveFocusedElement(focused) {
             logFocusResolution(
                 context: "systemFocusedElement",
                 rootElement: focused,
-                resolvedElement: resolved,
+                resolvedElement: resolved
             )
             return resolved
         }
@@ -217,34 +238,27 @@ extension AXTextInjector {
 
     func focusedElement(for processID: pid_t) -> AXUIElement? {
         let appElement = AXUIElementCreateApplication(processID)
+        AXUIElementSetMessagingTimeout(appElement, Self.replacementAXMessagingTimeout)
 
-        if let focused = copyElementAttribute(kAXFocusedUIElementAttribute as String, from: appElement),
-           let resolved = resolveFocusedElement(focused)
-        {
-            logFocusResolution(
-                context: "focusedElement(appFocusedUIElement)",
-                rootElement: focused,
-                resolvedElement: resolved,
-            )
-            return resolved
+        return resolvedFocusedElement(application: appElement)
+    }
+
+    func resolvedFocusedElement(application: AXUIElement) -> AXUIElement? {
+        guard let root = FocusedTextTargetResolver.applicationRoot(
+            focusedElement: { copyElementAttribute(kAXFocusedUIElementAttribute as String, from: application) },
+            focusedWindow: { copyElementAttribute(kAXFocusedWindowAttribute as String, from: application) }
+        ) else {
+            NetworkDebugLogger.logMessage("[Focus Resolution] application exposes neither focused control nor focused window")
+            return nil
         }
-
-        if let focusedWindow = copyElementAttribute(kAXFocusedWindowAttribute as String, from: appElement),
-           let resolved = resolveFocusedElement(focusedWindow)
-        {
-            logFocusResolution(
-                context: "focusedElement(focusedWindow)",
-                rootElement: focusedWindow,
-                resolvedElement: resolved,
-            )
-            return resolved
-        }
-
-        return nil
+        let resolved = resolveFocusedElement(root)
+        logFocusResolution(context: "application-focus", rootElement: root, resolvedElement: resolved)
+        return resolved
     }
 
     func focusedWindowElement(for processID: pid_t) -> AXUIElement? {
         let appElement = AXUIElementCreateApplication(processID)
+        AXUIElementSetMessagingTimeout(appElement, Self.replacementAXMessagingTimeout)
         return copyElementAttribute(kAXFocusedWindowAttribute as String, from: appElement)
     }
 
@@ -258,14 +272,12 @@ extension AXTextInjector {
             return url
         }
         if let window = containingWindow(of: element),
-           let url = copyDocumentURL(from: window)
-        {
+           let url = copyDocumentURL(from: window) {
             return url
         }
         if let processID,
            let window = focusedWindowElement(for: processID),
-           let url = copyDocumentURL(from: window)
-        {
+           let url = copyDocumentURL(from: window) {
             return url
         }
         return nil
@@ -274,7 +286,7 @@ extension AXTextInjector {
     func copyDocumentURL(from element: AXUIElement) -> URL? {
         let attributeNames = [
             kAXDocumentAttribute as String,
-            "AXURL",
+            "AXURL"
         ]
 
         for attributeName in attributeNames {
@@ -310,10 +322,9 @@ extension AXTextInjector {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             if let fileSize = attributes[.size] as? NSNumber,
-               fileSize.intValue > Self.documentContextMaxBytes
-            {
+               fileSize.intValue > Self.documentContextMaxBytes {
                 NetworkDebugLogger.logMessage(
-                    "[InputContext] document context skipped; file too large: \(url.path)",
+                    "[InputContext] document context skipped; file too large: \(url.path)"
                 )
                 return nil
             }
@@ -321,7 +332,7 @@ extension AXTextInjector {
             return try String(contentsOf: url, encoding: .utf8)
         } catch {
             NetworkDebugLogger.logMessage(
-                "[InputContext] document context read failed: \(url.path) | \(error.localizedDescription)",
+                "[InputContext] document context read failed: \(url.path) | \(error.localizedDescription)"
             )
             return nil
         }
@@ -335,7 +346,7 @@ extension AXTextInjector {
         let candidates = collectVisibleTextCandidates(
             in: root,
             depthRemaining: Self.visibleTextContextSearchDepth,
-            remainingNodes: &remainingNodes,
+            remainingNodes: &remainingNodes
         )
         return Self.joinedVisibleTextCandidates(candidates)
     }
@@ -343,7 +354,7 @@ extension AXTextInjector {
     func collectVisibleTextCandidates(
         in element: AXUIElement,
         depthRemaining: Int,
-        remainingNodes: inout Int,
+        remainingNodes: inout Int
     ) -> [String] {
         guard depthRemaining >= 0, remainingNodes > 0 else { return [] }
         remainingNodes -= 1
@@ -352,8 +363,7 @@ extension AXTextInjector {
         var candidates: [String] = []
         for attribute in Self.visibleTextCandidateAttributes(for: role) {
             if let text = copyTextAttribute(attribute, from: element),
-               Self.isUsefulVisibleTextCandidate(role: role, text: text)
-            {
+               Self.isUsefulVisibleTextCandidate(role: role, text: text) {
                 candidates.append(text)
                 break
             }
@@ -365,8 +375,8 @@ extension AXTextInjector {
                 contentsOf: collectVisibleTextCandidates(
                     in: child,
                     depthRemaining: depthRemaining - 1,
-                    remainingNodes: &remainingNodes,
-                ),
+                    remainingNodes: &remainingNodes
+                )
             )
             guard remainingNodes > 0 else { break }
         }
@@ -403,7 +413,7 @@ extension AXTextInjector {
             let projectedCount = characterCount + trimmed.count + (lines.isEmpty ? 0 : 1)
             guard projectedCount <= visibleTextContextMaxCharacters else {
                 NetworkDebugLogger.logMessage(
-                    "[InputContext] visible text context truncated at \(characterCount) characters",
+                    "[InputContext] visible text context truncated at \(characterCount) characters"
                 )
                 break
             }
@@ -419,7 +429,7 @@ extension AXTextInjector {
     func applicationStateContext(
         bundleIdentifier: String?,
         selectedText: String?,
-        windowTitle: String?,
+        windowTitle: String?
     ) -> ApplicationStateContext? {
         lastApplicationStateFailureReason = nil
 
@@ -427,12 +437,12 @@ extension AXTextInjector {
         case "com.sublimetext.4", "com.sublimetext.3", "com.sublimetext.2":
             return sublimeSessionContext(
                 selectedText: selectedText?.trimmingCharacters(in: .whitespacesAndNewlines),
-                windowTitle: windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                windowTitle: windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         case "dev.zed.Zed":
             return zedEditorContext(
                 selectedText: selectedText?.trimmingCharacters(in: .whitespacesAndNewlines),
-                windowTitle: windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+                windowTitle: windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         default:
             return browserDOMContext(bundleIdentifier: bundleIdentifier)
@@ -444,7 +454,7 @@ extension AXTextInjector {
         let script = Self.browserDOMContextAppleScript(
             bundleIdentifier: kind.bundleIdentifier,
             javascript: Self.browserDOMContextJavaScript,
-            command: kind.command,
+            command: kind.command
         )
 
         guard let output = executeAppleScript(script) else {
@@ -484,8 +494,7 @@ extension AXTextInjector {
         let number = errorInfo[NSAppleScript.errorNumber] as? NSNumber
 
         if number?.intValue == 12,
-           message.localizedCaseInsensitiveContains("JavaScript through AppleScript is turned off")
-        {
+           message.localizedCaseInsensitiveContains("JavaScript through AppleScript is turned off") {
             return "browser-dom-javascript-from-apple-events-disabled"
         }
 
@@ -532,7 +541,7 @@ extension AXTextInjector {
     static func shouldPreferApplicationStateContextBeforeAXValue(
         bundleIdentifier: String?,
         role: String?,
-        isFocusedTarget: Bool,
+        isFocusedTarget: Bool
     ) -> Bool {
         guard browserAutomationKind(for: bundleIdentifier) != nil else { return false }
 
@@ -546,7 +555,7 @@ extension AXTextInjector {
     static func shouldSuppressAXValueContext(
         bundleIdentifier: String?,
         role: String?,
-        isFocusedTarget: Bool,
+        isFocusedTarget: Bool
     ) -> Bool {
         browserAutomationKind(for: bundleIdentifier) != nil
             && role == "AXTextField"
@@ -556,7 +565,7 @@ extension AXTextInjector {
     static func browserDOMContextAppleScript(
         bundleIdentifier: String,
         javascript: String,
-        command: BrowserAutomationKind.Command,
+        command: BrowserAutomationKind.Command
     ) -> String {
         let quotedBundle = appleScriptQuotedString(bundleIdentifier)
         let quotedJavaScript = appleScriptQuotedString(javascript)
@@ -614,7 +623,7 @@ extension AXTextInjector {
         let end = max(0, min(payload.selectionEnd, payload.text.utf16.count))
         return ApplicationStateContext(
             text: payload.text,
-            selectedRange: CFRange(location: min(start, end), length: abs(end - start)),
+            selectedRange: CFRange(location: min(start, end), length: abs(end - start))
         )
     }
 
@@ -707,14 +716,14 @@ extension AXTextInjector {
     func zedEditorContext(selectedText: String?, windowTitle: String?) -> ApplicationStateContext? {
         let dbURLs = [
             FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Application Support/Zed/db/0-stable/db.sqlite"),
+                .appendingPathComponent("Library/Application Support/Zed/db/0-stable/db.sqlite")
         ]
 
         for dbURL in dbURLs {
             guard let context = zedEditorContext(
                 dbURL: dbURL,
                 selectedText: selectedText,
-                windowTitle: windowTitle,
+                windowTitle: windowTitle
             ) else {
                 continue
             }
@@ -727,7 +736,7 @@ extension AXTextInjector {
     func zedEditorContext(
         dbURL: URL,
         selectedText: String?,
-        windowTitle: String?,
+        windowTitle: String?
     ) -> ApplicationStateContext? {
         guard FileManager.default.fileExists(atPath: dbURL.path) else { return nil }
 
@@ -764,7 +773,7 @@ extension AXTextInjector {
                 bufferPath: bufferPath,
                 selectedRange: range,
                 selectedText: selectedText,
-                windowTitle: windowTitle,
+                windowTitle: windowTitle
             ) else {
                 continue
             }
@@ -779,7 +788,7 @@ extension AXTextInjector {
         bufferPath: String?,
         selectedRange: CFRange?,
         selectedText: String?,
-        windowTitle: String?,
+        windowTitle: String?
     ) -> ApplicationStateContext? {
         let text = contents?.isEmpty == false
             ? contents
@@ -787,15 +796,13 @@ extension AXTextInjector {
         guard let text, !text.isEmpty else { return nil }
 
         if let selectedText, !selectedText.isEmpty,
-           Self.sessionContents(text, containsSelection: selectedText)
-        {
+           Self.sessionContents(text, containsSelection: selectedText) {
             return ApplicationStateContext(text: text, selectedRange: selectedRange)
         }
 
         if let windowTitle,
            let bufferPath,
-           Self.zedWindowTitle(windowTitle, matchesPath: bufferPath)
-        {
+           Self.zedWindowTitle(windowTitle, matchesPath: bufferPath) {
             return ApplicationStateContext(text: text, selectedRange: selectedRange)
         }
 
@@ -834,14 +841,14 @@ extension AXTextInjector {
             .appendingPathComponent("Library/Application Support/Sublime Text/Local", isDirectory: true)
         let sessionURLs = [
             localDirectory.appendingPathComponent("Auto Save Session.sublime_session"),
-            localDirectory.appendingPathComponent("Session.sublime_session"),
+            localDirectory.appendingPathComponent("Session.sublime_session")
         ]
 
         for url in sessionURLs {
             guard let data = try? Data(contentsOf: url) else { continue }
             guard data.count <= Self.applicationStateContextMaxBytes else {
                 NetworkDebugLogger.logMessage(
-                    "[InputContext] Sublime session context skipped; file too large: \(url.path)",
+                    "[InputContext] Sublime session context skipped; file too large: \(url.path)"
                 )
                 continue
             }
@@ -850,7 +857,7 @@ extension AXTextInjector {
                 let context = Self.firstSublimeSessionContext(
                     selectedText: selectedText,
                     windowTitle: windowTitle,
-                    in: object,
+                    in: object
                 )
             else {
                 continue
@@ -865,7 +872,7 @@ extension AXTextInjector {
     static func firstSublimeSessionContext(
         selectedText: String?,
         windowTitle: String?,
-        in object: Any,
+        in object: Any
     ) -> ApplicationStateContext? {
         guard let dictionary = object as? [String: Any],
               let windows = dictionary["windows"] as? [[String: Any]]
@@ -891,18 +898,22 @@ extension AXTextInjector {
                     continue
                 }
 
-                if Self.sublimeBuffer(contents, sheet: sheet, matchesSelectedText: selectedText, windowTitle: windowTitle) {
+                if Self.sublimeBuffer(
+                    contents,
+                    sheet: sheet,
+                    matchesSelectedText: selectedText,
+                    windowTitle: windowTitle
+                ) {
                     return ApplicationStateContext(
                         text: contents,
-                        selectedRange: Self.sublimeSelectedRange(from: sheet),
+                        selectedRange: Self.sublimeSelectedRange(from: sheet)
                     )
                 }
             }
         }
 
         if let selectedText,
-           let contents = firstSessionContents(containing: selectedText, in: object)
-        {
+           let contents = firstSessionContents(containing: selectedText, in: object) {
             return ApplicationStateContext(text: contents, selectedRange: nil)
         }
         return nil
@@ -932,11 +943,10 @@ extension AXTextInjector {
         _ contents: String,
         sheet: [String: Any],
         matchesSelectedText selectedText: String?,
-        windowTitle: String?,
+        windowTitle: String?
     ) -> Bool {
         if let selectedText,
-           sessionContents(contents, containsSelection: selectedText)
-        {
+           sessionContents(contents, containsSelection: selectedText) {
             return true
         }
 
@@ -974,8 +984,7 @@ extension AXTextInjector {
 
         if let dictionary = object as? [String: Any] {
             if let contents = dictionary["contents"] as? String,
-               sessionContents(contents, containsSelection: selectedText)
-            {
+               sessionContents(contents, containsSelection: selectedText) {
                 return contents
             }
 
@@ -1042,16 +1051,20 @@ extension AXTextInjector {
         let characters = Array(normalizedSelection)
         var fragments: [String] = []
 
-        for start in stride(from: 0, to: max(characters.count - preferredLength + 1, 1), by: max(preferredLength / 2, 1)) {
+        for start in stride(
+            from: 0,
+            to: max(characters.count - preferredLength + 1, 1),
+            by: max(preferredLength / 2, 1)
+        ) {
             let end = min(start + preferredLength, characters.count)
-            let fragment = String(characters[start..<end])
+            let fragment = String(characters[start ..< end])
             if fragment.count >= minimumLength {
                 fragments.append(fragment)
             }
         }
 
         if characters.count > preferredLength {
-            let fragment = String(characters[(characters.count - preferredLength)..<characters.count])
+            let fragment = String(characters[(characters.count - preferredLength) ..< characters.count])
             fragments.append(fragment)
         }
 
@@ -1061,7 +1074,7 @@ extension AXTextInjector {
     static func contextTextSource(
         documentText: String?,
         applicationStateText: String?,
-        visibleText: String?,
+        visibleText: String?
     ) -> String? {
         if documentText != nil { return "document" }
         if applicationStateText != nil { return "application-state" }
@@ -1070,51 +1083,61 @@ extension AXTextInjector {
     }
 
     func resolveFocusedElement(_ element: AXUIElement) -> AXUIElement? {
-        let role = copyStringAttribute(kAXRoleAttribute as String, from: element)
+        FocusedTextTargetResolver.resolve(
+            root: element,
+            role: { copyStringAttribute(kAXRoleAttribute as String, from: $0) },
+            nestedFocus: { copyElementAttribute(kAXFocusedUIElementAttribute as String, from: $0) },
+            focused: { copyBooleanAttribute(kAXFocusedAttribute as String, from: $0) == true },
+            children: { copyElementArrayAttribute(kAXChildrenAttribute as String, from: $0) },
+            matches: { CFEqual($0, $1) }
+        )
+    }
 
-        if role != "AXWindow" {
-            return element
+    func validSelectionText(from element: AXUIElement) -> String? {
+        guard let selectedText = copyTextAttribute(kAXSelectedTextAttribute as String, from: element) else {
+            return nil
         }
+        return Self.validSelectionText(
+            selectedText: selectedText,
+            selectedRange: copySelectedTextRange(from: element),
+            value: copyTextAttribute(kAXValueAttribute as String, from: element),
+            placeholder: copyTextAttribute(kAXPlaceholderValueAttribute as String, from: element),
+            title: copyTextAttribute(kAXTitleAttribute as String, from: element),
+            role: copyStringAttribute(kAXRoleAttribute as String, from: element)
+        )
+    }
 
-        if let nestedFocused = copyElementAttribute(kAXFocusedUIElementAttribute as String, from: element),
-           nestedFocused != element,
-           let resolved = resolveFocusedElement(nestedFocused)
-        {
-            return resolved
-        }
-
-        if let descendant = findFocusedDescendant(
+    func findSelectionDescendant(in element: AXUIElement, depthRemaining: Int) -> AXUIElement? {
+        var remainingNodes = Self.selectionDescendantSearchMaxNodes
+        return findSelectionDescendant(
             in: element,
-            depthRemaining: Self.focusedDescendantSearchDepth,
-        ) {
-            return descendant
-        }
+            depthRemaining: depthRemaining,
+            remainingNodes: &remainingNodes
+        )
+    }
 
-        if let editableDescendant = findBestEditableDescendant(
-            in: element,
-            depthRemaining: Self.focusedDescendantSearchDepth,
-        ) {
-            let candidate = focusResolutionCandidate(for: editableDescendant)
-            NetworkDebugLogger.logMessage(
-                """
-                [Focus Resolution] no focused descendant found; editable descendant exists
-                window: \(elementSummary(element))
-                editableDescendant: \(elementSummary(editableDescendant))
-                """,
-            )
-            if Self.shouldPreferEditableDescendant(overWindowRole: role, candidate: candidate) {
-                NetworkDebugLogger.logMessage(
-                    """
-                    [Focus Resolution] promoting editable descendant as focused target
-                    window: \(elementSummary(element))
-                    promotedDescendant: \(elementSummary(editableDescendant))
-                    """,
-                )
-                return editableDescendant
+    private func findSelectionDescendant(
+        in element: AXUIElement,
+        depthRemaining: Int,
+        remainingNodes: inout Int
+    ) -> AXUIElement? {
+        guard depthRemaining > 0, remainingNodes > 0 else { return nil }
+
+        for child in copyElementArrayAttribute(kAXChildrenAttribute as String, from: element) {
+            guard remainingNodes > 0 else { return nil }
+            remainingNodes -= 1
+            if validSelectionText(from: child) != nil {
+                return child
+            }
+            if let nested = findSelectionDescendant(
+                in: child,
+                depthRemaining: depthRemaining - 1,
+                remainingNodes: &remainingNodes
+            ) {
+                return nested
             }
         }
-
-        return element
+        return nil
     }
 
     func findFocusedDescendant(in element: AXUIElement, depthRemaining: Int) -> AXUIElement? {
@@ -1178,48 +1201,43 @@ extension AXTextInjector {
         return lhsPosition == rhsPosition && lhsSize == rhsSize
     }
 
-    func activeSelectionContext() -> SelectionContext? {
-        guard let latestSelectionContext else { return nil }
-        guard Date().timeIntervalSince(latestSelectionContext.capturedAt) <= Self.selectionContextLifetime else {
-            self.latestSelectionContext = nil
+    func clearLatestSelectionContext(ifMatching context: SelectionContext) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard let latest = storedLatestSelectionContext,
+              latest.capturedAt == context.capturedAt,
+              latest.processID == context.processID,
+              CFEqual(latest.element, context.element)
+        else {
+            return
+        }
+        storedLatestSelectionContext = nil
+    }
+
+    func registerSelectionContext(_ context: SelectionContext) -> UUID {
+        let contextID = UUID()
+        let expiry = Date().addingTimeInterval(-Self.selectionContextLifetime)
+        selectionContextLock.lock()
+        selectionContexts = selectionContexts.filter { $0.value.capturedAt >= expiry }
+        if selectionContexts.count >= Self.maximumSelectionContextCount,
+           let oldestID = selectionContexts.min(by: { $0.value.capturedAt < $1.value.capturedAt })?.key {
+            selectionContexts.removeValue(forKey: oldestID)
+        }
+        selectionContexts[contextID] = context
+        selectionContextLock.unlock()
+        return contextID
+    }
+
+    func consumeSelectionContext(id: UUID) -> SelectionContext? {
+        selectionContextLock.lock()
+        defer { selectionContextLock.unlock() }
+        guard let context = selectionContexts.removeValue(forKey: id) else { return nil }
+        guard Date().timeIntervalSince(context.capturedAt) <= Self.selectionContextLifetime else {
             return nil
         }
-        return latestSelectionContext
+        return context
     }
 
-    func restoreSelectionContext(_ context: SelectionContext) {
-        let needsReactivation = Self.shouldReactivateProcessForSelectionRestore(
-            targetProcessID: context.processID,
-            frontmostProcessID: frontmostProcessID(),
-        )
-
-        if needsReactivation,
-           let processID = context.processID,
-           let app = NSRunningApplication(processIdentifier: processID)
-        {
-            app.activate(options: [.activateIgnoringOtherApps])
-
-            let deadline = Date().addingTimeInterval(0.8)
-            var activated = false
-            while Date() < deadline {
-                usleep(50000)
-                if NSWorkspace.shared.frontmostApplication?.processIdentifier == processID {
-                    activated = true
-                    break
-                }
-            }
-
-            if !activated {
-                app.activate(options: [.activateIgnoringOtherApps])
-                usleep(Self.focusRestoreDelayMicroseconds)
-            }
-        }
-
-        _ = setFocused(true, on: context.element)
-        if let range = context.range {
-            _ = setSelectedTextRange(range, on: context.element)
-        }
-    }
 }
 
-// swiftlint:enable file_length function_body_length opening_brace
+// swiftlint:enable file_length function_body_length

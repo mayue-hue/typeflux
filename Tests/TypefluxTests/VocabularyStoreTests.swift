@@ -5,11 +5,16 @@ import XCTest
 final class VocabularyStoreTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        CloudDataLocalScope.useGuest()
         UserDefaults.standard.removeObject(forKey: "vocabulary.entries")
+        UserDefaults.standard.removeObject(forKey: "vocabulary.entries.guest")
     }
 
     override func tearDown() {
+        CloudDataLocalScope.useGuest()
         UserDefaults.standard.removeObject(forKey: "vocabulary.entries")
+        UserDefaults.standard.removeObject(forKey: "vocabulary.entries.guest")
+        UserDefaults.standard.removeObject(forKey: "vocabulary.entries.user.test-user")
         super.tearDown()
     }
 
@@ -32,7 +37,7 @@ final class VocabularyStoreTests: XCTestCase {
         let viewModel = StudioViewModel(
             settingsStore: settingsStore,
             historyStore: historyStore,
-            initialSection: .vocabulary,
+            initialSection: .vocabulary
         )
 
         XCTAssertTrue(viewModel.vocabularyEntries.isEmpty)
@@ -48,17 +53,17 @@ final class VocabularyStoreTests: XCTestCase {
     func testVocabularyImportConfirmationAlertUsesExpectedLocalizedContent() {
         let alert = StudioViewModel.makeVocabularyImportConfirmationAlert(
             subject: "typeflux-vocabulary.json",
-            itemCount: 18,
+            itemCount: 18
         )
 
         XCTAssertEqual(alert.messageText, L("vocabulary.importDialog.title"))
         XCTAssertEqual(
             alert.informativeText,
-            L("vocabulary.importDialog.message", 18, "typeflux-vocabulary.json"),
+            L("vocabulary.importDialog.message", 18, "typeflux-vocabulary.json")
         )
         XCTAssertEqual(alert.buttons.map(\.title), [
             L("vocabulary.importDialog.confirm"),
-            L("common.cancel"),
+            L("common.cancel")
         ])
     }
 
@@ -66,12 +71,12 @@ final class VocabularyStoreTests: XCTestCase {
     func testVocabularyImportConfirmationAlertSupportsExternalSourceNames() {
         let alert = StudioViewModel.makeVocabularyImportConfirmationAlert(
             subject: VocabularySource.claude.displayName,
-            itemCount: 12,
+            itemCount: 12
         )
 
         XCTAssertEqual(
             alert.informativeText,
-            L("vocabulary.importDialog.message", 12, VocabularySource.claude.displayName),
+            L("vocabulary.importDialog.message", 12, VocabularySource.claude.displayName)
         )
     }
 
@@ -80,16 +85,49 @@ final class VocabularyStoreTests: XCTestCase {
         VocabularyStore.save([
             VocabularyEntry(term: "zeta", source: .manual),
             VocabularyEntry(term: "Alpha", source: .automatic),
-            VocabularyEntry(term: "beta", source: .codex),
+            VocabularyEntry(term: "beta", source: .codex)
         ])
 
         let viewModel = StudioViewModel(
             settingsStore: SettingsStore(),
             historyStore: InMemoryHistoryStore(),
-            initialSection: .vocabulary,
+            initialSection: .vocabulary
         )
 
         XCTAssertEqual(viewModel.filteredVocabularyEntries.map(\.term), ["Alpha", "beta", "zeta"])
+    }
+
+    func testVocabularyIsIsolatedBetweenGuestAndAccountScopes() {
+        VocabularyStore.save([VocabularyEntry(term: "GuestOnly", source: .manual)])
+
+        CloudDataLocalScope.useAccount("test-user")
+        XCTAssertTrue(VocabularyStore.load().isEmpty)
+        VocabularyStore.save([VocabularyEntry(term: "AccountOnly", source: .manual)])
+
+        CloudDataLocalScope.useGuest()
+        XCTAssertEqual(VocabularyStore.load().map(\.term), ["GuestOnly"])
+        CloudDataLocalScope.useAccount("test-user")
+        XCTAssertEqual(VocabularyStore.load().map(\.term), ["AccountOnly"])
+    }
+
+    func testPersonasAreIsolatedBetweenGuestAndAccountScopes() {
+        let suiteName = "VocabularyStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = SettingsStore(defaults: defaults)
+        let guest = PersonaProfile(name: "Guest", prompt: "guest")
+        let account = PersonaProfile(name: "Account", prompt: "account")
+
+        CloudDataLocalScope.useGuest()
+        store.personas = [guest]
+        CloudDataLocalScope.useAccount("test-user")
+        XCTAssertTrue(store.personas.filter { !$0.isSystem }.isEmpty)
+        store.personas = [account]
+
+        CloudDataLocalScope.useGuest()
+        XCTAssertEqual(store.personas.filter { !$0.isSystem }.map(\.id), [guest.id])
+        CloudDataLocalScope.useAccount("test-user")
+        XCTAssertEqual(store.personas.filter { !$0.isSystem }.map(\.id), [account.id])
     }
 }
 
@@ -118,15 +156,19 @@ private final class InMemoryHistoryStore: HistoryStore {
 // MARK: - Extended VocabularyStore tests
 
 final class VocabularyStoreExtendedTests: XCTestCase {
-    private let defaultsKey = "vocabulary.entries"
+    private let defaultsKey = "vocabulary.entries.guest"
 
     override func setUp() {
         super.setUp()
+        CloudDataLocalScope.useGuest()
+        UserDefaults.standard.removeObject(forKey: "vocabulary.entries")
         UserDefaults.standard.removeObject(forKey: defaultsKey)
     }
 
     override func tearDown() {
+        CloudDataLocalScope.useGuest()
         UserDefaults.standard.removeObject(forKey: defaultsKey)
+        UserDefaults.standard.removeObject(forKey: "vocabulary.entries")
         super.tearDown()
     }
 
@@ -150,7 +192,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
     func testSaveAndLoadRoundTrip() {
         let entries = [
             VocabularyEntry(term: "Combine", source: .manual),
-            VocabularyEntry(term: "XCTest", source: .automatic),
+            VocabularyEntry(term: "XCTest", source: .automatic)
         ]
         VocabularyStore.save(entries)
         let loaded = VocabularyStore.load()
@@ -163,7 +205,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
     func testExportDataRoundTripsEntries() throws {
         let entries = [
             VocabularyEntry(term: "TypefluxCloud", source: .manual, occurrenceCount: 3),
-            VocabularyEntry(term: "Qwen3-ASR", source: .claude, occurrenceCount: 2),
+            VocabularyEntry(term: "Qwen3-ASR", source: .claude, occurrenceCount: 2)
         ]
         VocabularyStore.save(entries)
 
@@ -209,7 +251,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
 
     func testImportEntriesSkipsExistingTermWithoutChangingSourceOrCount() throws {
         VocabularyStore.save([
-            VocabularyEntry(term: "TypefluxCloud", source: .automatic, occurrenceCount: 2),
+            VocabularyEntry(term: "TypefluxCloud", source: .automatic, occurrenceCount: 2)
         ])
 
         // Exercises the `[String]` JSON-array decode path used for simple bulk imports.
@@ -225,9 +267,9 @@ final class VocabularyStoreExtendedTests: XCTestCase {
         XCTAssertEqual(result.entries.first?.occurrenceCount, 2)
     }
 
-    func testImportTermsSkipsExistingExternalTermWithoutChangingSource() throws {
+    func testImportTermsSkipsExistingExternalTermWithoutChangingSource() {
         VocabularyStore.save([
-            VocabularyEntry(term: "WhisperKit", source: .claude, occurrenceCount: 2),
+            VocabularyEntry(term: "WhisperKit", source: .claude, occurrenceCount: 2)
         ])
 
         let result = VocabularyStore.importTerms(["WhisperKit"], source: .codex)
@@ -240,7 +282,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
 
     func testPreviewImportItemsSkipsExistingTermsCaseInsensitively() throws {
         VocabularyStore.save([
-            VocabularyEntry(term: "TypefluxCloud", source: .manual),
+            VocabularyEntry(term: "TypefluxCloud", source: .manual)
         ])
 
         let data = """
@@ -253,7 +295,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
         let items = try VocabularyStore.previewImportItems(from: data)
 
         XCTAssertEqual(items, [
-            VocabularyTransferItem(term: "Qwen3-ASR", source: .claude),
+            VocabularyTransferItem(term: "Qwen3-ASR", source: .claude)
         ])
     }
 
@@ -284,7 +326,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
     func testSaveDeduplicate() {
         let entries = [
             VocabularyEntry(term: "duplicate", source: .manual),
-            VocabularyEntry(term: "duplicate", source: .manual),
+            VocabularyEntry(term: "duplicate", source: .manual)
         ]
         VocabularyStore.save(entries)
         let loaded = VocabularyStore.load()
@@ -386,7 +428,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
         _ = VocabularyStore.add(term: "SeedASR", source: .manual)
         _ = VocabularyStore.add(term: "SeedASR", source: .automatic)
         let entries = VocabularyStore.add(term: "seedasr", source: .automatic) // case-insensitive
-        XCTAssertEqual(entries.filter { $0.term.lowercased() == "seedasr" }.count, 1)
+        XCTAssertEqual(entries.count(where: { $0.term.lowercased() == "seedasr" }), 1)
         XCTAssertEqual(entries.first(where: { $0.term.lowercased() == "seedasr" })?.occurrenceCount, 3)
     }
 
@@ -409,7 +451,7 @@ final class VocabularyStoreExtendedTests: XCTestCase {
         _ = VocabularyStore.add(term: "GPT", source: .manual)
 
         let bumped = VocabularyStore.incrementOccurrences(
-            in: "测试 SeedASR 与 向量 数据库",
+            in: "测试 SeedASR 与 向量 数据库"
         )
         XCTAssertEqual(Set(bumped), Set(["SeedASR", "向量"]))
 
@@ -447,29 +489,30 @@ final class VocabularyStoreExtendedTests: XCTestCase {
         _ = VocabularyStore.add(term: "Middle", source: .manual)
 
         let active = VocabularyStore.activeTerms()
-        XCTAssertEqual(active.prefix(3).map { $0 }, ["Middle", "Newest", "Oldest"])
+        XCTAssertEqual(active.prefix(3).map(\.self), ["Middle", "Newest", "Oldest"])
     }
 
-    func testActiveTermsCapsAt100Entries() {
+    func testActiveTermsCapsAt500Entries() {
         var seeded: [VocabularyEntry] = []
         let baseDate = Date(timeIntervalSince1970: 100_000)
-        for i in 0 ..< 150 {
+        for i in 0 ..< 550 {
             seeded.append(
                 VocabularyEntry(
                     term: "Term\(String(format: "%03d", i))",
                     source: .manual,
                     createdAt: baseDate.addingTimeInterval(TimeInterval(i)),
-                    occurrenceCount: 1,
-                ),
+                    occurrenceCount: 1
+                )
             )
         }
         VocabularyStore.save(seeded)
 
         let active = VocabularyStore.activeTerms()
-        XCTAssertEqual(active.count, 100)
-        // Latest createdAt wins the tiebreak → Term149 is first.
-        XCTAssertEqual(active.first, "Term149")
-        // Term049 is the 100th most-recent; Term048 should have been dropped.
+        XCTAssertEqual(VocabularyStore.activeTermLimit, 500)
+        XCTAssertEqual(active.count, 500)
+        // Latest createdAt wins the tiebreak → Term549 is first.
+        XCTAssertEqual(active.first, "Term549")
+        // Term050 is the 500th most-recent; Term049 should have been dropped.
         XCTAssertTrue(active.contains("Term050"))
         XCTAssertFalse(active.contains("Term049"))
     }
@@ -481,9 +524,9 @@ final class VocabularyStoreExtendedTests: XCTestCase {
                 VocabularyEntry(
                     term: "Term\(i)",
                     source: .manual,
-                    createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 + i)),
-                    occurrenceCount: 1,
-                ),
+                    createdAt: Date(timeIntervalSince1970: TimeInterval(1000 + i)),
+                    occurrenceCount: 1
+                )
             )
         }
         VocabularyStore.save(seeded)

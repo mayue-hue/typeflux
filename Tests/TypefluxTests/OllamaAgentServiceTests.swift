@@ -7,7 +7,7 @@ final class OllamaAgentServiceTests: XCTestCase {
         let request = LLMAgentRequest(
             systemPrompt: "sys",
             userPrompt: "usr",
-            tools: [],
+            tools: []
         )
 
         do {

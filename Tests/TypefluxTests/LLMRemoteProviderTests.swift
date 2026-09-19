@@ -77,15 +77,15 @@ final class LLMRemoteProviderTests: XCTestCase {
             LLMRemoteProvider.zhipu.endpointPresets.map(\.url),
             [
                 "https://api.z.ai/api/paas/v4",
-                "https://open.bigmodel.cn/api/paas/v4",
-            ],
+                "https://open.bigmodel.cn/api/paas/v4"
+            ]
         )
         XCTAssertEqual(
             LLMRemoteProvider.minimax.endpointPresets.map(\.url),
             [
                 "https://api.minimax.io/v1",
-                "https://api.minimaxi.com/v1",
-            ],
+                "https://api.minimaxi.com/v1"
+            ]
         )
     }
 
@@ -101,8 +101,8 @@ final class LLMRemoteProviderTests: XCTestCase {
                 "llama-3.1-8b-instant",
                 "llama-3.3-70b-versatile",
                 "openai/gpt-oss-120b",
-                "openai/gpt-oss-20b",
-            ],
+                "openai/gpt-oss-20b"
+            ]
         )
     }
 
@@ -136,8 +136,8 @@ final class LLMRemoteProviderTests: XCTestCase {
                 .grok,
                 .xiaomi,
                 .zhipu,
-                .custom,
-            ],
+                .custom
+            ]
         )
     }
 
@@ -152,7 +152,7 @@ final class LLMRemoteProviderTests: XCTestCase {
             standardProviders.map(\.displayName),
             standardProviders.map(\.displayName).sorted {
                 $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
-            },
+            }
         )
     }
 
@@ -166,15 +166,15 @@ final class LLMRemoteProviderTests: XCTestCase {
                 "grok-4-1-fast-reasoning",
                 "grok-4-1-fast-non-reasoning",
                 "grok-4.20-0309-reasoning",
-                "grok-4.20-0309-non-reasoning",
-            ],
+                "grok-4.20-0309-non-reasoning"
+            ]
         )
 
         XCTAssertEqual(LLMRemoteProvider.xiaomi.apiStyle, .openAICompatible)
         XCTAssertEqual(LLMRemoteProvider.xiaomi.defaultBaseURL, "https://api.xiaomimimo.com/v1")
         XCTAssertEqual(
             LLMRemoteProvider.xiaomi.suggestedModels,
-            ["mimo-v2-pro", "mimo-v2-flash", "mimo-v2-omni"],
+            ["mimo-v2-pro", "mimo-v2-flash", "mimo-v2-omni"]
         )
     }
 

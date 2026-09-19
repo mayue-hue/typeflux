@@ -41,7 +41,7 @@ struct MCPServerConfig: Codable, Identifiable {
         name: String,
         transport: MCPTransportConfig,
         enabled: Bool = true,
-        autoConnect: Bool = false,
+        autoConnect: Bool = false
     ) {
         self.id = id
         self.name = name

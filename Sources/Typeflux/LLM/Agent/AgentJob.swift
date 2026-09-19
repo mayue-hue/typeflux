@@ -21,7 +21,7 @@ struct AgentJobStep: Codable, Identifiable {
         toolCalls: [AgentJobToolCall],
         assistantText: String?,
         durationMs: Int64,
-        tokenUsage: LLMTokenUsage? = nil,
+        tokenUsage: LLMTokenUsage? = nil
     ) {
         id = "\(stepIndex)"
         self.stepIndex = stepIndex
@@ -92,7 +92,7 @@ struct AgentJob: Codable, Identifiable {
         steps: [AgentJobStep] = [],
         totalDurationMs: Int64? = nil,
         outcomeType: String? = nil,
-        totalTokenUsage: LLMTokenUsage? = nil,
+        totalTokenUsage: LLMTokenUsage? = nil
     ) {
         self.id = id
         self.createdAt = createdAt

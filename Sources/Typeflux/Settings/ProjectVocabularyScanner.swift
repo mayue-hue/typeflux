@@ -9,7 +9,7 @@ enum ProjectVocabularyScanner {
     /// Caps per-file reads at 32 KB so a single prompt/log dump cannot dominate
     /// sync time or memory while still leaving enough content to capture repeated
     /// project terms near the top of configuration and context files.
-    private static let contentCharacterLimit = 32_768
+    private static let contentCharacterLimit = 32768
     /// Limits recursive scanning to a few hundred files per sync. `.codex` and
     /// `.claude` trees can accumulate large histories; this keeps sync responsive
     /// while still covering the most relevant project/context artifacts.
@@ -19,7 +19,7 @@ enum ProjectVocabularyScanner {
     private static let separatorCharacters = CharacterSet(charactersIn: vocabularyDecoratedCharacters)
     private static let pathTokenRegex = makeRegex(#"\b[\p{L}\p{N}][\p{L}\p{N}._+\-/]{2,39}\b"#)
     private static let richTextTokenRegex = makeRegex(
-        #"\b(?:[A-Z]{2,}[A-Za-z0-9._+\-/]*|[A-Za-z0-9]+(?:[._+\-/][A-Za-z0-9]+)+|[A-Z][A-Za-z0-9]+(?:[A-Z][A-Za-z0-9]+)+|[A-Za-z]*\d+[A-Za-z0-9._+\-/]*)\b"#,
+        #"\b(?:[A-Z]{2,}[A-Za-z0-9._+\-/]*|[A-Za-z0-9]+(?:[._+\-/][A-Za-z0-9]+)+|[A-Z][A-Za-z0-9]+(?:[A-Z][A-Za-z0-9]+)+|[A-Za-z]*\d+[A-Za-z0-9._+\-/]*)\b"#
     )
     private static let hanTokenRegex = makeRegex(#"\p{Han}{2,12}"#)
     /// Generic assistant/configuration words that appear frequently in `.codex`
@@ -30,11 +30,11 @@ enum ProjectVocabularyScanner {
         "folder", "folders", "history", "instruction", "instructions", "message",
         "messages", "output", "path", "paths", "project", "projects", "prompt",
         "prompts", "readme", "response", "session", "settings", "system", "temp",
-        "text", "tmp", "user", "workspace",
+        "text", "tmp", "user", "workspace"
     ]
 
     static func scanDefaultContextDirectories(
-        fileManager: FileManager = .default,
+        fileManager: FileManager = .default
     ) -> ProjectVocabularyDiscovery {
         let home = fileManager.homeDirectoryForCurrentUser
         let roots = [".codex", ".claude"]
@@ -45,7 +45,7 @@ enum ProjectVocabularyScanner {
 
     static func scanContextDirectories(
         _ directories: [URL],
-        fileManager: FileManager = .default,
+        fileManager: FileManager = .default
     ) -> ProjectVocabularyDiscovery {
         let roots = directories.filter { directoryExists(at: $0, fileManager: fileManager) }
         guard !roots.isEmpty else {
@@ -70,14 +70,14 @@ enum ProjectVocabularyScanner {
         for root in roots {
             record(
                 terms: candidateTerms(in: root.lastPathComponent, allowPlainLowercase: false),
-                weight: 3,
+                weight: 3
             )
 
             guard let enumerator = fileManager.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey],
                 options: [.skipsPackageDescendants],
-                errorHandler: { _, _ in true },
+                errorHandler: { _, _ in true }
             ) else {
                 continue
             }
@@ -86,7 +86,7 @@ enum ProjectVocabularyScanner {
                 let relativePath = url.path.replacingOccurrences(of: root.path + "/", with: "")
                 record(
                     terms: candidateTerms(in: relativePath, allowPlainLowercase: true),
-                    weight: 3,
+                    weight: 3
                 )
 
                 guard scannedFiles < maxScannedFiles else { break }
@@ -119,13 +119,12 @@ enum ProjectVocabularyScanner {
     static func candidateTerms(in text: String, allowPlainLowercase: Bool) -> [String] {
         var terms: [String] = []
 
-        let segments: [String]
-        if allowPlainLowercase {
-            segments = text
+        let segments: [String] = if allowPlainLowercase {
+            text
                 .components(separatedBy: CharacterSet(charactersIn: "/\\"))
                 .filter { !$0.isEmpty }
         } else {
-            segments = [text]
+            [text]
         }
 
         for segment in segments {
@@ -161,7 +160,7 @@ enum ProjectVocabularyScanner {
         guard let existing else { return candidate }
         let existingDecorated = existing.hasVocabularyDecoration
         let candidateDecorated = candidate.hasVocabularyDecoration
-        if candidateDecorated && !existingDecorated {
+        if candidateDecorated, !existingDecorated {
             return candidate
         }
         if candidate.count > existing.count, candidateDecorated == existingDecorated {
@@ -228,13 +227,13 @@ enum ProjectVocabularyScanner {
             return try NSRegularExpression(pattern: pattern)
         } catch {
             ErrorLogStore.shared.log(
-                "Project vocabulary regex initialization failed for pattern \(pattern): \(error.localizedDescription)",
+                "Project vocabulary regex initialization failed for pattern \(pattern): \(error.localizedDescription)"
             )
             if let fallback = try? NSRegularExpression(pattern: "$^") {
                 return fallback
             }
             fatalError(
-                "ProjectVocabularyScanner could not initialize its fallback regex. This indicates a fundamental Foundation regex failure and the process must terminate.",
+                "ProjectVocabularyScanner could not initialize its fallback regex. This indicates a fundamental Foundation regex failure and the process must terminate."
             )
         }
     }

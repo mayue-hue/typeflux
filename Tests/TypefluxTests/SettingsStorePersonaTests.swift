@@ -14,7 +14,22 @@ final class SettingsStorePersonaTests: XCTestCase {
 
         let translatorPersona = try XCTUnwrap(store.personas.first(where: { $0.name == "English Translator" }))
         XCTAssertTrue(translatorPersona.prompt.contains("Persona language mode: fixed English."))
-        XCTAssertTrue(translatorPersona.prompt.contains("always produce the final output in natural English"))
+        XCTAssertTrue(translatorPersona.prompt.contains("output only the final English text"))
+    }
+
+    func testBuiltInPersonasUseStableCloudIdentifiers() throws {
+        let suiteName = "SettingsStorePersonaTests.stableIDs.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let store = SettingsStore(defaults: defaults)
+
+        let typefluxPersona = try XCTUnwrap(store.personas.first(where: { $0.name == "Typeflux" }))
+        let translatorPersona = try XCTUnwrap(store.personas.first(where: { $0.name == "English Translator" }))
+
+        XCTAssertEqual(typefluxPersona.id, UUID(uuidString: "2A7A4A74-A8AC-4F3C-9FB1-5A433EDFA001"))
+        XCTAssertEqual(translatorPersona.id, UUID(uuidString: "2A7A4A74-A8AC-4F3C-9FB1-5A433EDFA002"))
+        XCTAssertTrue(typefluxPersona.isSystem)
+        XCTAssertTrue(translatorPersona.isSystem)
     }
 
     func testResolvedTypefluxPersonaUsesAppLanguagePrompt() throws {
@@ -37,7 +52,7 @@ final class SettingsStorePersonaTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("Persona language mode: inherit."))
         XCTAssertTrue(prompt.contains("spoken filler words (such as um, uh, like, you know, basically)"))
-        XCTAssertTrue(prompt.contains("Keep the overall tone professional, formal, and natural."))
+        XCTAssertTrue(prompt.contains("Keep the user's overall tone natural"))
         XCTAssertFalse(prompt.contains("人设语言模式"))
     }
 
@@ -46,7 +61,7 @@ final class SettingsStorePersonaTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("人設語言模式：繼承。"))
         XCTAssertTrue(prompt.contains("去除口語填充詞（如 um、uh、like、you know、basically 等）"))
-        XCTAssertTrue(prompt.contains("保持整體語氣專業、正式、自然。"))
+        XCTAssertTrue(prompt.contains("保持使用者整體語氣自然"))
         XCTAssertFalse(prompt.contains("人设语言模式"))
     }
 
@@ -55,7 +70,7 @@ final class SettingsStorePersonaTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("ペルソナの言語モード：継承。"))
         XCTAssertTrue(prompt.contains("口頭のフィラー（um、uh、like、you know、basically など）"))
-        XCTAssertTrue(prompt.contains("全体のトーンをプロフェッショナルで、フォーマルで、自然に保つ。"))
+        XCTAssertTrue(prompt.contains("ユーザーの全体的なトーンを自然に保ち"))
         XCTAssertFalse(prompt.contains("人设语言模式"))
     }
 
@@ -64,7 +79,7 @@ final class SettingsStorePersonaTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("페르소나 언어 모드: 상속."))
         XCTAssertTrue(prompt.contains("구어 필러(예: um, uh, like, you know, basically)"))
-        XCTAssertTrue(prompt.contains("전체 어조는 전문적이고 격식 있으며 자연스럽게 유지한다."))
+        XCTAssertTrue(prompt.contains("사용자의 전체 어조를 자연스럽게 유지하고"))
         XCTAssertFalse(prompt.contains("人设语言模式"))
     }
 
@@ -90,7 +105,7 @@ final class SettingsStorePersonaTests: XCTestCase {
         let prompt = store.resolvedPersonaPrompt(for: translatorPersona)
 
         XCTAssertTrue(prompt.contains("Persona language mode: fixed English."))
-        XCTAssertTrue(prompt.contains("always produce the final output in natural English"))
+        XCTAssertTrue(prompt.contains("output only the final English text"))
         XCTAssertFalse(prompt.contains("人设语言模式"))
     }
 
@@ -136,12 +151,12 @@ final class SettingsStorePersonaTests: XCTestCase {
         let legacyBuiltIn = PersonaProfile(
             id: UUID(),
             name: "Professional Assistant",
-            prompt: "Rewrite in professional, clear, and concise Chinese. Improve sentence flow, preserve key information, and make it suitable to send directly to colleagues or clients.",
+            prompt: "Rewrite in professional, clear, and concise Chinese. Improve sentence flow, preserve key information, and make it suitable to send directly to colleagues or clients."
         )
         let legacyCustom = PersonaProfile(
             id: UUID(),
             name: "Founder Voice",
-            prompt: "Rewrite in a calm founder tone.",
+            prompt: "Rewrite in a calm founder tone."
         )
 
         let data = try JSONEncoder().encode([legacyBuiltIn, legacyCustom])

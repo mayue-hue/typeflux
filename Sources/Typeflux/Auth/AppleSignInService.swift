@@ -1,8 +1,8 @@
 import AppKit
 import AuthenticationServices
 import Foundation
-import Security
 import os
+import Security
 
 /// Handles Sign In with Apple using ASAuthorizationAppleIDProvider.
 ///
@@ -18,7 +18,7 @@ import os
 /// - The backend APPLE_OIDC_CLIENT_ID must match the bundle ID (or configured Services ID).
 @MainActor
 final class AppleSignInService: NSObject {
-    nonisolated private static let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "AppleSignInService")
+    private nonisolated static let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "AppleSignInService")
     private static let shared = AppleSignInService()
 
     private var continuation: CheckedContinuation<String, Error>?
@@ -31,8 +31,7 @@ final class AppleSignInService: NSObject {
     private func performSignIn() async throws -> String {
         if
             let runtimeConfiguration = Self.currentRuntimeConfiguration(),
-            let description = Self.configurationIssueDescription(for: runtimeConfiguration)
-        {
+            let description = Self.configurationIssueDescription(for: runtimeConfiguration) {
             throw AppleSignInError.configurationIssue(description)
         }
 
@@ -45,7 +44,7 @@ final class AppleSignInService: NSObject {
                 cont.resume(throwing: AppleSignInError.internalError)
                 return
             }
-            self.continuation = cont
+            continuation = cont
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
             controller.presentationContextProvider = self
@@ -58,7 +57,7 @@ final class AppleSignInService: NSObject {
 
 extension AppleSignInService: ASAuthorizationControllerDelegate {
     func authorizationController(
-        controller: ASAuthorizationController,
+        controller _: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
         guard
@@ -85,7 +84,7 @@ extension AppleSignInService: ASAuthorizationControllerDelegate {
     }
 
     func authorizationController(
-        controller: ASAuthorizationController,
+        controller _: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
         let nsError = error as NSError
@@ -108,7 +107,7 @@ extension AppleSignInService: ASAuthorizationControllerDelegate {
 // MARK: - ASAuthorizationControllerPresentationContextProviding
 
 extension AppleSignInService: ASAuthorizationControllerPresentationContextProviding {
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    func presentationAnchor(for _: ASAuthorizationController) -> ASPresentationAnchor {
         NSApp.keyWindow ?? NSApp.windows.first ?? ASPresentationAnchor()
     }
 }
@@ -240,7 +239,8 @@ extension AppleSignInService {
         var staticCode: SecStaticCode?
         let copyStaticStatus = SecCodeCopyStaticCode(selfCode, [], &staticCode)
         guard copyStaticStatus == errSecSuccess, let staticCode else {
-            logger.error("[Apple Sign In] failed to inspect static code signature: \(copyStaticStatus, privacy: .public)")
+            logger
+                .error("[Apple Sign In] failed to inspect static code signature: \(copyStaticStatus, privacy: .public)")
             return nil
         }
 
@@ -282,7 +282,7 @@ enum AppleSignInError: LocalizedError {
             "Failed to retrieve Apple ID token."
         case .internalError:
             "An internal error occurred during Apple Sign In."
-        case .configurationIssue(let description):
+        case let .configurationIssue(description):
             description
         }
     }

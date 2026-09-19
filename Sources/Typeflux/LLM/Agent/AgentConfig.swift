@@ -19,7 +19,7 @@ struct AgentConfig {
         allowParallelToolCalls: Bool,
         temperature: Double?,
         enableStreaming: Bool,
-        initialStepIndex: Int = 0,
+        initialStepIndex: Int = 0
     ) {
         self.maxSteps = maxSteps
         self.allowParallelToolCalls = allowParallelToolCalls
@@ -33,6 +33,6 @@ struct AgentConfig {
         allowParallelToolCalls: false,
         temperature: nil,
         enableStreaming: false,
-        initialStepIndex: 0,
+        initialStepIndex: 0
     )
 }

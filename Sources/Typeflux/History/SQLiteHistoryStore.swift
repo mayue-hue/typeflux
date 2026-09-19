@@ -33,8 +33,7 @@ final class SQLiteHistoryStore: HistoryStore {
         let newBaseDir = appSupport.appendingPathComponent("Typeflux", isDirectory: true)
         let legacyBaseDir = appSupport.appendingPathComponent("Typeflux", isDirectory: true)
         if !FileManager.default.fileExists(atPath: newBaseDir.path),
-           FileManager.default.fileExists(atPath: legacyBaseDir.path)
-        {
+           FileManager.default.fileExists(atPath: legacyBaseDir.path) {
             try? FileManager.default.moveItem(at: legacyBaseDir, to: newBaseDir)
         }
         self.init(baseDir: newBaseDir)
@@ -98,7 +97,7 @@ final class SQLiteHistoryStore: HistoryStore {
                     sql: "DELETE FROM history_records WHERE id = ?;",
                     bind: { statement in
                         self.bind(id.uuidString, at: 1, in: statement)
-                    },
+                    }
                 )
                 if let audioPath {
                     self.removeAudioFileIfNeeded(at: audioPath)
@@ -119,7 +118,7 @@ final class SQLiteHistoryStore: HistoryStore {
                     sql: "DELETE FROM history_records WHERE date < ?;",
                     bind: { statement in
                         sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
-                    },
+                    }
                 )
                 staleAudioPaths.forEach(self.removeAudioFileIfNeeded(at:))
                 self.notifyChange()
@@ -207,6 +206,9 @@ final class SQLiteHistoryStore: HistoryStore {
             transcript_text TEXT,
             persona_prompt TEXT,
             persona_result_text TEXT,
+            open_cc_result_text TEXT,
+            open_cc_config TEXT,
+            post_processed_text TEXT,
             selection_original_text TEXT,
             selection_edited_text TEXT,
             recording_duration_seconds REAL,
@@ -228,6 +230,9 @@ final class SQLiteHistoryStore: HistoryStore {
     private func migrateSchemaIfNeeded() throws {
         try ensureColumnExists(name: "pipeline_timing_json", definition: "TEXT")
         try ensureColumnExists(name: "pipeline_stats_json", definition: "TEXT")
+        try ensureColumnExists(name: "post_processed_text", definition: "TEXT")
+        try ensureColumnExists(name: "open_cc_result_text", definition: "TEXT")
+        try ensureColumnExists(name: "open_cc_config", definition: "TEXT")
     }
 
     private func migrateLegacyJSONIfNeeded() throws {
@@ -267,11 +272,11 @@ final class SQLiteHistoryStore: HistoryStore {
         try fetchRecords(
             sql: """
             SELECT id, date, mode, audio_file_path, transcript_text, persona_prompt, persona_result_text,
-                   selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
+                   open_cc_result_text, open_cc_config, post_processed_text, selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
                    error_message, apply_message, recording_status, transcription_status, processing_status, apply_status
             FROM history_records
             ORDER BY date DESC;
-            """,
+            """
         )
     }
 
@@ -281,7 +286,7 @@ final class SQLiteHistoryStore: HistoryStore {
             return try fetchRecords(
                 sql: """
                 SELECT id, date, mode, audio_file_path, transcript_text, persona_prompt, persona_result_text,
-                       selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
+                       open_cc_result_text, open_cc_config, post_processed_text, selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
                        error_message, apply_message, recording_status, transcription_status, processing_status, apply_status
                 FROM history_records
                 ORDER BY date DESC
@@ -290,7 +295,7 @@ final class SQLiteHistoryStore: HistoryStore {
                 bind: { statement in
                     sqlite3_bind_int64(statement, 1, sqlite3_int64(limit))
                     sqlite3_bind_int64(statement, 2, sqlite3_int64(offset))
-                },
+                }
             )
         }
 
@@ -298,12 +303,14 @@ final class SQLiteHistoryStore: HistoryStore {
         return try fetchRecords(
             sql: """
             SELECT id, date, mode, audio_file_path, transcript_text, persona_prompt, persona_result_text,
-                   selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
+                   open_cc_result_text, open_cc_config, post_processed_text, selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
                    error_message, apply_message, recording_status, transcription_status, processing_status, apply_status
             FROM history_records
             WHERE mode LIKE ? COLLATE NOCASE
                OR transcript_text LIKE ? COLLATE NOCASE
                OR persona_result_text LIKE ? COLLATE NOCASE
+               OR open_cc_result_text LIKE ? COLLATE NOCASE
+               OR post_processed_text LIKE ? COLLATE NOCASE
                OR selection_edited_text LIKE ? COLLATE NOCASE
                OR error_message LIKE ? COLLATE NOCASE
                OR audio_file_path LIKE ? COLLATE NOCASE
@@ -317,9 +324,11 @@ final class SQLiteHistoryStore: HistoryStore {
                 self.bind(wildcardQuery, at: 4, in: statement)
                 self.bind(wildcardQuery, at: 5, in: statement)
                 self.bind(wildcardQuery, at: 6, in: statement)
-                sqlite3_bind_int64(statement, 7, sqlite3_int64(limit))
-                sqlite3_bind_int64(statement, 8, sqlite3_int64(offset))
-            },
+                self.bind(wildcardQuery, at: 7, in: statement)
+                self.bind(wildcardQuery, at: 8, in: statement)
+                sqlite3_bind_int64(statement, 9, sqlite3_int64(limit))
+                sqlite3_bind_int64(statement, 10, sqlite3_int64(offset))
+            }
         )
     }
 
@@ -327,7 +336,7 @@ final class SQLiteHistoryStore: HistoryStore {
         try fetchRecords(
             sql: """
             SELECT id, date, mode, audio_file_path, transcript_text, persona_prompt, persona_result_text,
-                   selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
+                   open_cc_result_text, open_cc_config, post_processed_text, selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
                    error_message, apply_message, recording_status, transcription_status, processing_status, apply_status
             FROM history_records
             WHERE id = ?
@@ -335,13 +344,13 @@ final class SQLiteHistoryStore: HistoryStore {
             """,
             bind: { statement in
                 self.bind(id.uuidString, at: 1, in: statement)
-            },
+            }
         ).first
     }
 
     private func fetchRecords(
         sql: String,
-        bind: ((OpaquePointer?) -> Void)? = nil,
+        bind: ((OpaquePointer?) -> Void)? = nil
     ) throws -> [HistoryRecord] {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -363,9 +372,9 @@ final class SQLiteHistoryStore: HistoryStore {
         let sql = """
         INSERT INTO history_records (
             id, date, mode, audio_file_path, transcript_text, persona_prompt, persona_result_text,
-            selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
+            open_cc_result_text, open_cc_config, post_processed_text, selection_original_text, selection_edited_text, recording_duration_seconds, pipeline_timing_json, pipeline_stats_json,
             error_message, apply_message, recording_status, transcription_status, processing_status, apply_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             date = excluded.date,
             mode = excluded.mode,
@@ -373,6 +382,9 @@ final class SQLiteHistoryStore: HistoryStore {
             transcript_text = excluded.transcript_text,
             persona_prompt = excluded.persona_prompt,
             persona_result_text = excluded.persona_result_text,
+            open_cc_result_text = excluded.open_cc_result_text,
+            open_cc_config = excluded.open_cc_config,
+            post_processed_text = excluded.post_processed_text,
             selection_original_text = excluded.selection_original_text,
             selection_edited_text = excluded.selection_edited_text,
             recording_duration_seconds = excluded.recording_duration_seconds,
@@ -394,17 +406,24 @@ final class SQLiteHistoryStore: HistoryStore {
             self.bind(record.transcriptText, at: 5, in: statement)
             self.bind(record.personaPrompt, at: 6, in: statement)
             self.bind(record.personaResultText, at: 7, in: statement)
-            self.bind(record.selectionOriginalText, at: 8, in: statement)
-            self.bind(record.selectionEditedText, at: 9, in: statement)
-            self.bind(record.recordingDurationSeconds, at: 10, in: statement)
-            self.bind(self.encodeCodable(record.pipelineTiming), at: 11, in: statement)
-            self.bind(self.encodeCodable(record.pipelineStats ?? record.pipelineTiming?.generatedStats()), at: 12, in: statement)
-            self.bind(record.errorMessage, at: 13, in: statement)
-            self.bind(record.applyMessage, at: 14, in: statement)
-            self.bind(record.recordingStatus.rawValue, at: 15, in: statement)
-            self.bind(record.transcriptionStatus.rawValue, at: 16, in: statement)
-            self.bind(record.processingStatus.rawValue, at: 17, in: statement)
-            self.bind(record.applyStatus.rawValue, at: 18, in: statement)
+            self.bind(record.openCCResultText, at: 8, in: statement)
+            self.bind(record.openCCConfig, at: 9, in: statement)
+            self.bind(record.postProcessedText, at: 10, in: statement)
+            self.bind(record.selectionOriginalText, at: 11, in: statement)
+            self.bind(record.selectionEditedText, at: 12, in: statement)
+            self.bind(record.recordingDurationSeconds, at: 13, in: statement)
+            self.bind(self.encodeCodable(record.pipelineTiming), at: 14, in: statement)
+            self.bind(
+                self.encodeCodable(record.pipelineStats ?? record.pipelineTiming?.generatedStats()),
+                at: 15,
+                in: statement
+            )
+            self.bind(record.errorMessage, at: 16, in: statement)
+            self.bind(record.applyMessage, at: 17, in: statement)
+            self.bind(record.recordingStatus.rawValue, at: 18, in: statement)
+            self.bind(record.transcriptionStatus.rawValue, at: 19, in: statement)
+            self.bind(record.processingStatus.rawValue, at: 20, in: statement)
+            self.bind(record.applyStatus.rawValue, at: 21, in: statement)
         }
     }
 
@@ -427,7 +446,7 @@ final class SQLiteHistoryStore: HistoryStore {
             sql: "SELECT audio_file_path FROM history_records WHERE date < ? AND audio_file_path IS NOT NULL;",
             bind: { statement in
                 sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
-            },
+            }
         )
     }
 
@@ -437,7 +456,7 @@ final class SQLiteHistoryStore: HistoryStore {
 
     private func fetchAudioPaths(
         sql: String,
-        bind: ((OpaquePointer?) -> Void)? = nil,
+        bind: ((OpaquePointer?) -> Void)? = nil
     ) throws -> [String] {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -463,13 +482,13 @@ final class SQLiteHistoryStore: HistoryStore {
             let id = UUID(uuidString: idString),
             let modeRaw = string(at: 2, in: statement),
             let mode = HistoryRecord.Mode(rawValue: modeRaw),
-            let recordingStatusRaw = string(at: 14, in: statement),
+            let recordingStatusRaw = string(at: 17, in: statement),
             let recordingStatus = HistoryRecord.StepStatus(rawValue: recordingStatusRaw),
-            let transcriptionStatusRaw = string(at: 15, in: statement),
+            let transcriptionStatusRaw = string(at: 18, in: statement),
             let transcriptionStatus = HistoryRecord.StepStatus(rawValue: transcriptionStatusRaw),
-            let processingStatusRaw = string(at: 16, in: statement),
+            let processingStatusRaw = string(at: 19, in: statement),
             let processingStatus = HistoryRecord.StepStatus(rawValue: processingStatusRaw),
-            let applyStatusRaw = string(at: 17, in: statement),
+            let applyStatusRaw = string(at: 20, in: statement),
             let applyStatus = HistoryRecord.StepStatus(rawValue: applyStatusRaw)
         else {
             throw databaseError(message: "History database returned invalid record data")
@@ -483,23 +502,26 @@ final class SQLiteHistoryStore: HistoryStore {
             transcriptText: string(at: 4, in: statement),
             personaPrompt: string(at: 5, in: statement),
             personaResultText: string(at: 6, in: statement),
-            selectionOriginalText: string(at: 7, in: statement),
-            selectionEditedText: string(at: 8, in: statement),
-            recordingDurationSeconds: double(at: 9, in: statement),
-            pipelineTiming: decodeCodable(from: string(at: 10, in: statement), as: HistoryPipelineTiming.self),
-            pipelineStats: decodeCodable(from: string(at: 11, in: statement), as: HistoryPipelineStats.self),
-            errorMessage: string(at: 12, in: statement),
-            applyMessage: string(at: 13, in: statement),
+            openCCResultText: string(at: 7, in: statement),
+            openCCConfig: string(at: 8, in: statement),
+            postProcessedText: string(at: 9, in: statement),
+            selectionOriginalText: string(at: 10, in: statement),
+            selectionEditedText: string(at: 11, in: statement),
+            recordingDurationSeconds: double(at: 12, in: statement),
+            pipelineTiming: decodeCodable(from: string(at: 13, in: statement), as: HistoryPipelineTiming.self),
+            pipelineStats: decodeCodable(from: string(at: 14, in: statement), as: HistoryPipelineStats.self),
+            errorMessage: string(at: 15, in: statement),
+            applyMessage: string(at: 16, in: statement),
             recordingStatus: recordingStatus,
             transcriptionStatus: transcriptionStatus,
             processingStatus: processingStatus,
-            applyStatus: applyStatus,
+            applyStatus: applyStatus
         )
     }
 
     private func execute(
         sql: String,
-        bind: ((OpaquePointer?) -> Void)? = nil,
+        bind: ((OpaquePointer?) -> Void)? = nil
     ) throws {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -591,45 +613,140 @@ final class SQLiteHistoryStore: HistoryStore {
     private func markdown(for stats: HistoryPipelineStats) -> String {
         var lines: [String] = []
 
-        if let value = stats.recordingStoppedAt {
-            lines.append("- Recording stopped: \(value.ISO8601Format())")
-        }
-        if let value = stats.audioFileReadyAt {
-            lines.append("- Audio file ready: \(value.ISO8601Format())")
-        }
-        if let value = stats.transcriptionStartedAt {
-            lines.append("- STT started: \(value.ISO8601Format())")
-        }
-        if let value = stats.transcriptionCompletedAt {
-            lines.append("- STT completed: \(value.ISO8601Format())")
-        }
-        if let value = stats.llmProcessingStartedAt {
-            lines.append("- LLM started: \(value.ISO8601Format())")
-        }
-        if let value = stats.llmProcessingCompletedAt {
-            lines.append("- LLM completed: \(value.ISO8601Format())")
-        }
-        if let value = stats.applyStartedAt {
-            lines.append("- Apply started: \(value.ISO8601Format())")
-        }
-        if let value = stats.applyCompletedAt {
-            lines.append("- Apply completed: \(value.ISO8601Format())")
+        let timestamps: [(String, Date?)] = [
+            ("Hotkey detected", stats.hotkeyDetectedAt),
+            ("Recording workflow started", stats.recordingWorkflowStartedAt),
+            ("Audio engine started", stats.audioEngineStartedAt),
+            ("First audio buffer", stats.firstAudioBufferAt),
+            ("Recording stopped", stats.recordingStoppedAt),
+            ("Audio file ready", stats.audioFileReadyAt),
+            ("STT started", stats.transcriptionStartedAt),
+            ("STT completed", stats.transcriptionCompletedAt),
+            ("Realtime session started", stats.realtimeSessionStartedAt),
+            ("Realtime connection ready", stats.realtimeConnectionReadyAt),
+            ("Realtime first audio submitted", stats.realtimeFirstAudioSubmittedAt),
+            ("Realtime first result received", stats.realtimeFirstResultReceivedAt),
+            ("Realtime final result received", stats.realtimeFinalResultReceivedAt),
+            ("Realtime finish started", stats.realtimeFinishStartedAt),
+            ("Realtime finish completed", stats.realtimeFinishCompletedAt),
+            ("LLM started", stats.llmProcessingStartedAt),
+            ("LLM first output", stats.llmFirstOutputAt),
+            ("LLM completed", stats.llmProcessingCompletedAt),
+            ("Apply started", stats.applyStartedAt),
+            ("Apply completed", stats.applyCompletedAt)
+        ]
+        for (label, value) in timestamps {
+            if let value {
+                lines.append("- \(label): \(value.ISO8601Format())")
+            }
         }
 
         let durations: [(String, Int?)] = [
+            ("Hotkey -> first audio", stats.hotkeyToFirstAudioMilliseconds),
+            ("Hotkey dispatch", stats.hotkeyDispatchMilliseconds),
+            ("Recording preparation", stats.recordingPreparationMilliseconds),
+            ("Audio engine -> first buffer", stats.audioEngineToFirstBufferMilliseconds),
             ("Stop -> audio ready", stats.stopToAudioReadyMilliseconds),
             ("STT duration", stats.transcriptionDurationMilliseconds),
             ("Stop -> STT completed", stats.stopToTranscriptionCompletedMilliseconds),
+            ("Realtime connection", stats.realtimeConnectionDurationMilliseconds),
+            ("Realtime ready -> first audio", stats.realtimeReadyToFirstAudioMilliseconds),
+            ("Realtime first audio -> first result", stats.realtimeAudioToFirstResultMilliseconds),
+            ("Realtime stop -> final result", stats.realtimeStopToFinalResultMilliseconds),
+            ("Realtime finish", stats.realtimeFinishDurationMilliseconds),
             ("Transcript -> LLM start", stats.transcriptToLLMStartMilliseconds),
+            ("LLM time to first output", stats.llmTimeToFirstOutputMilliseconds),
             ("LLM duration", stats.llmDurationMilliseconds),
             ("Apply duration", stats.applyDurationMilliseconds),
-            ("End-to-end", stats.endToEndMilliseconds),
+            ("End-to-end", stats.endToEndMilliseconds)
         ]
 
         for (label, value) in durations {
             if let value {
                 lines.append("- \(label): \(value) ms")
             }
+        }
+
+        if let race = stats.asrRace {
+            let selectedSource = race.selectedSource?.rawValue ?? "none"
+            lines.append("- ASR race selected: \(selectedSource)")
+            lines.append("  - Selection reason: \(race.selectionReason.rawValue)")
+            lines.append("  - Priority window: \(race.priorityWindowMilliseconds) ms")
+            lines.append("  - Priority window exceeded: \(race.cloudPriorityWindowExceeded)")
+            lines.append("  - Decision duration: \(race.decisionDurationMilliseconds) ms")
+            lines.append(
+                "  - Cloud: \(race.cloudAttempt.durationMilliseconds) ms (\(race.cloudAttempt.outcome.rawValue))"
+            )
+            lines.append(
+                "  - Local: \(race.localAttempt.durationMilliseconds) ms (\(race.localAttempt.outcome.rawValue))"
+            )
+        }
+
+        if let llmOutcome = stats.llmOutcome {
+            lines.append("- LLM outcome: \(llmOutcome.outcome.rawValue)")
+            lines.append("  - Duration: \(llmOutcome.durationMilliseconds) ms")
+            if let timeout = llmOutcome.timeoutMilliseconds {
+                lines.append("  - Timeout limit: \(timeout) ms")
+            }
+            if let baseTimeout = llmOutcome.baseTimeoutMilliseconds {
+                lines.append("  - Base timeout: \(baseTimeout) ms")
+            }
+            if let inputUnits = llmOutcome.estimatedInputUnits {
+                lines.append("  - Estimated input units: \(inputUnits)")
+            }
+            if let firstOutputTimeout = llmOutcome.firstOutputTimeoutMilliseconds {
+                lines.append("  - First output timeout: \(firstOutputTimeout) ms")
+            }
+            if let stallTimeout = llmOutcome.stallTimeoutMilliseconds {
+                lines.append("  - Stall timeout: \(stallTimeout) ms")
+            }
+            if let timeoutKind = llmOutcome.timeoutKind {
+                lines.append("  - Timeout kind: \(timeoutKind.rawValue)")
+            }
+            lines.append("  - Used transcript fallback: \(llmOutcome.usedTranscriptFallback)")
+        }
+
+        if let transport = stats.realtimeTransport {
+            lines.append("- Realtime ASR endpoint: \(transport.endpoint ?? "<unknown>")")
+            if let value = transport.networkProtocolName { lines.append("  - Protocol: \(value)") }
+            if let value = transport.reusedConnection { lines.append("  - Reused connection: \(value)") }
+            let transportDurations: [(String, Int?)] = [
+                ("DNS lookup", transport.dnsLookupMilliseconds),
+                ("TCP connection", transport.tcpConnectionMilliseconds),
+                ("TLS handshake", transport.tlsHandshakeMilliseconds),
+                ("WebSocket upgrade response wait", transport.requestToUpgradeResponseMilliseconds),
+                ("ASR JSON parsing", transport.messageParsingMilliseconds)
+            ]
+            for (label, value) in transportDurations {
+                if let value { lines.append("  - \(label): \(value) ms") }
+            }
+            lines.append("  - Parsed ASR messages: \(transport.parsedMessageCount)")
+        }
+
+        for (index, attempt) in (stats.llmRequestAttempts ?? []).enumerated() {
+            lines.append("- LLM request #\(index + 1): \(attempt.endpoint)")
+            lines.append("  - Provider/model: \(attempt.provider) / \(attempt.model)")
+            if let value = attempt.statusCode { lines.append("  - HTTP status: \(value)") }
+            if let value = attempt.networkProtocolName { lines.append("  - Protocol: \(value)") }
+            if let value = attempt.reusedConnection { lines.append("  - Reused connection: \(value)") }
+            let requestDurations: [(String, Int?)] = [
+                ("Total request", attempt.totalRequestMilliseconds),
+                ("DNS lookup", attempt.dnsLookupMilliseconds),
+                ("TCP connection", attempt.tcpConnectionMilliseconds),
+                ("TLS handshake", attempt.tlsHandshakeMilliseconds),
+                ("Request upload", attempt.requestUploadMilliseconds),
+                ("Server wait", attempt.serverWaitMilliseconds),
+                ("Response download", attempt.responseDownloadMilliseconds),
+                ("First SSE event delay", attempt.firstSSEEventDelayMilliseconds),
+                ("First parsed output delay", attempt.firstParsedOutputDelayMilliseconds),
+                ("SSE parsing", attempt.sseParsingMilliseconds),
+                ("JSON parsing", attempt.jsonParsingMilliseconds),
+                ("Unaccounted client time", attempt.unaccountedClientMilliseconds)
+            ]
+            for (label, value) in requestDurations {
+                if let value { lines.append("  - \(label): \(value) ms") }
+            }
+            lines.append("  - SSE events / JSON payloads: \(attempt.sseEventCount) / \(attempt.jsonParseCount)")
         }
 
         return lines.joined(separator: "\n")
@@ -650,7 +767,7 @@ final class SQLiteHistoryStore: HistoryStore {
         let detail = db.flatMap { sqlite3_errmsg($0) }.map { String(cString: $0) } ?? "unknown"
         let code = db.map { sqlite3_errcode($0) } ?? SQLITE_ERROR
         return NSError(domain: "SQLiteHistoryStore", code: Int(code), userInfo: [
-            NSLocalizedDescriptionKey: "\(message): \(detail)",
+            NSLocalizedDescriptionKey: "\(message): \(detail)"
         ])
     }
 }

@@ -1,5 +1,5 @@
-import AVFoundation
 import AppKit
+import AVFoundation
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
@@ -58,6 +58,7 @@ enum ConnectionTestState: Equatable {
     case idle
     case testing
     case success(firstTokenMs: Int, totalMs: Int, preview: String)
+    case notice(message: String)
     case failure(message: String)
 }
 
@@ -100,11 +101,20 @@ final class StudioViewModel: ObservableObject {
     @Published var llmProvider: LLMProvider
     @Published var llmRemoteProvider: LLMRemoteProvider
     @Published var appearanceMode: AppearanceMode
+    @Published var overlayStyle: OverlayStyle
     @Published var appLanguage: AppLanguage
     @Published var availableMicrophones: [AudioInputDevice] = []
     @Published var preferredMicrophoneID: String
+    @Published var instantVoiceInputEnabled: Bool
     @Published var muteSystemOutputDuringRecording: Bool
     @Published var soundEffectsEnabled: Bool
+    @Published var voiceProcessingTimeout: VoiceProcessingTimeout
+    @Published var preferredAPIServer = CloudServerPreferences.automaticValue
+    @Published var preferredASRServer = CloudServerPreferences.automaticValue
+    @Published private(set) var apiServerStatuses: [CloudEndpointStatus] = []
+    @Published private(set) var asrServerStatuses: [CloudEndpointStatus] = []
+    @Published private(set) var isTestingCloudServers = false
+    @Published private(set) var cloudServerTestSummary: String?
 
     @Published var llmBaseURL: String
     @Published var llmModel: String
@@ -126,6 +136,7 @@ final class StudioViewModel: ObservableObject {
     @Published var multimodalLLMAPIKey: String
 
     @Published var aliCloudAPIKey: String
+    @Published var aliCloudModel: String
     @Published var doubaoAppID: String
     @Published var doubaoAccessToken: String
     @Published var doubaoResourceID: String
@@ -136,29 +147,39 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var isAuthorizingGoogleCloudOAuth = false
     @Published var groqSTTAPIKey: String
     @Published var groqSTTModel: String
+    @Published var sonioxAPIKey: String
+    @Published var sonioxModel: String
 
     @Published var localSTTModel: LocalSTTModel
+    @Published var localSTTFocusedModel: LocalSTTModel
     @Published var localSTTModelIdentifier: String
     @Published var localSTTDownloadSource: ModelDownloadSource
     @Published var localSTTAutoSetup: Bool
     @Published var localSTTStatus = L("settings.models.localSTT.notPrepared")
     @Published var localSTTPreparationProgress: Double = 0
     @Published var localSTTPreparationDetail = L("settings.models.localSTT.autoPrepareHint")
+    @Published var localSTTTransferDetail = ""
     @Published var localSTTStoragePath: String
     @Published var localSTTPreparedSource = L("common.automatic")
     @Published var isLocalSTTPrepared = false
     @Published var isPreparingLocalSTT = false
-    @Published var localSTTPendingDelete: LocalSTTModel? = nil
-    @Published var localSTTPendingRedownload: LocalSTTModel? = nil
+    @Published var localSTTPendingDelete: LocalSTTModel?
+    @Published var localSTTPendingRedownload: LocalSTTModel?
     @Published var localSTTMemoryOptimizationEnabled: Bool
 
     @Published var localOptimizationEnabled: Bool
     @Published var appleSpeechFallback: Bool
     @Published var automaticVocabularyCollectionEnabled: Bool
     @Published var inputContextOptimizationEnabled: Bool
+    @Published var textTransformationEnabled: Bool
+    @Published var textTransformationRule: String
     @Published var autoUpdateEnabled: Bool
+    @Published var analyticsSharingEnabled: Bool
 
-    @Published var stubbornPasteFallbackEnabled: Bool
+    var isTextTransformationAvailable: Bool {
+        appLanguage == .traditionalChinese
+    }
+
     @Published var agentFrameworkEnabled: Bool
     @Published var agentEnabled: Bool
     @Published var agentStepLoggingEnabled: Bool
@@ -172,20 +193,21 @@ final class StudioViewModel: ObservableObject {
     @Published var mcpDraftHTTPHeaders: String = ""
     @Published var mcpDraftEnabled: Bool = true
     @Published var mcpDraftAutoConnect: Bool = false
-    @Published var mcpDraftEditingServerID: UUID? = nil
-    @Published var mcpConnectionTestTargetServerID: UUID? = nil
+    @Published var mcpDraftEditingServerID: UUID?
+    @Published var mcpConnectionTestTargetServerID: UUID?
     @Published var mcpConnectionTestState: MCPConnectionTestState = .idle
 
     // Agent Jobs
     @Published private(set) var agentJobs: [AgentJob] = []
     @Published private(set) var isLoadingJobs = false
     @Published var showingJobsPage = false
-    @Published var selectedJobID: UUID? = nil
-    @Published private(set) var selectedJobDetail: AgentJob? = nil
+    @Published var selectedJobID: UUID?
+    @Published private(set) var selectedJobDetail: AgentJob?
     private static let jobsPageSize = 50
 
     @Published var personaRewriteEnabled: Bool
     @Published var personaHotkeyAppliesToSelection: Bool
+    @Published var quickInputEnabled: Bool
     @Published var personas: [PersonaProfile]
     @Published var personaAppBindings: [PersonaAppBinding]
     @Published var personaAppBindingsEnabled: Bool
@@ -200,9 +222,12 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var isSynchronizingVocabulary = false
 
     @Published var launchAtLogin: Bool
+    @Published var auxiliaryHotkey: HotkeyBinding?
+    @Published private(set) var auxiliaryPersonaID: String
     @Published var activationHotkey: HotkeyBinding?
     @Published var askHotkey: HotkeyBinding?
     @Published var personaHotkey: HotkeyBinding?
+    @Published var historyHotkey: HotkeyBinding?
     @Published var historyRetentionPolicy: HistoryRetentionPolicy
     @Published private(set) var historyRecords: [HistoryRecord]
     @Published private(set) var playingAudioRecordID: UUID?
@@ -229,15 +254,20 @@ final class StudioViewModel: ObservableObject {
     private let historyRefreshQueue = DispatchQueue(label: "typeflux.settings.history-refresh", qos: .userInitiated)
     private var historyObserver: NSObjectProtocol?
     private var personaSelectionObserver: NSObjectProtocol?
+    private var personaStoreObserver: NSObjectProtocol?
     private var hotkeySettingsObserver: NSObjectProtocol?
     private var appearanceObserver: NSObjectProtocol?
     private var vocabularyObserver: NSObjectProtocol?
     private var agentJobObserver: NSObjectProtocol?
     private var cloudAccountModelDefaultsObserver: NSObjectProtocol?
+    private var localModelDownloadProgressObserver: NSObjectProtocol?
     private var llmTestTask: Task<Void, Never>?
     private var sttTestTask: Task<Void, Never>?
     private var mcpTestTask: Task<Void, Never>?
     private var historyRefreshTask: Task<Void, Never>?
+    private var localSTTPreparationTask: Task<Void, Never>?
+    private var cloudServerTestTask: Task<Void, Never>?
+    private var localSTTPreparationID: UUID?
     private var historyRefreshGeneration = 0
     private let audioPreviewPlayer: HistoryAudioPreviewPlaying
 
@@ -252,7 +282,7 @@ final class StudioViewModel: ObservableObject {
         localModelManager: LocalSTTModelManaging = LocalModelManager(),
         audioDeviceManager: AudioDeviceManager = AudioDeviceManager(),
         notificationService: LocalNotificationSending = NoopLocalNotificationService(),
-        audioPreviewPlayer: HistoryAudioPreviewPlaying = AVFoundationHistoryAudioPreviewPlayer(),
+        audioPreviewPlayer: HistoryAudioPreviewPlaying = AVFoundationHistoryAudioPreviewPlayer()
     ) {
         self.settingsStore = settingsStore
         self.historyStore = historyStore
@@ -295,14 +325,21 @@ final class StudioViewModel: ObservableObject {
             focusedModelProvider = .googleCloud
         case .groq:
             focusedModelProvider = .groqSTT
+        case .soniox:
+            focusedModelProvider = .soniox
         case .typefluxOfficial:
             focusedModelProvider = .typefluxOfficial
         }
         appearanceMode = settingsStore.appearanceMode
+        overlayStyle = settingsStore.overlayStyle
         appLanguage = settingsStore.appLanguage
         preferredMicrophoneID = settingsStore.preferredMicrophoneID
+        instantVoiceInputEnabled = settingsStore.instantVoiceInputEnabled
         muteSystemOutputDuringRecording = settingsStore.muteSystemOutputDuringRecording
         soundEffectsEnabled = settingsStore.soundEffectsEnabled
+        voiceProcessingTimeout = settingsStore.voiceProcessingTimeout
+        preferredAPIServer = CloudServerPreferences.shared.preferredAPIServer
+        preferredASRServer = CloudServerPreferences.shared.preferredASRServer
         llmBaseURL = settingsStore.llmBaseURL(for: initialLLMRemoteProvider)
         llmModel = settingsStore.llmModel(for: initialLLMRemoteProvider)
         llmAPIKey = settingsStore.llmAPIKey(for: initialLLMRemoteProvider)
@@ -317,6 +354,7 @@ final class StudioViewModel: ObservableObject {
         multimodalLLMModel = settingsStore.multimodalLLMModel
         multimodalLLMAPIKey = settingsStore.multimodalLLMAPIKey
         aliCloudAPIKey = settingsStore.aliCloudAPIKey
+        aliCloudModel = settingsStore.aliCloudModel
         doubaoAppID = settingsStore.doubaoAppID
         doubaoAccessToken = settingsStore.doubaoAccessToken
         doubaoResourceID = settingsStore.doubaoResourceID
@@ -326,7 +364,10 @@ final class StudioViewModel: ObservableObject {
         googleCloudOAuthAuthorized = GoogleCloudSpeechCredentialResolver.isStoredAuthorizationAvailable()
         groqSTTAPIKey = settingsStore.groqSTTAPIKey
         groqSTTModel = settingsStore.groqSTTModel
+        sonioxAPIKey = settingsStore.sonioxAPIKey
+        sonioxModel = settingsStore.sonioxModel
         localSTTModel = settingsStore.localSTTModel
+        localSTTFocusedModel = settingsStore.localSTTModel
         localSTTModelIdentifier = settingsStore.localSTTModelIdentifier
         localSTTDownloadSource = settingsStore.localSTTDownloadSource
         localSTTAutoSetup = true
@@ -336,14 +377,17 @@ final class StudioViewModel: ObservableObject {
         appleSpeechFallback = settingsStore.useAppleSpeechFallback
         automaticVocabularyCollectionEnabled = settingsStore.automaticVocabularyCollectionEnabled
         inputContextOptimizationEnabled = settingsStore.inputContextOptimizationEnabled
+        textTransformationEnabled = settingsStore.outputOpenCCEnabled
+        textTransformationRule = settingsStore.outputOpenCCConfig
         autoUpdateEnabled = settingsStore.autoUpdateEnabled
-        stubbornPasteFallbackEnabled = settingsStore.stubbornPasteFallbackEnabled
+        analyticsSharingEnabled = settingsStore.analyticsSharingEnabled
         agentFrameworkEnabled = settingsStore.agentFrameworkEnabled
         agentEnabled = settingsStore.agentEnabled
         agentStepLoggingEnabled = settingsStore.agentStepLoggingEnabled
         mcpServers = settingsStore.mcpServers
         personaRewriteEnabled = settingsStore.personaRewriteEnabled
         personaHotkeyAppliesToSelection = settingsStore.personaHotkeyAppliesToSelection
+        quickInputEnabled = settingsStore.quickInputEnabled
         personas = currentPersonas
         personaAppBindings = settingsStore.personaAppBindings
         personaAppBindingsEnabled = settingsStore.personaAppBindingsEnabled
@@ -360,9 +404,12 @@ final class StudioViewModel: ObservableObject {
         isCreatingPersonaDraft = false
         vocabularyEntries = VocabularyStore.load()
         launchAtLogin = LaunchAtLoginManager.isEnabled
+        auxiliaryHotkey = settingsStore.auxiliaryHotkey
+        auxiliaryPersonaID = settingsStore.auxiliaryPersona.id.uuidString
         activationHotkey = settingsStore.activationHotkey
         askHotkey = settingsStore.askHotkey
         personaHotkey = settingsStore.personaHotkey
+        historyHotkey = settingsStore.historyHotkey
         historyRetentionPolicy = settingsStore.historyRetentionPolicy
         historyRecords = []
         displayedHistory = []
@@ -377,7 +424,7 @@ final class StudioViewModel: ObservableObject {
         historyObserver = NotificationCenter.default.addObserver(
             forName: .historyStoreDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.scheduleHistoryRefresh(reset: false, debounce: .milliseconds(120))
@@ -386,16 +433,31 @@ final class StudioViewModel: ObservableObject {
         personaSelectionObserver = NotificationCenter.default.addObserver(
             forName: .personaSelectionDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncPersonaSelectionFromStore()
             }
         }
+        personaStoreObserver = NotificationCenter.default.addObserver(
+            forName: .personaStoreDidChange,
+            object: settingsStore,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                personas = self.settingsStore.personas
+                auxiliaryPersonaID = self.settingsStore.auxiliaryPersona.id.uuidString
+                if let selectedPersonaID, !personas.contains(where: { $0.id == selectedPersonaID }) {
+                    self.selectedPersonaID = personas.first?.id
+                }
+                loadPersonaDraft()
+            }
+        }
         hotkeySettingsObserver = NotificationCenter.default.addObserver(
             forName: .hotkeySettingsDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncHotkeysFromStore()
@@ -404,7 +466,7 @@ final class StudioViewModel: ObservableObject {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -414,7 +476,7 @@ final class StudioViewModel: ObservableObject {
         vocabularyObserver = NotificationCenter.default.addObserver(
             forName: .vocabularyStoreDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] notification in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -428,7 +490,7 @@ final class StudioViewModel: ObservableObject {
         agentJobObserver = NotificationCenter.default.addObserver(
             forName: .agentJobStoreDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshAgentJobs()
@@ -437,12 +499,23 @@ final class StudioViewModel: ObservableObject {
         cloudAccountModelDefaultsObserver = NotificationCenter.default.addObserver(
             forName: .cloudAccountModelDefaultsDidApply,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncCloudAccountModelsFromStore()
             }
         }
+        localModelDownloadProgressObserver = NotificationCenter.default.addObserver(
+            forName: .localModelDownloadProgressDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.syncLocalModelDownloadProgress()
+            }
+        }
+        syncLocalModelDownloadProgress()
+        refreshCloudServerStatuses()
         audioPreviewPlayer.onPlaybackFinished = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.playingAudioRecordID = nil
@@ -456,6 +529,9 @@ final class StudioViewModel: ObservableObject {
         }
         if let personaSelectionObserver {
             NotificationCenter.default.removeObserver(personaSelectionObserver)
+        }
+        if let personaStoreObserver {
+            NotificationCenter.default.removeObserver(personaStoreObserver)
         }
         if let hotkeySettingsObserver {
             NotificationCenter.default.removeObserver(hotkeySettingsObserver)
@@ -472,7 +548,11 @@ final class StudioViewModel: ObservableObject {
         if let cloudAccountModelDefaultsObserver {
             NotificationCenter.default.removeObserver(cloudAccountModelDefaultsObserver)
         }
+        if let localModelDownloadProgressObserver {
+            NotificationCenter.default.removeObserver(localModelDownloadProgressObserver)
+        }
         historyRefreshTask?.cancel()
+        cloudServerTestTask?.cancel()
         audioPreviewPlayer.stop()
     }
 
@@ -489,7 +569,32 @@ final class StudioViewModel: ObservableObject {
     }
 
     var localSTTPreparationPercentText: String {
-        "\(Int((localSTTPreparationProgress * 100).rounded()))%"
+        "\(Int((localSTTDisplayedPreparationProgress * 100).rounded()))%"
+    }
+
+    var localSTTDisplayedPreparationProgress: Double {
+        if case let .downloading(model, progress) = LocalModelDownloadProgressCenter.shared.status,
+           model == localSTTFocusedModel {
+            return progress
+        }
+        return localSTTPreparationProgress
+    }
+
+    static func localSTTTransferText(downloadedBytes: Int64?, totalBytes: Int64?) -> String {
+        guard let downloadedBytes, let totalBytes, totalBytes > 0 else {
+            return ""
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        let percentage = Int((Double(downloadedBytes) / Double(totalBytes) * 100).rounded())
+        return L(
+            "settings.models.localSTT.transferProgress",
+            "\(min(max(percentage, 0), 100))%",
+            formatter.string(fromByteCount: downloadedBytes),
+            formatter.string(fromByteCount: totalBytes)
+        )
     }
 
     var localSTTPreparationTint: Color {
@@ -563,10 +668,12 @@ final class StudioViewModel: ObservableObject {
     }
 
     var filteredPersonas: [PersonaProfile] {
-        guard !searchQuery.isEmpty else { return personas }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return personas }
         return personas.filter {
-            $0.name.localizedCaseInsensitiveContains(searchQuery) ||
-                personaDisplayPrompt(for: $0).localizedCaseInsensitiveContains(searchQuery)
+            $0.name.localizedCaseInsensitiveContains(query) ||
+                personaDisplayPrompt(for: $0).localizedCaseInsensitiveContains(query) ||
+                personaListSubtitle(for: $0).localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -586,7 +693,7 @@ final class StudioViewModel: ObservableObject {
             let termOrder = lhs.term.compare(
                 rhs.term,
                 options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX"),
+                locale: Locale(identifier: "en_US_POSIX")
             )
             if termOrder != .orderedSame {
                 return termOrder == .orderedAscending
@@ -633,7 +740,7 @@ final class StudioViewModel: ObservableObject {
                     metadata: freeSTTModel.isEmpty ? "Model not set" : freeSTTModel,
                     isSelected: sttProvider == .freeModel,
                     isMuted: false,
-                    actionTitle: sttProvider == .freeModel ? "Selected" : "Use Free",
+                    actionTitle: sttProvider == .freeModel ? "Selected" : "Use Free"
                 ),
                 StudioModelCard(
                     id: "local-stt",
@@ -643,7 +750,7 @@ final class StudioViewModel: ObservableObject {
                     metadata: localSTTModel.displayName,
                     isSelected: sttProvider == .localModel,
                     isMuted: false,
-                    actionTitle: sttProvider == .localModel ? "Selected" : "Use Local",
+                    actionTitle: sttProvider == .localModel ? "Selected" : "Use Local"
                 ),
                 StudioModelCard(
                     id: "apple-speech",
@@ -653,7 +760,7 @@ final class StudioViewModel: ObservableObject {
                     metadata: "Built-in • Offline friendly",
                     isSelected: sttProvider == .appleSpeech,
                     isMuted: false,
-                    actionTitle: sttProvider == .appleSpeech ? "Selected" : "Use Local",
+                    actionTitle: sttProvider == .appleSpeech ? "Selected" : "Use Local"
                 ),
                 StudioModelCard(
                     id: "whisper-api",
@@ -663,7 +770,7 @@ final class StudioViewModel: ObservableObject {
                     metadata: whisperModel.isEmpty ? "Model not set" : whisperModel,
                     isSelected: sttProvider == .whisperAPI,
                     isMuted: false,
-                    actionTitle: sttProvider == .whisperAPI ? "Selected" : "Use Remote",
+                    actionTitle: sttProvider == .whisperAPI ? "Selected" : "Use Remote"
                 ),
                 StudioModelCard(
                     id: "multimodal-llm",
@@ -673,8 +780,8 @@ final class StudioViewModel: ObservableObject {
                     metadata: multimodalLLMModel.isEmpty ? "Model not configured" : multimodalLLMModel,
                     isSelected: sttProvider == .multimodalLLM,
                     isMuted: false,
-                    actionTitle: sttProvider == .multimodalLLM ? "Selected" : "Use Multimodal",
-                ),
+                    actionTitle: sttProvider == .multimodalLLM ? "Selected" : "Use Multimodal"
+                )
             ]
 
         case .llm:
@@ -688,7 +795,7 @@ final class StudioViewModel: ObservableObject {
                     isSelected: llmProvider == .openAICompatible && llmRemoteProvider == .freeModel,
                     isMuted: false,
                     actionTitle: llmProvider == .openAICompatible && llmRemoteProvider == .freeModel
-                        ? "Selected" : "Use Free",
+                        ? "Selected" : "Use Free"
                 ),
                 StudioModelCard(
                     id: "ollama-local",
@@ -698,7 +805,7 @@ final class StudioViewModel: ObservableObject {
                     metadata: ollamaModel,
                     isSelected: llmProvider == .ollama,
                     isMuted: false,
-                    actionTitle: llmProvider == .ollama ? "Selected" : "Use Local",
+                    actionTitle: llmProvider == .ollama ? "Selected" : "Use Local"
                 ),
                 StudioModelCard(
                     id: "openai-compatible",
@@ -708,8 +815,8 @@ final class StudioViewModel: ObservableObject {
                     metadata: llmModel.isEmpty ? "Model not set" : llmModel,
                     isSelected: llmProvider == .openAICompatible,
                     isMuted: false,
-                    actionTitle: llmProvider == .openAICompatible ? "Selected" : "Use Remote",
-                ),
+                    actionTitle: llmProvider == .openAICompatible ? "Selected" : "Use Remote"
+                )
             ]
         }
     }
@@ -721,7 +828,7 @@ final class StudioViewModel: ObservableObject {
             case .appleSpeech, .localModel:
                 "Local Processing"
             case .freeModel, .whisperAPI, .multimodalLLM, .aliCloud, .doubaoRealtime, .googleCloud, .groq,
-                 .typefluxOfficial:
+                 .soniox, .typefluxOfficial:
                 "Remote API"
             }
         case .llm:
@@ -751,6 +858,8 @@ final class StudioViewModel: ObservableObject {
                 "Streaming audio directly to Google Cloud Speech-to-Text over gRPC."
             case .groq:
                 "Streaming audio to Groq for ultra-fast Whisper transcription."
+            case .soniox:
+                "Streaming audio to Soniox for real-time speech recognition."
             case .typefluxOfficial:
                 "Using Typeflux's built-in speech recognition service."
             }
@@ -768,13 +877,96 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
+    var availableAPIServers: [String] {
+        let configured = AppServerConfiguration.apiBaseURLs.compactMap { URL(string: $0)?.absoluteString }
+        return uniqueServerURLs(configured + apiServerStatuses.map(\.baseURL.absoluteString))
+    }
+
+    var availableASRServers: [String] {
+        uniqueServerURLs(asrServerStatuses.map(\.baseURL.absoluteString))
+    }
+
+    func setPreferredAPIServer(_ value: String) {
+        preferredAPIServer = value
+        CloudServerPreferences.shared.preferredAPIServer = value
+    }
+
+    func setPreferredASRServer(_ value: String) {
+        preferredASRServer = value
+        CloudServerPreferences.shared.preferredASRServer = value
+    }
+
+    func refreshCloudServerStatuses() {
+        cloudServerTestTask?.cancel()
+        cloudServerTestTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            apiServerStatuses = await CloudEndpointRegistry.shared.snapshot()
+            asrServerStatuses = await TypefluxASRServerRegistry.shared.snapshot()
+            ensureAvailableServerSelections()
+        }
+    }
+
+    func testCloudServerLatency() {
+        guard !isTestingCloudServers else { return }
+        isTestingCloudServers = true
+        cloudServerTestSummary = nil
+        cloudServerTestTask?.cancel()
+        cloudServerTestTask = Task { @MainActor [weak self] in
+            async let apiProbe: Void = CloudEndpointRegistry.shared.probeAll()
+            async let asrProbe: Void = Self.probeASRServers()
+            _ = await (apiProbe, asrProbe)
+
+            guard let self, !Task.isCancelled else { return }
+            apiServerStatuses = await CloudEndpointRegistry.shared.snapshot()
+            asrServerStatuses = await TypefluxASRServerRegistry.shared.snapshot()
+            ensureAvailableServerSelections()
+            let apiAvailable = availableServerCount(in: apiServerStatuses)
+            let asrAvailable = availableServerCount(in: asrServerStatuses)
+            cloudServerTestSummary = L(
+                "settings.servers.speedTest.summary",
+                apiAvailable,
+                apiServerStatuses.count,
+                asrAvailable,
+                asrServerStatuses.count
+            )
+            isTestingCloudServers = false
+            if let cloudServerTestSummary {
+                showToast(cloudServerTestSummary)
+            }
+        }
+    }
+
+    private static func probeASRServers() async {
+        await TypefluxASRServerRegistry.shared.refreshPublicConfig()
+    }
+
+    private func availableServerCount(in statuses: [CloudEndpointStatus]) -> Int {
+        statuses.count { $0.lastProbeAt != nil && $0.lastError == nil && $0.latencyMs != nil }
+    }
+
+    private func ensureAvailableServerSelections() {
+        if !preferredAPIServer.isEmpty, !availableAPIServers.contains(preferredAPIServer) {
+            setPreferredAPIServer(CloudServerPreferences.automaticValue)
+        }
+        if !preferredASRServer.isEmpty,
+           !availableASRServers.isEmpty,
+           !availableASRServers.contains(preferredASRServer) {
+            setPreferredASRServer(CloudServerPreferences.automaticValue)
+        }
+    }
+
+    private func uniqueServerURLs(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
     func refreshHistory(reset: Bool = true) {
         refreshHistory(reset: reset, completion: nil)
     }
 
     private func refreshHistory(
         reset: Bool,
-        completion: (() -> Void)?,
+        completion: (() -> Void)?
     ) {
         historyRefreshTask?.cancel()
         if reset {
@@ -792,7 +984,7 @@ final class StudioViewModel: ObservableObject {
             let records = historyStoreBox.base.list(
                 limit: pageSize,
                 offset: 0,
-                searchQuery: searchQuery,
+                searchQuery: searchQuery
             )
 
             DispatchQueue.main.async {
@@ -817,7 +1009,7 @@ final class StudioViewModel: ObservableObject {
         let nextPage = historyStore.list(
             limit: Self.historyPageSize,
             offset: historyRecords.count,
-            searchQuery: historySearchQuery,
+            searchQuery: historySearchQuery
         )
 
         if nextPage.isEmpty {
@@ -878,6 +1070,11 @@ final class StudioViewModel: ObservableObject {
         settingsStore.appearanceMode = mode
     }
 
+    func setOverlayStyle(_ style: OverlayStyle) {
+        overlayStyle = style
+        settingsStore.overlayStyle = style
+    }
+
     func setAppLanguage(_ language: AppLanguage) {
         appLanguage = language
         settingsStore.appLanguage = language
@@ -893,8 +1090,7 @@ final class StudioViewModel: ObservableObject {
         availableMicrophones = devices
 
         if !preferredMicrophoneID.isEmpty,
-           devices.contains(where: { $0.id == preferredMicrophoneID }) == false
-        {
+           devices.contains(where: { $0.id == preferredMicrophoneID }) == false {
             preferredMicrophoneID = AudioDeviceManager.automaticDeviceID
             settingsStore.preferredMicrophoneID = AudioDeviceManager.automaticDeviceID
             showToast(L("settings.audio.microphone.unavailable"))
@@ -911,9 +1107,19 @@ final class StudioViewModel: ObservableObject {
         settingsStore.muteSystemOutputDuringRecording = value
     }
 
+    func setInstantVoiceInputEnabled(_ value: Bool) {
+        instantVoiceInputEnabled = value
+        settingsStore.instantVoiceInputEnabled = value
+    }
+
     func setSoundEffectsEnabled(_ value: Bool) {
         soundEffectsEnabled = value
         settingsStore.soundEffectsEnabled = value
+    }
+
+    func setVoiceProcessingTimeout(_ value: VoiceProcessingTimeout) {
+        voiceProcessingTimeout = value
+        settingsStore.voiceProcessingTimeout = value
     }
 
     func setHistoryRetentionPolicy(_ value: HistoryRetentionPolicy) {
@@ -936,9 +1142,6 @@ final class StudioViewModel: ObservableObject {
             focusedModelProvider = .localSTT
             settingsStore.localSTTAutoSetup = true
             localSTTAutoSetup = true
-            if !isLocalSTTPrepared, !isPreparingLocalSTT {
-                prepareLocalSTTModel()
-            }
         case .whisperAPI:
             focusedModelProvider = .whisperAPI
         case .multimodalLLM:
@@ -951,6 +1154,8 @@ final class StudioViewModel: ObservableObject {
             focusedModelProvider = .googleCloud
         case .groq:
             focusedModelProvider = .groqSTT
+        case .soniox:
+            focusedModelProvider = .soniox
         case .typefluxOfficial:
             focusedModelProvider = .typefluxOfficial
         }
@@ -988,7 +1193,40 @@ final class StudioViewModel: ObservableObject {
     }
 
     func setLocalSTTModel(_ value: LocalSTTModel) {
+        commitLocalSTTModel(value)
+    }
+
+    func focusLocalSTTModel(_ value: LocalSTTModel) {
+        if isPreparingLocalSTT, value != localSTTFocusedModel {
+            cancelLocalSTTPreparation()
+        }
+
+        localSTTFocusedModel = value
+        if localModelManager.isModelAvailable(value) {
+            commitLocalSTTModel(value)
+            return
+        }
+
+        let configuration = localSTTConfiguration(for: value)
+        localSTTModelIdentifier = configuration.modelIdentifier
+        localSTTDownloadSource = configuration.downloadSource
+        localSTTAutoSetup = configuration.autoSetup
+        localSTTStoragePath = localModelManager.storagePath(for: configuration)
+        localSTTPreparedSource = L("common.automatic")
+        localSTTStatus = L("settings.models.localSTT.notPrepared")
+        localSTTPreparationDetail = L("settings.models.localSTT.autoPrepareHint")
+        localSTTTransferDetail = ""
+        localSTTPreparationProgress = 0
+        isLocalSTTPrepared = false
+    }
+
+    private func commitLocalSTTModel(_ value: LocalSTTModel) {
+        if isPreparingLocalSTT, value != localSTTFocusedModel {
+            cancelLocalSTTPreparation()
+        }
+
         localSTTModel = value
+        localSTTFocusedModel = value
         settingsStore.localSTTModel = value
 
         let recommendedIdentifier = value.defaultModelIdentifier
@@ -1002,6 +1240,38 @@ final class StudioViewModel: ObservableObject {
         settingsStore.localSTTAutoSetup = true
         refreshLocalSTTStoragePath()
         refreshLocalSTTPreparedState()
+    }
+
+    private func cancelLocalSTTPreparation() {
+        localSTTPreparationID = nil
+        localSTTPreparationTask?.cancel()
+        localSTTPreparationTask = nil
+        isPreparingLocalSTT = false
+        LocalModelDownloadProgressCenter.shared.clear()
+    }
+
+    private func syncLocalModelDownloadProgress() {
+        switch LocalModelDownloadProgressCenter.shared.status {
+        case let .downloading(model, progress) where model == localSTTFocusedModel:
+            localSTTPreparationProgress = progress
+            localSTTStatus = L("settings.models.localSTT.preparing")
+            isLocalSTTPrepared = false
+            if !isPreparingLocalSTT {
+                localSTTPreparationDetail = L("settings.models.localSTT.preparing")
+                localSTTTransferDetail = ""
+                localSTTPreparedSource = L("common.automatic")
+                localSTTStoragePath = localModelManager.storagePath(for: localSTTConfiguration(for: model))
+            }
+        case let .failed(model, message) where model == localSTTFocusedModel:
+            localSTTStatus = L("common.failedWithReason", message)
+            localSTTPreparationDetail = L("settings.models.localSTT.prepareFailed")
+            localSTTTransferDetail = ""
+            isLocalSTTPrepared = false
+        case .idle where !isPreparingLocalSTT:
+            refreshLocalSTTPreparedState()
+        default:
+            break
+        }
     }
 
     func setLLMModelSelection(_ provider: LLMProvider, suggestedModel: String) {
@@ -1107,6 +1377,10 @@ final class StudioViewModel: ObservableObject {
         aliCloudAPIKey = value; sttConnectionTestState = .idle
     }
 
+    func setAliCloudModel(_ value: String) {
+        aliCloudModel = value; sttConnectionTestState = .idle
+    }
+
     func setDoubaoAppID(_ value: String) {
         doubaoAppID = value; sttConnectionTestState = .idle
     }
@@ -1147,7 +1421,7 @@ final class StudioViewModel: ObservableObject {
                 let token = try await GoogleOAuthService.authorizeGoogleCloud(
                     clientID: AppServerConfiguration.googleCloudOAuthClientID,
                     clientSecret: AppServerConfiguration.googleCloudOAuthClientSecret.isEmpty
-                        ? nil : AppServerConfiguration.googleCloudOAuthClientSecret,
+                        ? nil : AppServerConfiguration.googleCloudOAuthClientSecret
                 )
                 GoogleCloudSpeechOAuthTokenStore.save(token)
                 googleCloudAPIKey = ""
@@ -1175,6 +1449,14 @@ final class StudioViewModel: ObservableObject {
 
     func setGroqSTTModel(_ value: String) {
         groqSTTModel = value; sttConnectionTestState = .idle
+    }
+
+    func setSonioxAPIKey(_ value: String) {
+        sonioxAPIKey = value; sttConnectionTestState = .idle
+    }
+
+    func setSonioxModel(_ value: String) {
+        sonioxModel = value; sttConnectionTestState = .idle
     }
 
     func setLocalSTTModelIdentifier(_ value: String) {
@@ -1235,11 +1517,23 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Text Injection
+    func setAnalyticsSharingEnabled(_ value: Bool) {
+        analyticsSharingEnabled = value
+        settingsStore.analyticsSharingEnabled = value
+    }
 
-    func setStubbornPasteFallbackEnabled(_ value: Bool) {
-        stubbornPasteFallbackEnabled = value
-        settingsStore.stubbornPasteFallbackEnabled = value
+    // MARK: - Output Post-Processing
+
+    func setTextTransformationEnabled(_ value: Bool) {
+        guard isTextTransformationAvailable else { return }
+        textTransformationEnabled = value
+        settingsStore.outputOpenCCEnabled = value
+    }
+
+    func setTextTransformationRule(_ value: String) {
+        guard isTextTransformationAvailable else { return }
+        textTransformationRule = value
+        settingsStore.outputOpenCCConfig = value
     }
 
     // MARK: - Agent Framework
@@ -1328,19 +1622,18 @@ final class StudioViewModel: ObservableObject {
             transport = .stdio(MCPStdioTransportConfig(
                 command: mcpDraftStdioCommand.trimmingCharacters(in: .whitespacesAndNewlines),
                 args: mcpDraftStdioArgs.split(separator: " ").map(String.init),
-                env: envDict,
+                env: envDict
             ))
         case .http:
             let headersDict = parseMCPEnvString(mcpDraftHTTPHeaders)
             transport = .http(MCPHTTPTransportConfig(
                 url: mcpDraftHTTPURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                headers: headersDict,
+                headers: headersDict
             ))
         }
 
         if let editingID = mcpDraftEditingServerID,
-           let idx = mcpServers.firstIndex(where: { $0.id == editingID })
-        {
+           let idx = mcpServers.firstIndex(where: { $0.id == editingID }) {
             mcpServers[idx].name = mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
             mcpServers[idx].transport = transport
             mcpServers[idx].enabled = mcpDraftEnabled
@@ -1350,7 +1643,7 @@ final class StudioViewModel: ObservableObject {
                 name: mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines),
                 transport: transport,
                 enabled: mcpDraftEnabled,
-                autoConnect: mcpDraftAutoConnect,
+                autoConnect: mcpDraftAutoConnect
             )
             mcpServers.append(server)
         }
@@ -1385,13 +1678,13 @@ final class StudioViewModel: ObservableObject {
             transport = .stdio(MCPStdioTransportConfig(
                 command: mcpDraftStdioCommand.trimmingCharacters(in: .whitespacesAndNewlines),
                 args: mcpDraftStdioArgs.split(separator: " ").map(String.init),
-                env: envDict,
+                env: envDict
             ))
         case .http:
             let headersDict = parseMCPEnvString(mcpDraftHTTPHeaders)
             transport = .http(MCPHTTPTransportConfig(
                 url: mcpDraftHTTPURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                headers: headersDict,
+                headers: headersDict
             ))
         }
         testMCPConnectionWithConfig(transport)
@@ -1414,7 +1707,7 @@ final class StudioViewModel: ObservableObject {
                 switch transport {
                 case let .stdio(config):
                     client = StdioMCPClient(config: MCPStdioConfig(
-                        command: config.command, args: config.args, env: config.env,
+                        command: config.command, args: config.args, env: config.env
                     ))
                 case let .http(config):
                     guard let url = URL(string: config.url) else {
@@ -1434,7 +1727,7 @@ final class StudioViewModel: ObservableObject {
                         MCPConnectionTestState.MCPDiscoveredTool(
                             id: $0.name,
                             name: $0.name,
-                            description: $0.description ?? "",
+                            description: $0.description ?? ""
                         )
                     }
                     mcpConnectionTestState = .success(tools: discoveredTools)
@@ -1524,6 +1817,11 @@ final class StudioViewModel: ObservableObject {
         settingsStore.personaHotkeyAppliesToSelection = value
     }
 
+    func setQuickInputEnabled(_ value: Bool) {
+        quickInputEnabled = value
+        settingsStore.quickInputEnabled = value
+    }
+
     var defaultPersonaSelectionID: UUID? {
         guard personaRewriteEnabled else { return nil }
         return UUID(uuidString: activePersonaID) ?? selectedPersonaID
@@ -1545,16 +1843,50 @@ final class StudioViewModel: ObservableObject {
     }
 
     func selectPersona(_ id: UUID?) {
+        isCreatingPersonaDraft = false
         selectedPersonaID = id
         loadPersonaDraft()
     }
 
+    func setAuxiliaryPersona(_ id: String) {
+        guard personas.contains(where: { $0.id.uuidString == id }) else { return }
+        settingsStore.auxiliaryPersonaID = id
+        auxiliaryPersonaID = id
+    }
+
+    func setAuxiliaryHotkey(_ binding: HotkeyBinding) {
+        guard ![activationHotkey, askHotkey, personaHotkey, historyHotkey]
+            .compactMap({ $0 }).contains(where: { $0.conflicts(with: binding) }) else {
+            showToast(L("settings.shortcuts.auxiliaryConflict"))
+            return
+        }
+        settingsStore.auxiliaryHotkey = binding
+        auxiliaryHotkey = binding
+        showToast(L("settings.shortcuts.auxiliaryUpdated"))
+    }
+
+    func resetAuxiliaryHotkey() { setAuxiliaryHotkey(.defaultAuxiliary) }
+
+    func unsetAuxiliaryHotkey() {
+        settingsStore.auxiliaryHotkey = nil
+        auxiliaryHotkey = nil
+        showToast(L("settings.shortcuts.auxiliaryUnset"))
+    }
+
     func setActivationHotkey(_ binding: HotkeyBinding) {
+        if let auxiliaryHotkey, auxiliaryHotkey.conflicts(with: binding) {
+            showToast(L("settings.shortcuts.auxiliaryConflict"))
+            return
+        }
         if let personaHotkey, binding.signature == personaHotkey.signature {
             showToast(L("settings.shortcuts.activationConflict"))
             return
         }
         if let askHotkey, binding.signature == askHotkey.signature {
+            showToast(L("settings.shortcuts.activationConflict"))
+            return
+        }
+        if let historyHotkey, binding.signature == historyHotkey.signature {
             showToast(L("settings.shortcuts.activationConflict"))
             return
         }
@@ -1575,11 +1907,19 @@ final class StudioViewModel: ObservableObject {
     }
 
     func setAskHotkey(_ binding: HotkeyBinding) {
+        if let auxiliaryHotkey, auxiliaryHotkey.conflicts(with: binding) {
+            showToast(L("settings.shortcuts.auxiliaryConflict"))
+            return
+        }
         if let activationHotkey, binding.signature == activationHotkey.signature {
             showToast(L("settings.shortcuts.askConflict"))
             return
         }
         if let personaHotkey, binding.signature == personaHotkey.signature {
+            showToast(L("settings.shortcuts.askConflict"))
+            return
+        }
+        if let historyHotkey, binding.signature == historyHotkey.signature {
             showToast(L("settings.shortcuts.askConflict"))
             return
         }
@@ -1600,11 +1940,19 @@ final class StudioViewModel: ObservableObject {
     }
 
     func setPersonaHotkey(_ binding: HotkeyBinding) {
+        if let auxiliaryHotkey, auxiliaryHotkey.conflicts(with: binding) {
+            showToast(L("settings.shortcuts.auxiliaryConflict"))
+            return
+        }
         if let activationHotkey, binding.signature == activationHotkey.signature {
             showToast(L("settings.shortcuts.personaConflict"))
             return
         }
         if let askHotkey, binding.signature == askHotkey.signature {
+            showToast(L("settings.shortcuts.personaConflict"))
+            return
+        }
+        if let historyHotkey, binding.signature == historyHotkey.signature {
             showToast(L("settings.shortcuts.personaConflict"))
             return
         }
@@ -1624,10 +1972,47 @@ final class StudioViewModel: ObservableObject {
         showToast(L("settings.shortcuts.personaUnset"))
     }
 
+    func setHistoryHotkey(_ binding: HotkeyBinding) {
+        if let auxiliaryHotkey, auxiliaryHotkey.conflicts(with: binding) {
+            showToast(L("settings.shortcuts.auxiliaryConflict"))
+            return
+        }
+        if let activationHotkey, binding.signature == activationHotkey.signature {
+            showToast(L("settings.shortcuts.historyConflict"))
+            return
+        }
+        if let askHotkey, binding.signature == askHotkey.signature {
+            showToast(L("settings.shortcuts.historyConflict"))
+            return
+        }
+        if let personaHotkey, binding.signature == personaHotkey.signature {
+            showToast(L("settings.shortcuts.historyConflict"))
+            return
+        }
+
+        historyHotkey = binding
+        settingsStore.historyHotkey = binding
+        showToast(L("settings.shortcuts.historyUpdated"))
+    }
+
+    func resetHistoryHotkey() {
+        setHistoryHotkey(.defaultHistory)
+    }
+
+    func unsetHistoryHotkey() {
+        historyHotkey = nil
+        settingsStore.historyHotkey = nil
+        showToast(L("settings.shortcuts.historyUnset"))
+    }
+
     private func syncHotkeysFromStore() {
+        auxiliaryHotkey = settingsStore.auxiliaryHotkey
+        auxiliaryPersonaID = settingsStore.auxiliaryPersona.id.uuidString
         activationHotkey = settingsStore.activationHotkey
         askHotkey = settingsStore.askHotkey
         personaHotkey = settingsStore.personaHotkey
+        historyHotkey = settingsStore.historyHotkey
+        quickInputEnabled = settingsStore.quickInputEnabled
     }
 
     func applyPersonaSelection(_ id: UUID?) {
@@ -1714,7 +2099,7 @@ final class StudioViewModel: ObservableObject {
 
             guard showImportConfirmationAlert(
                 subject: sourceURL.lastPathComponent,
-                itemCount: previewItems.count,
+                itemCount: previewItems.count
             ) else { return }
 
             let result = try VocabularyStore.importItems(previewItems)
@@ -1773,6 +2158,7 @@ final class StudioViewModel: ObservableObject {
     }
 
     func beginCreatingPersona() {
+        searchQuery = ""
         isCreatingPersonaDraft = true
         selectedPersonaID = nil
         personaDraftName = ""
@@ -1801,8 +2187,13 @@ final class StudioViewModel: ObservableObject {
 
     func activateSelectedPersona() {
         guard let selectedPersona else { return }
+        let draftName = personaDraftName
+        let draftPrompt = personaDraftPrompt
         settingsStore.applyPersonaSelection(selectedPersona.id)
         syncPersonaSelectionFromStore()
+        // Setting the default must not discard edits that have not been saved yet.
+        personaDraftName = draftName
+        personaDraftPrompt = draftPrompt
     }
 
     func deactivatePersonaRewrite() {
@@ -1830,7 +2221,8 @@ final class StudioViewModel: ObservableObject {
             return
         }
 
-        guard let selectedPersonaID, let index = personas.firstIndex(where: { $0.id == selectedPersonaID }) else { return }
+        guard let selectedPersonaID,
+              let index = personas.firstIndex(where: { $0.id == selectedPersonaID }) else { return }
         guard !personas[index].isSystem else { return }
         personas[index].name = name
         personas[index].prompt = prompt
@@ -1840,8 +2232,10 @@ final class StudioViewModel: ObservableObject {
     }
 
     private func syncPersonaSelectionFromStore() {
+        auxiliaryPersonaID = settingsStore.auxiliaryPersona.id.uuidString
         personaRewriteEnabled = settingsStore.personaRewriteEnabled
         personaHotkeyAppliesToSelection = settingsStore.personaHotkeyAppliesToSelection
+        quickInputEnabled = settingsStore.quickInputEnabled
         activePersonaID = settingsStore.activePersonaID
         personaAppBindings = settingsStore.personaAppBindings
         personaAppBindingsEnabled = settingsStore.personaAppBindingsEnabled
@@ -1887,58 +2281,102 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
-    func prepareLocalSTTModel() {
+    func prepareLocalSTTModel(_ model: LocalSTTModel? = nil) {
         guard !isPreparingLocalSTT else { return }
 
-        setLocalSTTModelIdentifier(localSTTModel.defaultModelIdentifier)
+        let targetModel = model ?? localSTTFocusedModel
+        let configuration = localSTTConfiguration(for: targetModel)
+        localSTTFocusedModel = targetModel
+        localSTTModelIdentifier = configuration.modelIdentifier
+        localSTTDownloadSource = configuration.downloadSource
         localSTTAutoSetup = true
-        settingsStore.localSTTAutoSetup = true
 
-        if localModelManager.preparedModelInfo(settingsStore: settingsStore) != nil {
-            refreshLocalSTTPreparedState()
-            showToast(L("settings.models.localSTT.ready"))
+        if localModelManager.isModelAvailable(targetModel) {
+            commitLocalSTTModel(targetModel)
             return
         }
 
+        let preparationID = UUID()
+        localSTTPreparationID = preparationID
         isPreparingLocalSTT = true
         localSTTStatus = L("settings.models.localSTT.preparing")
         localSTTPreparationProgress = 0.02
         localSTTPreparationDetail = L("settings.models.localSTT.preparing")
+        localSTTTransferDetail = ""
         isLocalSTTPrepared = false
         localSTTPreparedSource = L("common.automatic")
-        refreshLocalSTTStoragePath()
+        localSTTStoragePath = localModelManager.storagePath(for: configuration)
+        LocalModelDownloadProgressCenter.shared.reportDownloading(
+            model: targetModel,
+            progress: localSTTPreparationProgress
+        )
 
-        settingsStore.localSTTModel = localSTTModel
-        settingsStore.localSTTModelIdentifier = localSTTModelIdentifier
-        settingsStore.localSTTDownloadSource = localSTTDownloadSource
-        settingsStore.localSTTAutoSetup = localSTTAutoSetup
-
-        Task {
+        localSTTPreparationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                try await localModelManager.prepareModel(settingsStore: settingsStore) { [weak self] update in
+                try await localModelManager.prepareModel(configuration: configuration) { [weak self] update in
                     Task { @MainActor in
+                        guard self?.localSTTPreparationID == preparationID,
+                              self?.localSTTFocusedModel == targetModel
+                        else {
+                            return
+                        }
+                        LocalModelDownloadProgressCenter.shared.reportDownloading(
+                            model: targetModel,
+                            progress: update.progress
+                        )
                         self?.localSTTPreparationProgress = update.progress
                         self?.localSTTPreparationDetail = update.message
+                        self?.localSTTTransferDetail = Self.localSTTTransferText(
+                            downloadedBytes: update.downloadedBytes,
+                            totalBytes: update.totalBytes
+                        )
                         self?.localSTTStoragePath = update.storagePath
                         if let source = update.source {
                             self?.localSTTPreparedSource = source
                         }
                     }
                 }
-                localSTTStatus = L("settings.models.localSTT.readyNamed", localSTTModel.displayName)
+
+                guard !Task.isCancelled,
+                      localSTTPreparationID == preparationID,
+                      localSTTFocusedModel == targetModel
+                else {
+                    return
+                }
+
+                commitLocalSTTModel(targetModel)
+                localSTTStatus = L("settings.models.localSTT.readyNamed", targetModel.displayName)
                 localSTTPreparationProgress = 1
                 localSTTPreparationDetail = L("settings.models.localSTT.downloadComplete")
+                localSTTTransferDetail = ""
                 isLocalSTTPrepared = true
-                refreshLocalSTTPreparedState()
-                showToast(L("settings.models.localSTT.ready"))
+                LocalModelDownloadProgressCenter.shared.clear()
                 await notifyLocalModelReady()
             } catch {
+                guard !Task.isCancelled,
+                      localSTTPreparationID == preparationID,
+                      localSTTFocusedModel == targetModel
+                else {
+                    LocalModelDownloadProgressCenter.shared.clear()
+                    return
+                }
+
                 localSTTStatus = L("common.failedWithReason", error.localizedDescription)
                 localSTTPreparationDetail = L("settings.models.localSTT.prepareFailed")
+                localSTTTransferDetail = ""
                 isLocalSTTPrepared = false
+                LocalModelDownloadProgressCenter.shared.reportFailed(
+                    model: targetModel,
+                    message: error.localizedDescription
+                )
                 showToast(L("settings.models.localSTT.prepareFailed"))
             }
-            isPreparingLocalSTT = false
+            if localSTTPreparationID == preparationID {
+                isPreparingLocalSTT = false
+                localSTTPreparationID = nil
+                localSTTPreparationTask = nil
+            }
         }
     }
 
@@ -1950,8 +2388,9 @@ final class StudioViewModel: ObservableObject {
         do {
             try localModelManager.deleteModelFiles(model)
             if model == localSTTModel {
-                refreshLocalSTTStoragePath()
-                refreshLocalSTTPreparedState()
+                selectLocalSTTFallbackAfterDeleting(model)
+            } else if model == localSTTFocusedModel {
+                focusLocalSTTModel(localSTTModel)
             }
             let toastKey = localModelManager.isModelAvailable(model)
                 ? "settings.models.localSTT.ready"
@@ -1962,15 +2401,23 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
+    private func selectLocalSTTFallbackAfterDeleting(_ deletedModel: LocalSTTModel) {
+        let fallback = LocalSTTModel.displayOrder.first { model in
+            model != deletedModel && localModelManager.isModelAvailable(model)
+        } ?? LocalSTTModel.defaultModel
+
+        commitLocalSTTModel(fallback)
+        refreshLocalSTTPreparedState()
+    }
+
     func redownloadLocalSTTModel(_ model: LocalSTTModel) {
         try? localModelManager.deleteModelFiles(model)
-        if localSTTModel != model {
-            setLocalSTTModel(model)
-        } else {
+        localSTTFocusedModel = model
+        if localSTTModel == model {
             isLocalSTTPrepared = false
             localSTTPreparationProgress = 0
         }
-        prepareLocalSTTModel()
+        prepareLocalSTTModel(model)
     }
 
     func exportHistory() {
@@ -1980,7 +2427,7 @@ final class StudioViewModel: ObservableObject {
             let exportedURL = try historyStore.exportMarkdown()
             let url = try HistoryExportDestination.moveExport(
                 at: exportedURL,
-                to: destinationDirectoryURL,
+                to: destinationDirectoryURL
             )
             NSWorkspace.shared.activateFileViewerSelecting([url])
             showToast(L("history.toast.exported"))
@@ -2143,6 +2590,7 @@ final class StudioViewModel: ObservableObject {
             settingsStore.multimodalLLMAPIKey = multimodalLLMAPIKey
         case .aliCloud:
             settingsStore.aliCloudAPIKey = aliCloudAPIKey
+            settingsStore.aliCloudModel = aliCloudModel
         case .doubaoRealtime:
             settingsStore.doubaoAppID = doubaoAppID
             settingsStore.doubaoAccessToken = doubaoAccessToken
@@ -2154,6 +2602,9 @@ final class StudioViewModel: ObservableObject {
         case .groqSTT:
             settingsStore.groqSTTAPIKey = groqSTTAPIKey
             settingsStore.groqSTTModel = groqSTTModel
+        case .soniox:
+            settingsStore.sonioxAPIKey = sonioxAPIKey
+            settingsStore.sonioxModel = sonioxModel
         case .appleSpeech, .localSTT, .typefluxOfficial, .typefluxCloud:
             break
         }
@@ -2188,7 +2639,7 @@ final class StudioViewModel: ObservableObject {
 
             do {
                 let (firstTokenDate, collected) = try await ConnectionTestSupport.runWithTimeout {
-                    var firstTokenDate: Date? = nil
+                    var firstTokenDate: Date?
                     var collected = ""
 
                     switch capturedProvider {
@@ -2200,14 +2651,14 @@ final class StudioViewModel: ObservableObject {
                             provider: capturedRemoteProvider,
                             baseURL: capturedBaseURL,
                             model: capturedModel,
-                            apiKey: capturedAPIKey,
+                            apiKey: capturedAPIKey
                         )
                         let preview = try await RemoteLLMClient.previewConnection(
                             provider: connection.provider,
                             baseURL: connection.baseURL,
                             model: connection.model,
                             apiKey: connection.apiKey,
-                            additionalHeaders: connection.headers(for: .modelSetup),
+                            additionalHeaders: connection.headers(for: .modelSetup)
                         )
                         if !preview.isEmpty {
                             firstTokenDate = Date()
@@ -2215,7 +2666,11 @@ final class StudioViewModel: ObservableObject {
                         collected = preview
                     case .ollama:
                         guard let baseURL = URL(string: capturedOllamaURL) else {
-                            throw NSError(domain: "LLMTest", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid Ollama base URL."])
+                            throw NSError(
+                                domain: "LLMTest",
+                                code: 1,
+                                userInfo: [NSLocalizedDescriptionKey: "Invalid Ollama base URL."]
+                            )
                         }
                         let url = baseURL.appendingPathComponent("api/chat")
                         var urlRequest = URLRequest(
@@ -2228,13 +2683,17 @@ final class StudioViewModel: ObservableObject {
                             "model": capturedOllamaModel,
                             "stream": true,
                             "messages": [["role": "user", "content": "Hello"]],
-                            "options": ["num_predict": 50],
+                            "options": ["num_predict": 50]
                         ]
                         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
                         let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
                         guard let http = response as? HTTPURLResponse else {
-                            throw NSError(domain: "LLMTest", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response."])
+                            throw NSError(
+                                domain: "LLMTest",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "Invalid response."]
+                            )
                         }
                         guard (200 ..< 300).contains(http.statusCode) else {
                             var errorData = Data()
@@ -2242,7 +2701,11 @@ final class StudioViewModel: ObservableObject {
                                 errorData.append(byte)
                             }
                             let message = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-                            throw NSError(domain: "LLMTest", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(message)"])
+                            throw NSError(
+                                domain: "LLMTest",
+                                code: http.statusCode,
+                                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(message)"]
+                            )
                         }
 
                         struct OllamaTestResponse: Decodable {
@@ -2256,7 +2719,8 @@ final class StudioViewModel: ObservableObject {
                             if Task.isCancelled { return (firstTokenDate, collected) }
                             lineBuffer.append(byte)
                             guard byte == 0x0A else { continue }
-                            let lineStr = String(data: lineBuffer, encoding: .utf8)?.trimmingCharacters(in: .newlines) ?? ""
+                            let lineStr = String(data: lineBuffer, encoding: .utf8)?
+                                .trimmingCharacters(in: .newlines) ?? ""
                             lineBuffer = Data()
                             guard !lineStr.isEmpty,
                                   let lineData = lineStr.data(using: .utf8),
@@ -2269,7 +2733,7 @@ final class StudioViewModel: ObservableObject {
                             if payload.done || collected.count >= 60 { break }
                         }
                     case .appleSpeech, .localSTT, .whisperAPI, .multimodalLLM, .aliCloud, .doubaoRealtime,
-                         .googleCloud, .groqSTT, .typefluxOfficial:
+                         .googleCloud, .groqSTT, .soniox, .typefluxOfficial:
                         return (firstTokenDate, collected)
                     }
 
@@ -2282,7 +2746,7 @@ final class StudioViewModel: ObservableObject {
                 llmConnectionTestState = .success(
                     firstTokenMs: firstMs,
                     totalMs: totalMs,
-                    preview: String(collected.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)),
+                    preview: String(collected.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
                 )
             } catch {
                 if !Task.isCancelled {
@@ -2294,6 +2758,14 @@ final class StudioViewModel: ObservableObject {
 
     func testSTTConnection() {
         sttTestTask?.cancel()
+
+        if focusedModelProvider != .localSTT, !AuthState.shared.canUseCloudASR {
+            sttConnectionTestState = .notice(
+                message: TypefluxCloudASRDirectiveError().localizedDescription
+            )
+            return
+        }
+
         sttConnectionTestState = .testing
 
         let capturedProvider = focusedModelProvider
@@ -2305,6 +2777,7 @@ final class StudioViewModel: ObservableObject {
         let capturedMultimodalModel = multimodalLLMModel
         let capturedMultimodalAPIKey = multimodalLLMAPIKey
         let capturedAliCloudAPIKey = aliCloudAPIKey
+        let capturedAliCloudModel = aliCloudModel
         let capturedDoubaoAppID = doubaoAppID
         let capturedDoubaoAccessToken = doubaoAccessToken
         let capturedDoubaoResourceID = doubaoResourceID
@@ -2314,54 +2787,63 @@ final class StudioViewModel: ObservableObject {
         let capturedAppLanguage = appLanguage
         let capturedGroqSTTAPIKey = groqSTTAPIKey
         let capturedGroqSTTModel = groqSTTModel
+        let capturedSonioxAPIKey = sonioxAPIKey
+        let capturedSonioxModel = sonioxModel
 
         sttTestTask = Task {
             let startDate = Date()
 
             do {
                 let preview = try await ConnectionTestSupport.runWithTimeout {
-                    let preview: String
-                    switch capturedProvider {
+                    let preview: String = switch capturedProvider {
                     case .freeSTT:
-                        preview = try await FreeSTTTranscriber.testConnection(modelName: capturedFreeSTTModel)
+                        try await FreeSTTTranscriber.testConnection(modelName: capturedFreeSTTModel)
                     case .whisperAPI:
-                        preview = try await WhisperAPITranscriber.testConnection(
+                        try await WhisperAPITranscriber.testConnection(
                             baseURL: capturedWhisperBaseURL,
                             model: capturedWhisperModel,
-                            apiKey: capturedWhisperAPIKey,
+                            apiKey: capturedWhisperAPIKey
                         )
                     case .multimodalLLM:
-                        preview = try await MultimodalLLMTranscriber.testConnection(
+                        try await MultimodalLLMTranscriber.testConnection(
                             baseURL: capturedMultimodalBaseURL,
                             model: capturedMultimodalModel,
-                            apiKey: capturedMultimodalAPIKey,
+                            apiKey: capturedMultimodalAPIKey
                         )
                     case .aliCloud:
-                        preview = try await AliCloudRealtimeTranscriber.testConnection(apiKey: capturedAliCloudAPIKey)
+                        try await AliCloudRealtimeTranscriber.testConnection(
+                            apiKey: capturedAliCloudAPIKey,
+                            model: capturedAliCloudModel
+                        )
                     case .doubaoRealtime:
-                        preview = try await DoubaoRealtimeTranscriber.testConnection(
+                        try await DoubaoRealtimeTranscriber.testConnection(
                             appID: capturedDoubaoAppID,
                             accessToken: capturedDoubaoAccessToken,
-                            resourceID: capturedDoubaoResourceID,
+                            resourceID: capturedDoubaoResourceID
                         )
                     case .googleCloud:
-                        preview = try await GoogleCloudSpeechTranscriber.testConnection(
+                        try await GoogleCloudSpeechTranscriber.testConnection(
                             projectID: capturedGoogleProjectID,
                             apiKey: capturedGoogleAPIKey,
                             model: capturedGoogleModel,
-                            appLanguage: capturedAppLanguage,
+                            appLanguage: capturedAppLanguage
                         )
                     case .groqSTT:
-                        preview = try await WhisperAPITranscriber.testConnection(
+                        try await WhisperAPITranscriber.testConnection(
                             baseURL: "https://api.groq.com/openai/v1",
                             model: capturedGroqSTTModel.isEmpty
                                 ? OpenAIAudioModelCatalog.groqWhisperModels[0] : capturedGroqSTTModel,
-                            apiKey: capturedGroqSTTAPIKey,
+                            apiKey: capturedGroqSTTAPIKey
+                        )
+                    case .soniox:
+                        try await SonioxTranscriber.testConnection(
+                            apiKey: capturedSonioxAPIKey,
+                            model: capturedSonioxModel
                         )
                     case .typefluxOfficial:
-                        preview = try await TypefluxOfficialTranscriber.testConnection()
+                        try await TypefluxOfficialTranscriber.testConnection()
                     default:
-                        preview = ""
+                        ""
                     }
                     return preview
                 }
@@ -2371,7 +2853,7 @@ final class StudioViewModel: ObservableObject {
                 sttConnectionTestState = .success(
                     firstTokenMs: totalMs,
                     totalMs: totalMs,
-                    preview: String(preview.prefix(120)),
+                    preview: String(preview.prefix(120))
                 )
             } catch {
                 if !Task.isCancelled {
@@ -2406,7 +2888,7 @@ final class StudioViewModel: ObservableObject {
                 detail: snapshot.detail,
                 isGranted: snapshot.isGranted,
                 badgeText: snapshot.badgeText,
-                actionTitle: snapshot.actionTitle,
+                actionTitle: snapshot.actionTitle
             )
         }
     }
@@ -2444,7 +2926,10 @@ final class StudioViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 350_000_000)
             refreshPermissionRows()
             if let row = permissionRows.first(where: { $0.id == id }) {
-                showToast(row.isGranted ? L("settings.permissions.ready", row.title) : L("settings.permissions.reviewInSystemSettings", row.title))
+                showToast(row.isGranted ? L("settings.permissions.ready", row.title) : L(
+                    "settings.permissions.reviewInSystemSettings",
+                    row.title
+                ))
             }
         }
     }
@@ -2495,6 +2980,8 @@ final class StudioViewModel: ObservableObject {
                 .googleCloud
             case .groq:
                 .groqSTT
+            case .soniox:
+                .soniox
             case .typefluxOfficial:
                 .typefluxOfficial
             }
@@ -2553,7 +3040,7 @@ final class StudioViewModel: ObservableObject {
 
                 guard self.showImportConfirmationAlert(
                     subject: source.displayName,
-                    itemCount: discovery.terms.count,
+                    itemCount: discovery.terms.count
                 ) else { return }
 
                 let result = VocabularyStore.importTerms(discovery.terms, source: source)
@@ -2583,13 +3070,22 @@ final class StudioViewModel: ObservableObject {
         await notificationService.sendLocalNotification(
             title: L("notification.localModelReady.title"),
             body: L("notification.localModelReady.body"),
-            identifier: "ai.gulu.app.typeflux.local-model-ready",
+            identifier: "ai.gulu.app.typeflux.local-model-ready"
         )
     }
 
     private func refreshLocalSTTStoragePath() {
         let configuration = LocalSTTConfiguration(settingsStore: settingsStore)
         localSTTStoragePath = localModelManager.storagePath(for: configuration)
+    }
+
+    private func localSTTConfiguration(for model: LocalSTTModel) -> LocalSTTConfiguration {
+        LocalSTTConfiguration(
+            model: model,
+            modelIdentifier: model.defaultModelIdentifier,
+            downloadSource: model.recommendedDownloadSource,
+            autoSetup: true
+        )
     }
 
     private func refreshLocalSTTPreparedState() {
@@ -2599,12 +3095,14 @@ final class StudioViewModel: ObservableObject {
             localSTTStoragePath = prepared.storagePath
             localSTTStatus = L("settings.models.localSTT.readyNamed", localSTTModel.displayName)
             localSTTPreparationDetail = L("settings.models.localSTT.downloadComplete")
+            localSTTTransferDetail = ""
             localSTTPreparationProgress = 1
         } else {
             isLocalSTTPrepared = false
             localSTTPreparedSource = L("common.automatic")
             localSTTStatus = L("settings.models.localSTT.notPrepared")
             localSTTPreparationDetail = L("settings.models.localSTT.autoPrepareHint")
+            localSTTTransferDetail = ""
             localSTTPreparationProgress = 0
         }
     }
@@ -2638,39 +3136,684 @@ final class StudioViewModel: ObservableObject {
             transcriptText: record.transcriptText,
             personaPrompt: record.personaPrompt,
             personaResultText: record.personaResultText,
+            openCCResultText: record.openCCResultText,
+            openCCConfig: record.openCCConfig,
+            postProcessedText: record.postProcessedText,
             selectionOriginalText: record.selectionOriginalText,
             selectionEditedText: record.selectionEditedText,
-            pipelineStatItems: historyPipelineStatItems(record.pipelineStats ?? record.pipelineTiming?.generatedStats()),
+            pipelineTimeline: historyPipelineTimeline(record.pipelineStats ?? record.pipelineTiming?.generatedStats()),
             errorMessage: record.errorMessage,
             applyMessage: record.applyMessage,
             hasTranscriptToCopy: !(record.finalText?.isEmpty ?? true),
-            canRetry: record.audioFilePath.map { FileManager.default.fileExists(atPath: $0) } == true,
+            canRetry: HistoryRetryPlanner.plan(for: record).isAvailable,
             hasFailure: record.hasFailure,
             failureMessage: record.errorMessage,
             accentName: iconData.0,
-            accentColorName: iconData.1,
+            accentColorName: iconData.1
         )
     }
 
-    private func historyPipelineStatItems(_ stats: HistoryPipelineStats?) -> [HistoryPipelineStatPresentationItem] {
-        guard let stats, stats.hasData else { return [] }
+    private func historyPipelineTimeline(
+        _ stats: HistoryPipelineStats?
+    ) -> HistoryPipelineTimelinePresentation? {
+        guard let stats, stats.hasData else { return nil }
 
-        let durationRows: [(String, Int?)] = [
-            (L("history.stats.transcriptionDuration"), stats.transcriptionDurationMilliseconds),
-            (L("history.stats.llmDuration"), stats.llmDurationMilliseconds),
-            (L("history.stats.endToEnd"), stats.endToEndMilliseconds),
+        struct LaneSource {
+            let id: String
+            let title: String
+            let start: Date?
+            let end: Date?
+            let tone: HistoryPipelineTimelineTone
+            let isDetail: Bool
+        }
+
+        var sources = [
+            LaneSource(
+                id: "recording-startup",
+                title: L("history.timeline.recordingStartup"),
+                start: stats.hotkeyDetectedAt,
+                end: stats.firstAudioSignalAt ?? (stats.leadingZeroDuration == nil
+                    ? stats.firstAudioBufferAt : stats.recordingStoppedAt),
+                tone: .audio,
+                isDetail: false
+            ),
+            LaneSource(
+                id: "recording",
+                title: L("history.timeline.recording"),
+                start: stats.firstAudioSignalAt ?? (stats.leadingZeroDuration == nil ? stats.firstAudioBufferAt : nil),
+                end: stats.recordingStoppedAt,
+                tone: .audio,
+                isDetail: false
+            ),
+            LaneSource(
+                id: "audio",
+                title: L("history.timeline.audio"),
+                start: stats.recordingStoppedAt,
+                end: stats.audioFileReadyAt,
+                tone: .audio,
+                isDetail: false
+            ),
+            LaneSource(
+                id: "realtime",
+                title: L("history.timeline.realtime"),
+                start: stats.realtimeSessionStartedAt ?? stats.realtimeFinishStartedAt,
+                end: stats.realtimeFinishCompletedAt,
+                tone: .realtime,
+                isDetail: false
+            ),
+            LaneSource(
+                id: "transcription",
+                title: L("history.timeline.transcription"),
+                start: stats.transcriptionStartedAt,
+                end: stats.transcriptionCompletedAt,
+                tone: .transcription,
+                isDetail: false
+            )
         ]
 
-        return durationRows.enumerated().compactMap { item -> HistoryPipelineStatPresentationItem? in
-            let index = item.offset
-            let row = item.element
-            guard let value = row.1 else { return nil }
-            return HistoryPipelineStatPresentationItem(
-                id: "duration-\(index)",
-                title: row.0,
-                value: historyDurationText(milliseconds: value),
-                style: .duration,
+        if let race = stats.asrRace {
+            sources.append(contentsOf: [
+                LaneSource(
+                    id: "race-cloud",
+                    title: L("history.race.cloud"),
+                    start: race.startedAt,
+                    end: race.cloudAttempt.completedAt ?? race.selectedAt,
+                    tone: .cloud,
+                    isDetail: false
+                ),
+                LaneSource(
+                    id: "race-local",
+                    title: L("history.race.local"),
+                    start: race.startedAt,
+                    end: race.localAttempt.completedAt ?? race.selectedAt,
+                    tone: .local,
+                    isDetail: false
+                )
+            ])
+        }
+
+        if let transport = stats.realtimeTransport {
+            func appendASRStage(_ id: String, _ titleKey: String, _ start: Date?, _ end: Date?) {
+                guard let start, let end, end >= start else { return }
+                sources.append(
+                    LaneSource(
+                        id: id,
+                        title: L(titleKey),
+                        start: start,
+                        end: end,
+                        tone: .realtime,
+                        isDetail: true
+                    )
+                )
+            }
+
+            let firstNetworkActivity = [
+                transport.domainLookupStartedAt,
+                transport.connectionStartedAt,
+                transport.requestStartedAt
+            ].compactMap(\.self).min()
+            let hasPreparationBreakdown = transport.credentialLookupStartedAt != nil
+                || transport.routeLookupStartedAt != nil
+                || transport.webSocketTaskResumedAt != nil
+
+            if hasPreparationBreakdown {
+                appendASRStage(
+                    "asr-session-preparation",
+                    "history.stats.asrSessionPreparation",
+                    stats.realtimeSessionStartedAt,
+                    transport.credentialLookupStartedAt
+                )
+                appendASRStage(
+                    "asr-credential",
+                    "history.stats.asrCredentialLookup",
+                    transport.credentialLookupStartedAt,
+                    transport.credentialLookupCompletedAt
+                )
+                appendASRStage(
+                    "asr-route",
+                    "history.stats.asrRouteLookup",
+                    transport.routeLookupStartedAt,
+                    transport.routeLookupCompletedAt
+                )
+                appendASRStage(
+                    "asr-server-selection",
+                    "history.stats.asrServerSelection",
+                    transport.serverSelectionStartedAt,
+                    transport.serverSelectionCompletedAt
+                )
+                appendASRStage(
+                    "asr-socket-preparation",
+                    "history.stats.asrSocketPreparation",
+                    transport.serverSelectionCompletedAt ?? transport.routeLookupCompletedAt,
+                    transport.webSocketTaskResumedAt
+                )
+                appendASRStage(
+                    "asr-network-queue",
+                    "history.stats.asrNetworkQueue",
+                    transport.webSocketTaskResumedAt,
+                    firstNetworkActivity
+                )
+            } else {
+                appendASRStage(
+                    "asr-preconnect",
+                    "history.stats.asrPreconnect",
+                    stats.realtimeSessionStartedAt,
+                    firstNetworkActivity
+                )
+            }
+
+            appendASRStage(
+                "asr-first-audio-queue",
+                "history.stats.asrFirstAudioQueue",
+                stats.realtimeFirstAudioSubmittedAt,
+                stats.realtimeConnectionReadyAt
             )
+            appendASRStage(
+                "asr-dns",
+                "history.stats.asrDNSLookup",
+                transport.domainLookupStartedAt,
+                transport.domainLookupCompletedAt
+            )
+            appendASRStage(
+                "asr-network-scheduling",
+                "history.stats.asrNetworkScheduling",
+                transport.domainLookupCompletedAt,
+                transport.connectionStartedAt
+            )
+            appendASRStage(
+                "asr-tcp",
+                "history.stats.asrTCPConnection",
+                transport.connectionStartedAt,
+                transport.secureConnectionStartedAt ?? transport.connectionCompletedAt
+            )
+            appendASRStage(
+                "asr-tls",
+                "history.stats.asrTLSHandshake",
+                transport.secureConnectionStartedAt,
+                transport.secureConnectionCompletedAt
+            )
+            appendASRStage(
+                "asr-request-preparation",
+                "history.stats.asrRequestPreparation",
+                transport.secureConnectionCompletedAt ?? transport.connectionCompletedAt,
+                transport.requestStartedAt
+            )
+            appendASRStage(
+                "asr-upload",
+                "history.stats.asrRequestUpload",
+                transport.requestStartedAt,
+                transport.requestCompletedAt
+            )
+            appendASRStage(
+                "asr-upgrade",
+                "history.stats.asrUpgradeResponse",
+                transport.requestCompletedAt,
+                transport.firstResponseByteAt
+            )
+            appendASRStage(
+                "asr-confirmation",
+                "history.stats.asrConnectionConfirmation",
+                transport.firstResponseByteAt,
+                transport.startMessageSentAt ?? stats.realtimeConnectionReadyAt
+            )
+            appendASRStage(
+                "asr-streaming",
+                "history.stats.asrStreamingRecognition",
+                stats.realtimeConnectionReadyAt ?? transport.startMessageSentAt,
+                stats.realtimeFinishStartedAt
+            )
+            appendASRStage(
+                "asr-final-wait",
+                "history.stats.asrFinalResultWait",
+                stats.realtimeFinishStartedAt,
+                stats.realtimeFinalResultReceivedAt ?? stats.realtimeFinishCompletedAt
+            )
+            appendASRStage(
+                "asr-cleanup",
+                "history.stats.asrSessionCleanup",
+                stats.realtimeFinalResultReceivedAt,
+                stats.realtimeFinishCompletedAt
+            )
+        }
+
+        sources.append(
+            LaneSource(
+                id: "llm",
+                title: L("history.timeline.llm"),
+                start: stats.llmProcessingStartedAt,
+                end: stats.llmProcessingCompletedAt,
+                tone: .llm,
+                isDetail: false
+            )
+        )
+
+        for (index, attempt) in (stats.llmRequestAttempts ?? []).enumerated() {
+            let suffix = (stats.llmRequestAttempts?.count ?? 0) > 1 ? " #\(index + 1)" : ""
+            let prefix = "llm-request-\(attempt.id.uuidString)"
+            sources.append(contentsOf: [
+                LaneSource(
+                    id: "\(prefix)-dns",
+                    title: L("history.stats.llmDNSLookup") + suffix,
+                    start: attempt.domainLookupStartedAt,
+                    end: attempt.domainLookupCompletedAt,
+                    tone: .llm,
+                    isDetail: true
+                ),
+                LaneSource(
+                    id: "\(prefix)-tcp",
+                    title: L("history.stats.llmTCPConnection") + suffix,
+                    start: attempt.connectionStartedAt,
+                    end: attempt.secureConnectionStartedAt ?? attempt.connectionCompletedAt,
+                    tone: .llm,
+                    isDetail: true
+                ),
+                LaneSource(
+                    id: "\(prefix)-tls",
+                    title: L("history.stats.llmTLSHandshake") + suffix,
+                    start: attempt.secureConnectionStartedAt,
+                    end: attempt.secureConnectionCompletedAt,
+                    tone: .llm,
+                    isDetail: true
+                ),
+                LaneSource(
+                    id: "\(prefix)-upload",
+                    title: L("history.stats.llmRequestUpload") + suffix,
+                    start: attempt.requestUploadStartedAt,
+                    end: attempt.requestUploadCompletedAt,
+                    tone: .llm,
+                    isDetail: true
+                ),
+                LaneSource(
+                    id: "\(prefix)-wait",
+                    title: L("history.stats.llmServerWait") + suffix,
+                    start: attempt.requestUploadCompletedAt,
+                    end: attempt.firstResponseByteAt,
+                    tone: .llm,
+                    isDetail: true
+                ),
+                LaneSource(
+                    id: "\(prefix)-download",
+                    title: L("history.stats.llmResponseDownload") + suffix,
+                    start: attempt.firstResponseByteAt,
+                    end: attempt.networkResponseCompletedAt ?? attempt.responseCompletedAt,
+                    tone: .llm,
+                    isDetail: true
+                )
+            ])
+        }
+
+        sources.append(
+            LaneSource(
+                id: "apply",
+                title: L("history.timeline.apply"),
+                start: stats.applyStartedAt,
+                end: stats.applyCompletedAt,
+                tone: .apply,
+                isDetail: false
+            )
+        )
+
+        let availableSources = sources.filter { $0.start != nil && $0.end != nil }
+        let origin = availableSources.compactMap(\.start).min()
+        let end = availableSources.compactMap(\.end).max()
+        let span = origin.flatMap { start in end.map { max(0.001, $0.timeIntervalSince(start)) } }
+
+        let detailedDurations = availableSources.compactMap { source -> (String, Int)? in
+            guard source.isDetail,
+                  source.id != "asr-streaming",
+                  let start = source.start,
+                  let end = source.end
+            else { return nil }
+            return (source.id, max(0, Int((end.timeIntervalSince(start) * 1000).rounded())))
+        }
+        let laneDurations = availableSources.compactMap { source -> (String, Int)? in
+            guard let start = source.start, let end = source.end else { return nil }
+            return (source.id, max(0, Int((end.timeIntervalSince(start) * 1000).rounded())))
+        }
+        let slowestID = (detailedDurations.isEmpty ? laneDurations : detailedDurations)
+            .max(by: { $0.1 < $1.1 })?.0
+        let lanes = availableSources.compactMap { source -> HistoryPipelineTimelinePresentation.Lane? in
+            guard let origin, let span, let start = source.start, let end = source.end else { return nil }
+            let clippedStart = max(start, origin)
+            let clippedEnd = max(clippedStart, end)
+            let duration = max(0, Int((end.timeIntervalSince(start) * 1000).rounded()))
+            return HistoryPipelineTimelinePresentation.Lane(
+                id: source.id,
+                title: source.title,
+                durationMilliseconds: duration,
+                durationText: historyDurationText(milliseconds: duration),
+                offsetFraction: min(1, max(0, clippedStart.timeIntervalSince(origin) / span)),
+                widthFraction: min(1, max(0, clippedEnd.timeIntervalSince(clippedStart) / span)),
+                tone: source.tone,
+                isDetail: source.isDetail,
+                isSlowest: source.id == slowestID
+            )
+        }
+
+        var keyMetricSources: [(String, String, Int?)] = [
+            ("hotkey-to-first-audio", L("history.stats.hotkeyToFirstAudio"), stats.hotkeyToFirstAudioMilliseconds),
+            ("hotkey-to-first-signal", L("history.stats.hotkeyToFirstSignal"),
+             stats.hotkeyDetectedAt.flatMap { start in stats.firstAudioSignalAt.map {
+                 max(0, Int(($0.timeIntervalSince(start) * 1000).rounded()))
+             } }),
+            ("input-zero-prefix", L("history.stats.inputZeroPrefix"),
+             stats.leadingZeroDuration.map { Int(($0 * 1000).rounded()) }),
+            ("hotkey-dispatch", L("history.stats.hotkeyDispatch"), stats.hotkeyDispatchMilliseconds),
+            (
+                "recording-preparation",
+                L("history.stats.recordingPreparation"),
+                stats.recordingPreparationMilliseconds
+            ),
+            (
+                "audio-engine-first-buffer",
+                L("history.stats.audioEngineToFirstBuffer"),
+                stats.audioEngineToFirstBufferMilliseconds
+            ),
+            ("connection", L("history.stats.realtimeConnection"), stats.realtimeConnectionDurationMilliseconds),
+            (
+                "first-result",
+                L("history.stats.realtimeFirstAudioToFirstResult"),
+                stats.realtimeAudioToFirstResultMilliseconds
+            ),
+            ("final-result", L("history.stats.realtimeStopToFinalResult"), stats.realtimeStopToFinalResultMilliseconds),
+            ("llm-first-output", L("history.stats.llmTimeToFirstOutput"), stats.llmTimeToFirstOutputMilliseconds)
+        ]
+        if let race = stats.asrRace {
+            keyMetricSources.append(contentsOf: [
+                ("race-decision", L("history.race.decisionDuration"), race.decisionDurationMilliseconds),
+                ("race-cloud", L("history.race.cloudDuration"), race.cloudAttempt.durationMilliseconds),
+                ("race-local", L("history.race.localDuration"), race.localAttempt.durationMilliseconds)
+            ])
+        }
+        if let firstAudio = stats.realtimeFirstAudioSubmittedAt,
+           let connectionReady = stats.realtimeConnectionReadyAt,
+           connectionReady >= firstAudio {
+            keyMetricSources.append(
+                (
+                    "asr-first-audio-queue",
+                    L("history.stats.asrFirstAudioQueue"),
+                    max(0, Int((connectionReady.timeIntervalSince(firstAudio) * 1000).rounded()))
+                )
+            )
+        }
+        if let transport = stats.realtimeTransport {
+            keyMetricSources.append(contentsOf: [
+                ("asr-dns", L("history.stats.asrDNSLookup"), transport.dnsLookupMilliseconds),
+                ("asr-tcp", L("history.stats.asrTCPConnection"), transport.tcpConnectionMilliseconds),
+                ("asr-tls", L("history.stats.asrTLSHandshake"), transport.tlsHandshakeMilliseconds),
+                (
+                    "asr-upgrade",
+                    L("history.stats.asrUpgradeResponse"),
+                    transport.requestToUpgradeResponseMilliseconds
+                ),
+                ("asr-json", L("history.stats.asrJSONParsing"), transport.messageParsingMilliseconds)
+            ])
+        }
+        for (index, attempt) in (stats.llmRequestAttempts ?? []).enumerated() {
+            let suffix = (stats.llmRequestAttempts?.count ?? 0) > 1 ? " #\(index + 1)" : ""
+            let prefix = "llm-request-\(attempt.id.uuidString)"
+            keyMetricSources.append(contentsOf: [
+                ("\(prefix)-total", L("history.stats.llmRequestTotal") + suffix, attempt.totalRequestMilliseconds),
+                ("\(prefix)-dns", L("history.stats.llmDNSLookup") + suffix, attempt.dnsLookupMilliseconds),
+                ("\(prefix)-tcp", L("history.stats.llmTCPConnection") + suffix, attempt.tcpConnectionMilliseconds),
+                ("\(prefix)-tls", L("history.stats.llmTLSHandshake") + suffix, attempt.tlsHandshakeMilliseconds),
+                ("\(prefix)-upload", L("history.stats.llmRequestUpload") + suffix, attempt.requestUploadMilliseconds),
+                ("\(prefix)-server", L("history.stats.llmServerWait") + suffix, attempt.serverWaitMilliseconds),
+                ("\(prefix)-download", L("history.stats.llmResponseDownload") + suffix, attempt.responseDownloadMilliseconds),
+                ("\(prefix)-sse", L("history.stats.llmSSEParsing") + suffix, attempt.sseParsingMilliseconds),
+                ("\(prefix)-json", L("history.stats.llmJSONParsing") + suffix, attempt.jsonParsingMilliseconds),
+                ("\(prefix)-client", L("history.stats.llmClientOverhead") + suffix, attempt.unaccountedClientMilliseconds)
+            ])
+        }
+        let keyMetrics = keyMetricSources.compactMap { id, title, value in
+            value.map {
+                HistoryPipelineStatPresentationItem(
+                    id: id,
+                    title: title,
+                    value: historyDurationText(milliseconds: $0),
+                    style: .duration
+                )
+            }
+        }
+        var summaryBadges: [HistoryPipelineBadgePresentationItem] = []
+        if let total = stats.endToEndMilliseconds {
+            summaryBadges.append(
+                HistoryPipelineBadgePresentationItem(
+                    id: "total",
+                    title: L("history.race.total"),
+                    value: historyDurationText(milliseconds: total),
+                    tone: .neutral
+                )
+            )
+        }
+        if let race = stats.asrRace {
+            let selectionReason = historyRaceSelectionReasonText(
+                race.selectionReason,
+                priorityWindowMilliseconds: race.priorityWindowMilliseconds
+            )
+            let selectedValue = race.selectedSource.map { source in
+                "\(historyRaceSourceText(source)) · \(selectionReason)"
+            } ?? selectionReason
+            summaryBadges.append(
+                HistoryPipelineBadgePresentationItem(
+                    id: "race-selected",
+                    title: L("history.race.selected"),
+                    value: selectedValue,
+                    tone: race.selectedSource == nil ? .failure : .selected
+                )
+            )
+            summaryBadges.append(
+                historyRaceAttemptBadge(
+                    id: "race-cloud",
+                    title: L("history.race.cloud"),
+                    source: .cloud,
+                    attempt: race.cloudAttempt,
+                    race: race
+                )
+            )
+            summaryBadges.append(
+                historyRaceAttemptBadge(
+                    id: "race-local",
+                    title: L("history.race.local"),
+                    source: .local,
+                    attempt: race.localAttempt,
+                    race: race
+                )
+            )
+        }
+        if let llmOutcome = stats.llmOutcome {
+            summaryBadges.append(
+                HistoryPipelineBadgePresentationItem(
+                    id: "llm-outcome",
+                    title: L("history.race.llm"),
+                    value: "\(historyDurationText(milliseconds: llmOutcome.durationMilliseconds)) · " +
+                        historyLLMOutcomeText(llmOutcome.outcome),
+                    tone: historyLLMOutcomeTone(llmOutcome.outcome)
+                )
+            )
+        }
+        var requestDetails: [HistoryPipelineRequestPresentationItem] = []
+        for (index, attempt) in (stats.llmRequestAttempts ?? []).enumerated() {
+            let suffix = (stats.llmRequestAttempts?.count ?? 0) > 1 ? " #\(index + 1)" : ""
+            let host = URL(string: attempt.endpoint)?.host ?? attempt.endpoint
+            let badges = [
+                attempt.reusedConnection.map {
+                    $0 ? L("history.stats.llmConnectionReused") : L("history.stats.llmConnectionNew")
+                },
+                attempt.networkProtocolName,
+                attempt.statusCode.map { "HTTP \($0)" }
+            ].compactMap(\.self)
+            requestDetails.append(
+                HistoryPipelineRequestPresentationItem(
+                    id: "llm-request-\(attempt.id.uuidString)",
+                    title: L("history.request.llm") + suffix,
+                    endpoint: host,
+                    badges: badges
+                )
+            )
+        }
+        if let transport = stats.realtimeTransport {
+            let host = transport.endpoint.flatMap { URL(string: $0)?.host } ?? transport.endpoint
+            let badges = [
+                transport.reusedConnection.map {
+                    $0 ? L("history.stats.llmConnectionReused") : L("history.stats.llmConnectionNew")
+                },
+                transport.networkProtocolName
+            ].compactMap(\.self)
+            if let host {
+                requestDetails.insert(
+                    HistoryPipelineRequestPresentationItem(
+                        id: "asr-request",
+                        title: L("history.request.asr"),
+                        endpoint: host,
+                        badges: badges
+                    ),
+                    at: 0
+                )
+            }
+        }
+        let slowestStageText = lanes.first(where: \.isSlowest).map {
+            "\($0.title) · \($0.durationText)"
+        }
+        let totalDurationText = stats.endToEndMilliseconds.map(historyDurationText(milliseconds:))
+        let timelineSpanDurationText = origin.flatMap { start in
+            end.map {
+                historyDurationText(
+                    milliseconds: max(0, Int(($0.timeIntervalSince(start) * 1000).rounded()))
+                )
+            }
+        }
+
+        guard !lanes.isEmpty || !keyMetrics.isEmpty || !requestDetails.isEmpty ||
+            !summaryBadges.isEmpty || totalDurationText != nil
+        else {
+            return nil
+        }
+        return HistoryPipelineTimelinePresentation(
+            totalDurationText: totalDurationText,
+            timelineSpanDurationText: timelineSpanDurationText,
+            slowestStageText: slowestStageText,
+            lanes: lanes,
+            keyMetrics: keyMetrics,
+            requestDetails: requestDetails,
+            summaryBadges: summaryBadges
+        )
+    }
+
+    private func historyRaceAttemptBadge(
+        id: String,
+        title: String,
+        source: CloudLocalTranscriptionSource,
+        attempt: ASRAttemptDiagnostics,
+        race: ASRRaceDiagnostics
+    ) -> HistoryPipelineBadgePresentationItem {
+        let durationPrefix = source == .cloud && race.cloudPriorityWindowExceeded && attempt.outcome == .cancelled
+            ? "≥"
+            : ""
+        var status = historyASRAttemptOutcomeText(attempt.outcome)
+        if source == .cloud, race.cloudPriorityWindowExceeded {
+            let timeoutSeconds = race.priorityWindowMilliseconds / 1_000
+            switch attempt.outcome {
+            case .succeeded:
+                status = L("history.race.priorityExceeded", timeoutSeconds)
+            case .failed:
+                status += " · \(L("history.race.priorityExceeded", timeoutSeconds))"
+            case .cancelled:
+                status = L("history.race.priorityExceededCancelled", timeoutSeconds)
+            }
+        }
+        let tone: HistoryPipelineBadgePresentationItem.Tone = if race.selectedSource == source {
+            .selected
+        } else if attempt.outcome == .failed {
+            .failure
+        } else if attempt.outcome == .cancelled || (source == .cloud && race.cloudPriorityWindowExceeded) {
+            .warning
+        } else {
+            .neutral
+        }
+        return HistoryPipelineBadgePresentationItem(
+            id: id,
+            title: title,
+            value: "\(durationPrefix)\(historyDurationText(milliseconds: attempt.durationMilliseconds)) · \(status)",
+            tone: tone
+        )
+    }
+
+    private func historyRaceSourceText(_ source: CloudLocalTranscriptionSource) -> String {
+        switch source {
+        case .cloud:
+            L("history.race.source.cloud")
+        case .local:
+            L("history.race.source.local")
+        }
+    }
+
+    private func historyASRAttemptOutcomeText(_ outcome: ASRAttemptOutcome) -> String {
+        switch outcome {
+        case .succeeded:
+            L("history.race.status.succeeded")
+        case .failed:
+            L("history.race.status.failed")
+        case .cancelled:
+            L("history.race.status.cancelled")
+        }
+    }
+
+    private func historyRaceSelectionReasonText(
+        _ reason: ASRRaceSelectionReason,
+        priorityWindowMilliseconds: Int
+    ) -> String {
+        let timeoutSeconds = priorityWindowMilliseconds / 1_000
+        return switch reason {
+        case .cloudWithinPriorityWindow:
+            L("history.race.reason.cloudWithinWindow", timeoutSeconds)
+        case .cloudAfterPriorityWindow:
+            L("history.race.reason.cloudAfterWindow", timeoutSeconds)
+        case .localAtPriorityDeadline:
+            L("history.race.reason.localAtDeadline", timeoutSeconds)
+        case .localAfterPriorityWindow:
+            L("history.race.reason.localAfterWindow", timeoutSeconds)
+        case .localAfterCloudFailure:
+            L("history.race.reason.localAfterCloudFailure")
+        case .bothFailed:
+            L("history.race.reason.bothFailed")
+        }
+    }
+
+    private func historyLLMOutcomeText(_ outcome: LLMProcessingOutcome) -> String {
+        switch outcome {
+        case .completed:
+            L("history.llmOutcome.completed")
+        case .emptyResponseFallback:
+            L("history.llmOutcome.emptyFallback")
+        case .timedOutFallback:
+            L("history.llmOutcome.timedOutFallback")
+        case .serviceOverloadedFallback:
+            L("history.llmOutcome.overloadedFallback")
+        case .configurationUnavailableFallback:
+            L("history.llmOutcome.configurationFallback")
+        case .billingFallback:
+            L("history.llmOutcome.billingFallback")
+        case .requestFailedFallback:
+            L("history.llmOutcome.requestFailedFallback")
+        case .cancelled:
+            L("history.llmOutcome.cancelled")
+        case .failed:
+            L("history.llmOutcome.failed")
+        }
+    }
+
+    private func historyLLMOutcomeTone(
+        _ outcome: LLMProcessingOutcome
+    ) -> HistoryPipelineBadgePresentationItem.Tone {
+        switch outcome {
+        case .completed:
+            .selected
+        case .failed:
+            .failure
+        case .emptyResponseFallback, .timedOutFallback, .serviceOverloadedFallback,
+             .configurationUnavailableFallback, .billingFallback, .requestFailedFallback, .cancelled:
+            .warning
         }
     }
 

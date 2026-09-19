@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import QuartzCore
 import SwiftUI
 
@@ -10,6 +11,11 @@ enum LiveTranscriptPreviewLayout {
     static let expandedOverlayHeight: CGFloat = 194
 }
 
+enum NoticeToastLayout {
+    static let width: CGFloat = 344
+    static let maxVisibleLineCount = 3
+}
+
 private final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     override var isOpaque: Bool {
         false
@@ -17,8 +23,10 @@ private final class TransparentHostingView<Content: View>: NSHostingView<Content
 }
 
 private final class OverlayPanel: NSPanel {
+    var allowsKeyboardFocus = false
+
     override var canBecomeKey: Bool {
-        true
+        allowsKeyboardFocus
     }
 }
 
@@ -60,7 +68,12 @@ private struct RoundedVisualEffectBlur: NSViewRepresentable {
     }
 }
 
+extension EnvironmentValues {
+    @Entry var overlayStyle: OverlayStyle = .liquidGlass
+}
+
 private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
+    @Environment(\.overlayStyle) private var overlayStyle
     let shape: S
     let cornerRadius: CGFloat?
     let tintOpacity: Double
@@ -76,7 +89,7 @@ private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
         scrimOpacity: Double = 0.18,
         strokeOpacity: Double = 0.16,
         lineWidth: CGFloat = 0.9,
-        interactive: Bool = false,
+        interactive: Bool = false
     ) {
         self.shape = shape
         self.cornerRadius = cornerRadius
@@ -89,28 +102,11 @@ private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
 
     var body: some View {
         Group {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                ZStack {
-                    shape
-                        .fill(Color.clear)
-                        .glassEffect(
-                            Glass.clear
-                                .interactive(interactive)
-                                .tint(Color.white.opacity(tintOpacity)),
-                            in: shape,
-                        )
-
-                    shape
-                        .fill(Color.black.opacity(scrimOpacity))
-                        .allowsHitTesting(false)
-                }
+            if overlayStyle == .classic {
+                shape.fill(Color.black)
             } else {
-                fallbackBackground
+                liquidGlassBackground
             }
-            #else
-            fallbackBackground
-            #endif
         }
         .overlay(
             shape
@@ -119,13 +115,14 @@ private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
                         colors: [
                             Color.white.opacity(strokeOpacity + 0.08),
                             Color.white.opacity(strokeOpacity * 0.35),
-                            Color.white.opacity(strokeOpacity),
+                            Color.white.opacity(strokeOpacity)
                         ],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing,
+                        endPoint: .bottomTrailing
                     ),
-                    lineWidth: lineWidth,
-                ),
+                    lineWidth: lineWidth
+                )
+                .opacity(overlayStyle == .liquidGlass ? 1 : 0)
         )
         .overlay(
             shape
@@ -135,15 +132,42 @@ private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
                         colors: [
                             Color.white.opacity(0.20),
                             Color.clear,
-                            Color.white.opacity(0.07),
+                            Color.white.opacity(0.07)
                         ],
                         startPoint: .top,
-                        endPoint: .bottom,
+                        endPoint: .bottom
                     ),
-                    lineWidth: 0.6,
+                    lineWidth: 0.6
                 )
-                .blendMode(.screen),
+                .blendMode(.screen)
+                .opacity(overlayStyle == .liquidGlass ? 1 : 0)
         )
+    }
+
+    @ViewBuilder
+    private var liquidGlassBackground: some View {
+        #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ZStack {
+                    shape
+                        .fill(Color.clear)
+                        .glassEffect(
+                            Glass.clear
+                                .interactive(interactive)
+                                .tint(Color.white.opacity(tintOpacity)),
+                            in: shape
+                        )
+
+                    shape
+                        .fill(Color.black.opacity(scrimOpacity))
+                        .allowsHitTesting(false)
+                }
+            } else {
+                fallbackBackground
+            }
+        #else
+            fallbackBackground
+        #endif
     }
 
     private var fallbackBackground: some View {
@@ -151,7 +175,7 @@ private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
             RoundedVisualEffectBlur(
                 material: .popover,
                 blendingMode: .behindWindow,
-                cornerRadius: cornerRadius,
+                cornerRadius: cornerRadius
             )
             .allowsHitTesting(false)
 
@@ -161,23 +185,61 @@ private struct LiquidGlassShapeBackground<S: InsettableShape>: View {
     }
 }
 
+/// The native registrations reference this box, never an unretained controller.
+/// Cleanup keeps the box alive on the main run loop after its owner is released.
+final class OverlayCallbackTarget {
+    weak var controller: OverlayController?
+
+    init(_ controller: OverlayController) { self.controller = controller }
+}
+
 /// CGEventTap callback — intercepts and consumes keyboard events (Return/Esc/arrows)
 /// system-wide so the panel never needs to steal focus from the original app.
 private func overlayEventTapCallback(
     proxy _: CGEventTapProxy,
     type: CGEventType,
     event: CGEvent,
-    refcon: UnsafeMutableRawPointer?,
+    refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     guard let refcon else { return Unmanaged.passUnretained(event) }
-    let controller = Unmanaged<OverlayController>.fromOpaque(refcon).takeUnretainedValue()
+    let target = Unmanaged<OverlayCallbackTarget>.fromOpaque(refcon).takeUnretainedValue()
+    guard let controller = target.controller else { return Unmanaged.passUnretained(event) }
     return controller.handleEventTapEvent(type: type, event: event)
 }
 
+private let overlayPickerSystemKeySignature: OSType = 0x5450_4B59 // TPKY
+
+private func overlayPickerSystemKeyCallback(
+    nextHandler _: EventHandlerCallRef?,
+    event: EventRef?,
+    userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let event, let userData else { return noErr }
+
+    var hotkeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotkeyID
+    )
+    guard status == noErr, hotkeyID.signature == overlayPickerSystemKeySignature else {
+        return noErr
+    }
+
+    let target = Unmanaged<OverlayCallbackTarget>.fromOpaque(userData).takeUnretainedValue()
+    target.controller?.handlePickerSystemKey(keyCode: Int(hotkeyID.id))
+    return noErr
+}
+
 struct OverlayFailureAction {
-    enum Style {
+    enum Style: Equatable {
         case primary
         case secondary
+        case text
     }
 
     let title: String
@@ -191,7 +253,7 @@ struct OverlayFailureAction {
         isRetry: Bool,
         style: Style = .primary,
         trailingSystemImage: String? = nil,
-        handler: @escaping () -> Void,
+        handler: @escaping () -> Void
     ) {
         self.title = title
         self.isRetry = isRetry
@@ -201,15 +263,46 @@ struct OverlayFailureAction {
     }
 }
 
+enum OverlayFailureTone {
+    case error
+    case billing
+}
+
 final class OverlayController {
     private static let autoDismissDelay: TimeInterval = 6.0
     private static let shadowGutter: CGFloat = 32
     private static let processingStatusLocalizationKey = "overlay.processing.thinking"
+    private static let processingProgressRefreshInterval: Duration = .milliseconds(50)
+
+    static func noticeIsInteractive(dismissible: Bool) -> Bool {
+        dismissible
+    }
+
+    var isShowingPassiveNotice: Bool {
+        model.presentation == .notice && !model.noticeDismissible
+    }
+
+    var isShowingResultDialogForTesting: Bool {
+        model.presentation == .resultDialog
+    }
+
+    var processingProgressForTesting: CGFloat {
+        model.processingProgress
+    }
+
+    var isProcessingProgressActiveForTesting: Bool {
+        processingProgressTask?.isCancelled == false
+    }
 
     struct PersonaPickerItem: Identifiable, Equatable {
         let id: String
         let title: String
         let subtitle: String
+    }
+
+    enum PickerStyle {
+        case persona
+        case history
     }
 
     enum PersonaPickerIcon: Equatable {
@@ -228,26 +321,101 @@ final class OverlayController {
     }
 
     private let appState: AppStateStore
+    private let settingsStore: SettingsStore
     private var window: NSPanel?
+    private var overlayStyleObserver: NSObjectProtocol?
+    private var callbackTarget: OverlayCallbackTarget?
 
     private let model = OverlayViewModel()
     private var dismissWorkItem: DispatchWorkItem?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var pickerSystemKeyHandlerRef: EventHandlerRef?
+    private var pickerSystemKeyRefs: [Int: EventHotKeyRef] = [:]
     private var lastPositionedFrame: NSRect?
     private var lastPositionedPresentation: OverlayViewModel.Presentation?
     private var pendingFrameAnimationWorkItem: DispatchWorkItem?
-    private var pendingPresentationWorkItem: DispatchWorkItem?
+    private var frameTransitionID = UUID()
+    private var visibilityTransitionID = UUID()
+    private var recordingHintAutoHideWorkItem: DispatchWorkItem?
+    private var processingProgressTask: Task<Void, Never>?
+    private var processingProgressStartedAt: TimeInterval?
+    private var contentProcessingStartedElapsed: TimeInterval?
+    private var processingProgressTimeline: ProcessingProgressTimeline?
 
-    init(appState: AppStateStore) {
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    init(appState: AppStateStore, settingsStore: SettingsStore) {
         self.appState = appState
+        self.settingsStore = settingsStore
+        model.overlayStyle = settingsStore.overlayStyle
         model.onDismissRequested = { [weak self] in
             self?.dismiss(after: 0)
         }
+        overlayStyleObserver = NotificationCenter.default.addObserver(
+            forName: .overlayStyleDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            model.overlayStyle = self.settingsStore.overlayStyle
+            configureWindowAppearance()
+        }
+        callbackTarget = OverlayCallbackTarget(self)
+    }
+
+    convenience init(appState: AppStateStore) {
+        self.init(appState: appState, settingsStore: SettingsStore())
     }
 
     deinit {
-        removeKeyMonitoring()
+        // Copy resources to locals before cleanup. Calling instance methods from deinit can
+        // transiently retain `self` under Swift's ownership lowering and abort destruction.
+        // This also makes every AppKit/CoreGraphics registration visibly symmetric.
+        let styleObserver = overlayStyleObserver
+        let queuedWork = [
+            dismissWorkItem,
+            pendingFrameAnimationWorkItem,
+            recordingHintAutoHideWorkItem
+        ]
+        let progressTask = processingProgressTask
+        let tap = eventTap
+        let source = runLoopSource
+        let fallbackGlobalMonitor = _fallbackGlobalMonitor
+        let fallbackLocalMonitor = _fallbackLocalMonitor
+        let mouseOutsideMonitor = _mouseOutsideMonitor
+        let systemKeyRefs = Array(pickerSystemKeyRefs.values)
+        let systemKeyHandlerRef = pickerSystemKeyHandlerRef
+        let target = callbackTarget
+        let ownedWindow = window
+
+        queuedWork.forEach { $0?.cancel() }
+        progressTask?.cancel()
+        let cleanup = {
+            // Registration callbacks execute on the main run loop. Retain their
+            // weak target box until unregistration has finished on that run loop.
+            withExtendedLifetime(target) {
+                ownedWindow?.orderOut(nil)
+                if let tap {
+                    CGEvent.tapEnable(tap: tap, enable: false)
+                    if let source {
+                        CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+                    }
+                    CFMachPortInvalidate(tap)
+                }
+                if let fallbackGlobalMonitor { NSEvent.removeMonitor(fallbackGlobalMonitor) }
+                if let fallbackLocalMonitor { NSEvent.removeMonitor(fallbackLocalMonitor) }
+                if let mouseOutsideMonitor { NSEvent.removeMonitor(mouseOutsideMonitor) }
+                systemKeyRefs.forEach { UnregisterEventHotKey($0) }
+                if let systemKeyHandlerRef { RemoveEventHandler(systemKeyHandlerRef) }
+                if let styleObserver { NotificationCenter.default.removeObserver(styleObserver) }
+            }
+        }
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.async(execute: cleanup)
+        }
     }
 
     func setRecordingActionHandlers(onCancel: (() -> Void)?, onConfirm: (() -> Void)?) {
@@ -260,13 +428,23 @@ final class OverlayController {
         onMoveDown: (() -> Void)?,
         onSelect: ((Int) -> Void)?,
         onConfirm: (() -> Void)?,
-        onCancel: (() -> Void)?,
+        onCancel: (() -> Void)?
     ) {
         model.onPersonaMoveUpRequested = onMoveUp
         model.onPersonaMoveDownRequested = onMoveDown
         model.onPersonaSelectRequested = onSelect
         model.onPersonaConfirmRequested = onConfirm
         model.onPersonaCancelRequested = onCancel
+    }
+
+    func setHistoryPickerActionHandlers(
+        onCopy: ((Int) -> Void)?,
+        onInsert: ((Int) -> Void)?,
+        onRetry: ((Int) -> Void)?
+    ) {
+        model.onHistoryCopyRequested = onCopy
+        model.onHistoryInsertRequested = onInsert
+        model.onHistoryRetryRequested = onRetry
     }
 
     func setResultDialogHandler(onCopy: (() -> Void)?) {
@@ -277,15 +455,25 @@ final class OverlayController {
         model.onFailureRetryHandler = onRetry
     }
 
-    func show(hintText: String? = nil) {
+    @MainActor
+    func prepareRecordingPresentation() {
+        ensureWindow()
+        window?.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    var recordingPresentationForTesting: OverlayViewModel.Presentation { model.presentation }
+
+    func show(hintText: String? = nil, autoHideHintAfter: TimeInterval? = nil) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.show(hintText: hintText) }
+            DispatchQueue.main.async { [weak self] in
+                self?.show(hintText: hintText, autoHideHintAfter: autoHideHintAfter)
+            }
             return
         }
-        pendingPresentationWorkItem?.cancel()
-        pendingPresentationWorkItem = nil
+        stopProcessingProgress()
         dismissWorkItem?.cancel()
         dismissWorkItem = nil
+        cancelRecordingHintAutoHide()
         ensureWindow()
         model.presentation = .recordingHold
         model.recordingPreviewExpanded = false
@@ -294,24 +482,23 @@ final class OverlayController {
         model.recordingHintText = hintText ?? ""
         model.processingProgress = 0
         refreshWindow()
-    }
-
-    private func cancelPendingPresentationTransition() {
-        pendingPresentationWorkItem?.cancel()
-        pendingPresentationWorkItem = nil
+        RecordingStartupLatencyTrace.shared.mark("ui.recording_ordered_front", logSummary: true)
+        scheduleRecordingHintAutoHideIfNeeded(after: autoHideHintAfter, expectedText: hintText)
     }
 
     private func ensureWindow() {
         if window == nil {
             let view = OverlayView(model: model)
             let hosting = TransparentHostingView(rootView: view)
+            // The controller owns panel geometry, including temporary animation space.
+            hosting.sizingOptions = []
             hosting.wantsLayer = true
             hosting.layer?.isOpaque = false
             hosting.layer?.backgroundColor = NSColor.clear.cgColor
             let metrics = metrics(for: .recordingHold)
             let panel = OverlayPanel(
                 contentRect: NSRect(origin: .zero, size: metrics.size),
-                styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false,
+                styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false
             )
             panel.isFloatingPanel = true
             panel.level = NSWindow.Level.statusBar
@@ -321,7 +508,7 @@ final class OverlayController {
             panel.ignoresMouseEvents = false
             panel.becomesKeyOnlyIfNeeded = true
             panel.collectionBehavior = [
-                NSWindow.CollectionBehavior.canJoinAllSpaces, NSWindow.CollectionBehavior.transient,
+                NSWindow.CollectionBehavior.canJoinAllSpaces, NSWindow.CollectionBehavior.transient
             ]
             panel.contentView = hosting
             panel.contentView?.wantsLayer = true
@@ -332,20 +519,23 @@ final class OverlayController {
         }
     }
 
-    func showLockedRecording(hintText: String? = nil) {
+    func showLockedRecording(hintText: String? = nil, autoHideHintAfter: TimeInterval? = nil) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.showLockedRecording(hintText: hintText) }
+            DispatchQueue.main.async { [weak self] in
+                self?.showLockedRecording(hintText: hintText, autoHideHintAfter: autoHideHintAfter)
+            }
             return
         }
-        pendingPresentationWorkItem?.cancel()
-        pendingPresentationWorkItem = nil
+        stopProcessingProgress()
         dismissWorkItem?.cancel()
         dismissWorkItem = nil
+        cancelRecordingHintAutoHide()
         ensureWindow()
         model.presentation = .recordingLocked
         model.recordingPreviewExpanded = false
         model.recordingHintText = hintText ?? ""
         refreshWindow()
+        scheduleRecordingHintAutoHideIfNeeded(after: autoHideHintAfter, expectedText: hintText)
     }
 
     func updateRecordingPreviewText(_ text: String) {
@@ -354,105 +544,75 @@ final class OverlayController {
             return
         }
 
-        model.detailText = text
-        model.recordingPreviewExpanded = true
-        switch model.presentation {
-        case .recordingHold:
-            model.presentation = .recordingHoldPreview
-        case .recordingLocked:
-            model.presentation = .recordingLockedPreview
-        case .recordingHoldPreview, .recordingLockedPreview:
-            break
-        default:
-            return
-        }
+        guard model.presentation.isRecording,
+              dismissWorkItem == nil, window?.isVisible == true else { return }
+        let expanded = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // Keep the last text mounted while it fades out during collapse.
+        if expanded { model.detailText = text }
+        model.recordingPreviewExpanded = expanded
+        model.presentation = model.presentation.showsRecordingControls
+            ? (expanded ? .recordingLockedPreview : .recordingLocked)
+            : (expanded ? .recordingHoldPreview : .recordingHold)
         refreshWindow()
     }
 
-    func showProcessing() {
+    func showProcessing(timeout: TimeInterval = 120) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.showProcessing() }
+            DispatchQueue.main.async { [weak self] in self?.showProcessing(timeout: timeout) }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
         dismissWorkItem = nil
         ensureWindow()
-        if model.presentation.isRecordingPreview {
-            model.recordingPreviewExpanded = false
-            model.statusText = L(Self.processingStatusLocalizationKey)
-            model.recordingHintText = ""
-            model.processingProgress = 0
-            model.processingPhase = 1
-            model.processingEpoch += 1
-            refreshWindow()
-
-            let workItem = DispatchWorkItem { [weak self] in
-                self?.showProcessingImmediately()
-            }
-            pendingPresentationWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.40, execute: workItem)
-            return
-        }
+        startProcessingProgress(timeout: timeout)
         showProcessingImmediately()
     }
 
     private func showProcessingImmediately() {
-        cancelPendingPresentationTransition()
         ensureWindow()
         model.presentation = .processing
         model.recordingPreviewExpanded = false
         model.statusText = L(Self.processingStatusLocalizationKey)
-        model.detailText = ""
         model.recordingHintText = ""
-        model.processingProgress = 0
-        model.processingPhase = 1
-        model.processingEpoch += 1
+        cancelRecordingHintAutoHide()
         refreshWindow()
     }
 
-    func showLLMProcessing() {
+    func showLLMProcessing(timeout: TimeInterval = 120) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.showLLMProcessing() }
+            DispatchQueue.main.async { [weak self] in self?.showLLMProcessing(timeout: timeout) }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
         dismissWorkItem = nil
         ensureWindow()
         model.presentation = .processing
+        model.recordingPreviewExpanded = false
         model.statusText = L(Self.processingStatusLocalizationKey)
-        model.detailText = ""
         model.recordingHintText = ""
-        model.processingProgress = 0
-        model.processingPhase = 1
-        model.processingEpoch += 1
+        cancelRecordingHintAutoHide()
+        startProcessingProgress(timeout: timeout, contentProcessingAlreadyStarted: true)
         refreshWindow()
     }
 
-    func transitionToLLMPhase() {
+    func transitionToLLMPhase(timeout: TimeInterval? = nil) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.transitionToLLMPhase() }
+            DispatchQueue.main.async { [weak self] in self?.transitionToLLMPhase(timeout: timeout) }
             return
         }
         var shouldRefresh = false
-        if model.presentation.isRecordingPreview {
-            cancelPendingPresentationTransition()
-            ensureWindow()
-            model.presentation = .processing
-            model.recordingPreviewExpanded = false
-            model.statusText = L(Self.processingStatusLocalizationKey)
-            model.detailText = ""
-            model.recordingHintText = ""
-            model.processingProgress = 0
-            model.processingPhase = 1
-            model.processingEpoch += 1
-            shouldRefresh = true
-        }
+        if model.presentation.isRecordingPreview { showProcessingImmediately() }
         guard model.presentation.isProcessing else { return }
-        if model.processingPhase == 0 {
+        if contentProcessingStartedElapsed == nil,
+           let startedAt = processingProgressStartedAt {
+            contentProcessingStartedElapsed = ProcessInfo.processInfo.systemUptime - startedAt
+            model.processingProgress = ProcessingProgressTimeline.recognitionCompleteProgress
+        }
+        if let timeout {
+            startProcessingProgress(timeout: timeout, contentProcessingAlreadyStarted: true)
+        }
+        if model.statusText.isEmpty {
             model.statusText = L(Self.processingStatusLocalizationKey)
-            model.processingPhase = 1
             shouldRefresh = true
         }
         if shouldRefresh {
@@ -465,12 +625,13 @@ final class OverlayController {
             DispatchQueue.main.async { [weak self] in self?.showFailure(message: message) }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
         ensureWindow()
         model.presentation = .failure
         model.statusText = L("overlay.failure.title")
         model.detailText = message
+        model.failureTone = .error
         model.failureActions = []
         refreshWindow()
     }
@@ -480,70 +641,89 @@ final class OverlayController {
             DispatchQueue.main.async { [weak self] in self?.showRetryableFailure(message: message) }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
         ensureWindow()
         model.presentation = .failure
         model.statusText = L("overlay.failure.title")
         model.detailText = message
+        model.failureTone = .error
         model.failureActions = wrapFailureActions([
             OverlayFailureAction(
                 title: L("common.retry"),
                 isRetry: true,
-                handler: { [weak self] in self?.model.onFailureRetryHandler?() },
-            ),
+                handler: { [weak self] in self?.model.onFailureRetryHandler?() }
+            )
         ])
         refreshWindow()
     }
 
-    func showTimeoutFailure() {
+    func showTimeoutFailure(timeoutSeconds: Int) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.showTimeoutFailure() }
+            DispatchQueue.main.async { [weak self] in
+                self?.showTimeoutFailure(timeoutSeconds: timeoutSeconds)
+            }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
         ensureWindow()
         model.presentation = .failure
         model.statusText = L("overlay.timeout.title")
-        model.detailText = L("overlay.timeout.message")
+        model.detailText = L("overlay.timeout.message", timeoutSeconds)
+        model.failureTone = .error
         model.failureActions = wrapFailureActions([
             OverlayFailureAction(
                 title: L("common.retry"),
                 isRetry: true,
-                handler: { [weak self] in self?.model.onFailureRetryHandler?() },
-            ),
+                handler: { [weak self] in self?.model.onFailureRetryHandler?() }
+            )
         ])
         refreshWindow()
     }
 
-    func showFailureWithActions(message: String, actions: [OverlayFailureAction]) {
+    func showFailureWithActions(
+        title: String = L("overlay.failure.title"),
+        message: String,
+        tone: OverlayFailureTone = .error,
+        actions: [OverlayFailureAction]
+    ) {
         if !Thread.isMainThread {
-            DispatchQueue.main.async { [weak self] in self?.showFailureWithActions(message: message, actions: actions) }
+            DispatchQueue.main.async { [weak self] in
+                self?.showFailureWithActions(
+                    title: title,
+                    message: message,
+                    tone: tone,
+                    actions: actions
+                )
+            }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
         ensureWindow()
         model.presentation = .failure
-        model.statusText = L("overlay.failure.title")
+        model.statusText = title
         model.detailText = message
+        model.failureTone = tone
         model.failureActions = wrapFailureActions(actions)
         refreshWindow()
     }
 
     static func wrapFailureActions(
         _ actions: [OverlayFailureAction],
-        beforeAction: @escaping () -> Void,
+        beforeAction: @escaping () -> Void
     ) -> [OverlayFailureAction] {
         actions.map { action in
             OverlayFailureAction(
                 title: action.title,
                 isRetry: action.isRetry,
+                style: action.style,
+                trailingSystemImage: action.trailingSystemImage,
                 handler: {
                     beforeAction()
                     action.handler()
-                },
+                }
             )
         }
     }
@@ -567,8 +747,11 @@ final class OverlayController {
             DispatchQueue.main.async { [weak self] in self?.updateStreamingText(text) }
             return
         }
-        model.detailText = text
+        if model.presentation.isProcessing {
+            guard window?.isVisible == true, dismissWorkItem == nil else { return }
+        }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !model.presentation.isProcessing || !trimmed.isEmpty { model.detailText = text }
         if model.presentation.isProcessing {
             model.presentation = trimmed.isEmpty ? .processing : .processingPreview
             refreshWindow()
@@ -583,8 +766,24 @@ final class OverlayController {
             DispatchQueue.main.async { [weak self] in self?.showNotice(message: message) }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
+        model.noticeDismissible = true
+        model.presentation = .notice
+        model.statusText = L("overlay.notice.title")
+        model.detailText = message
+        refreshWindow()
+        dismiss(after: Self.autoDismissDelay)
+    }
+
+    func showPassiveNotice(message: String) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.showPassiveNotice(message: message) }
+            return
+        }
+        dismissWorkItem?.cancel()
+        stopProcessingProgress()
+        model.noticeDismissible = false
         model.presentation = .notice
         model.statusText = L("overlay.notice.title")
         model.detailText = message
@@ -599,8 +798,8 @@ final class OverlayController {
             }
             return
         }
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
         ensureWindow()
         model.presentation = .resultDialog
         model.statusText = title
@@ -614,19 +813,20 @@ final class OverlayController {
         title: String,
         instructions: String,
         icon: PersonaPickerIcon,
+        style: PickerStyle = .persona
     ) {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
                 self?.showPersonaPicker(
                     items: items, selectedIndex: selectedIndex, title: title,
-                    instructions: instructions, icon: icon,
+                    instructions: instructions, icon: icon, style: style
                 )
             }
             return
         }
 
-        cancelPendingPresentationTransition()
         dismissWorkItem?.cancel()
+        stopProcessingProgress()
         ensureWindow()
         model.presentation = .personaPicker
         model.personaItems = items
@@ -635,6 +835,7 @@ final class OverlayController {
         model.statusText = title
         model.detailText = instructions
         model.personaPickerIcon = icon
+        model.pickerStyle = style
         refreshWindow()
     }
 
@@ -654,9 +855,9 @@ final class OverlayController {
             DispatchQueue.main.async { [weak self] in self?.dismissSoon() }
             return
         }
-        cancelPendingPresentationTransition()
 
         if model.presentation.isProcessing {
+            stopProcessingProgress(resetProgress: false)
             model.processingProgress = 1
             dismiss(after: 0.18)
         } else if model.presentation == .notice || model.presentation == .resultDialog {
@@ -692,15 +893,9 @@ final class OverlayController {
     func dismissImmediately() {
         let work = { [weak self] in
             guard let self else { return }
-            cancelPendingPresentationTransition()
-            dismissWorkItem?.cancel()
-            dismissWorkItem = nil
-            window?.orderOut(nil)
-            model.detailText = ""
-            model.level = 0
-            model.processingProgress = 0
-            removeKeyMonitoring()
-            removeMouseMonitoring()
+            visibilityTransitionID = UUID()
+            stopProcessingProgress()
+            hideWindowAndResetState()
         }
         if Thread.isMainThread {
             work()
@@ -714,30 +909,167 @@ final class OverlayController {
             DispatchQueue.main.async { [weak self] in self?.dismiss(after: delay) }
             return
         }
-        cancelPendingPresentationTransition()
+        stopProcessingProgress(resetProgress: false)
         if model.presentation == .failure, delay > 0 {
             return
         }
         dismissWorkItem?.cancel()
+        visibilityTransitionID = UUID()
+        let transitionID = visibilityTransitionID
         let workItem = DispatchWorkItem { [weak self] in
-            self?.window?.orderOut(nil)
-            self?.model.detailText = ""
-            self?.model.level = 0
-            self?.model.processingProgress = 0
-            self?.removeKeyMonitoring()
-            self?.removeMouseMonitoring()
+            self?.beginDismissal(transitionID: transitionID)
         }
         dismissWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
+    private func beginDismissal(transitionID: UUID) {
+        guard visibilityTransitionID == transitionID else { return }
+        cancelRecordingHintAutoHide()
+        removeKeyMonitoring()
+        removePickerSystemKeyCapture()
+        removeMouseMonitoring()
+        window?.ignoresMouseEvents = true
+        guard model.presentation.isCapsule, !reduceMotion, window?.isVisible == true else {
+            hideWindowAndResetState()
+            return
+        }
+        withAnimation(OverlayMotion.dismissal) { model.isPresented = false }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, visibilityTransitionID == transitionID else { return }
+            hideWindowAndResetState()
+        }
+        dismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + OverlayMotion.dismissalDuration, execute: workItem)
+    }
+
+    private func hideWindowAndResetState() {
+        dismissWorkItem?.cancel()
+        dismissWorkItem = nil
+        pendingFrameAnimationWorkItem?.cancel()
+        pendingFrameAnimationWorkItem = nil
+        frameTransitionID = UUID()
+        cancelRecordingHintAutoHide()
+        window?.orderOut(nil)
+        lastPositionedFrame = nil
+        lastPositionedPresentation = nil
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { model.isPresented = false }
+        model.detailText = ""
+        model.recordingHintText = ""
+        model.level = 0
+        model.processingProgress = 0
+        removeKeyMonitoring()
+        removePickerSystemKeyCapture()
+        removeMouseMonitoring()
+    }
+
+    private func scheduleRecordingHintAutoHideIfNeeded(after delay: TimeInterval?, expectedText: String?) {
+        guard let delay, delay > 0, let expectedText, !expectedText.isEmpty else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.clearRecordingHintText(expectedText: expectedText)
+        }
+        recordingHintAutoHideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func startProcessingProgress(
+        timeout: TimeInterval,
+        contentProcessingAlreadyStarted: Bool = false
+    ) {
+        stopProcessingProgress()
+        processingProgressStartedAt = ProcessInfo.processInfo.systemUptime
+        contentProcessingStartedElapsed = contentProcessingAlreadyStarted ? 0 : nil
+        processingProgressTimeline = ProcessingProgressTimeline(timeout: timeout)
+        model.processingProgress = contentProcessingAlreadyStarted
+            ? ProcessingProgressTimeline.recognitionCompleteProgress
+            : ProcessingProgressTimeline.initialProgress
+        processingProgressTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.processingProgressRefreshInterval)
+                guard !Task.isCancelled else { return }
+                await MainActor.run { [weak self] in
+                    self?.updateProcessingProgress()
+                }
+            }
+        }
+    }
+
+    private func updateProcessingProgress() {
+        guard let startedAt = processingProgressStartedAt,
+              let timeline = processingProgressTimeline
+        else { return }
+
+        let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+        model.processingProgress = timeline.progress(
+            elapsed: elapsed,
+            contentProcessingStartedAt: contentProcessingStartedElapsed
+        )
+    }
+
+    private func stopProcessingProgress(resetProgress: Bool = true) {
+        processingProgressTask?.cancel()
+        processingProgressTask = nil
+        processingProgressStartedAt = nil
+        contentProcessingStartedElapsed = nil
+        processingProgressTimeline = nil
+        if resetProgress {
+            model.processingProgress = 0
+        }
+    }
+
+    private func cancelRecordingHintAutoHide() {
+        recordingHintAutoHideWorkItem?.cancel()
+        recordingHintAutoHideWorkItem = nil
+    }
+
+    private func clearRecordingHintText(expectedText: String) {
+        guard model.recordingHintText == expectedText else { return }
+        switch model.presentation {
+        case .recordingHold, .recordingHoldPreview, .recordingLocked, .recordingLockedPreview:
+            model.recordingHintText = ""
+            refreshWindow()
+        default:
+            break
+        }
+    }
+
     private func refreshWindow() {
+        guard let window else { return }
+        dismissWorkItem?.cancel()
+        dismissWorkItem = nil
+        visibilityTransitionID = UUID()
+        let transitionID = visibilityTransitionID
+        if let panel = window as? OverlayPanel {
+            panel.allowsKeyboardFocus = model.presentation.acceptsKeyboardFocus
+            if panel.isKeyWindow, !panel.allowsKeyboardFocus {
+                panel.orderOut(nil)
+            }
+        }
+        let wasVisible = window.isVisible
         positionWindow()
         configureWindowAppearance()
         // Always use orderFrontRegardless — never makeKeyAndOrderFront.
         // Stealing key window status from the original app causes it to lose
         // focus and selection, which breaks write-back after LLM processing.
-        window?.orderFrontRegardless()
+        if !wasVisible, model.presentation.isCapsule, !reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { model.isPresented = false }
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.contentView?.displayIfNeeded()
+            window.orderFrontRegardless()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, visibilityTransitionID == transitionID else { return }
+                withAnimation(OverlayMotion.appearance) { self.model.isPresented = true }
+            }
+        } else {
+            window.orderFrontRegardless()
+            if !model.isPresented {
+                withAnimation(reduceMotion ? nil : OverlayMotion.appearance) { model.isPresented = true }
+            }
+        }
         updateKeyMonitoring()
     }
 
@@ -752,8 +1084,10 @@ final class OverlayController {
             contentView.layer?.backgroundColor = chrome.background.cgColor
             contentView.layer?.cornerRadius = chrome.cornerRadius
             contentView.layer?.masksToBounds = true
-            contentView.layer?.borderWidth = 1
-            contentView.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+            contentView.layer?.borderWidth = model.overlayStyle == .classic ? 0 : 1
+            contentView.layer?.borderColor = model.overlayStyle == .classic
+                ? nil
+                : NSColor.white.withAlphaComponent(0.12).cgColor
         } else {
             contentView.layer?.backgroundColor = NSColor.clear.cgColor
             contentView.layer?.cornerRadius = 0
@@ -764,12 +1098,9 @@ final class OverlayController {
     }
 
     private func windowChrome(for presentation: OverlayViewModel.Presentation) -> WindowChromeStyle? {
-        let background = NSColor(
-            calibratedRed: 0.13,
-            green: 0.11,
-            blue: 0.11,
-            alpha: 0.96,
-        )
+        let background = model.overlayStyle == .classic
+            ? NSColor.black
+            : NSColor(calibratedRed: 0.13, green: 0.11, blue: 0.11, alpha: 0.96)
 
         switch presentation {
         case .transcriptPreview, .notice:
@@ -806,34 +1137,43 @@ final class OverlayController {
         let targetFrame = window.frameRect(forContentRect: contentRect)
         let previousPresentation = lastPositionedPresentation
         let previousFrame = lastPositionedFrame
-        let isShrinkingAfterPreview = previousPresentation?.isRecordingPreview == true
-            && !model.presentation.isRecordingPreview
-            && previousFrame.map { targetFrame.height < $0.height } == true
-        let shouldAnimate = window.isVisible
+        let shouldAnimate = model.presentation != .notice
+            && !reduceMotion
+            && window.isVisible
             && previousFrame != nil
             && targetFrame != previousFrame
 
+        window.ignoresMouseEvents = !metrics.interactive
+        // Text updates must not restart an in-flight resize or postpone its cleanup.
+        if window.isVisible, targetFrame == previousFrame {
+            lastPositionedPresentation = model.presentation
+            return
+        }
+
         pendingFrameAnimationWorkItem?.cancel()
         pendingFrameAnimationWorkItem = nil
+        frameTransitionID = UUID()
+        let transitionID = frameTransitionID
 
-        if isShrinkingAfterPreview {
-            let presentation = model.presentation
+        if shouldAnimate, previousPresentation?.isCapsule == true, model.presentation.isCapsule {
+            // Reserve space immediately, then let the persistent SwiftUI capsule
+            // perform the only visible resize. Reclaim space after it has settled.
+            let envelope = window.frame.union(targetFrame)
+            window.setFrame(envelope, display: true)
             let workItem = DispatchWorkItem { [weak self, weak window] in
-                guard let self, let window, self.model.presentation == presentation else { return }
-                self.animateWindow(window, to: targetFrame, duration: 0.30)
-                self.lastPositionedFrame = targetFrame
+                guard let self, let window, frameTransitionID == transitionID else { return }
+                window.setFrame(targetFrame, display: true)
+                pendingFrameAnimationWorkItem = nil
             }
             pendingFrameAnimationWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + OverlayMotion.geometrySettleDelay, execute: workItem)
         } else if shouldAnimate {
-            animateWindow(window, to: targetFrame, duration: model.presentation.isRecordingPreview ? 0.38 : 0.28)
-            lastPositionedFrame = targetFrame
+            animateWindow(window, to: targetFrame, duration: 0.28)
         } else {
             window.setFrame(targetFrame, display: true)
-            lastPositionedFrame = targetFrame
         }
+        lastPositionedFrame = targetFrame
         lastPositionedPresentation = model.presentation
-        window.ignoresMouseEvents = !metrics.interactive
     }
 
     private func animateWindow(_ window: NSWindow, to targetFrame: NSRect, duration: TimeInterval) {
@@ -849,67 +1189,54 @@ final class OverlayController {
         case .recordingHold:
             return OverlayMetrics(
                 size: recordingOverlaySize(baseWidth: 146, baseHeight: 112), anchor: .bottom, offset: 16,
-                interactive: false,
+                interactive: false
             )
         case .recordingHoldPreview:
             let isExpanded = model.recordingPreviewExpanded
             return OverlayMetrics(
                 size: recordingOverlaySize(
                     baseWidth: isExpanded ? 428 : 146,
-                    baseHeight: isExpanded ? LiveTranscriptPreviewLayout.expandedOverlayHeight : 112,
+                    baseHeight: isExpanded ? LiveTranscriptPreviewLayout.expandedOverlayHeight : 112
                 ), anchor: .bottom, offset: 16,
-                interactive: false,
+                interactive: false
             )
         case .recordingLocked:
             return OverlayMetrics(
-                size: recordingOverlaySize(baseWidth: 196, baseHeight: 120), anchor: .bottom, offset: 16, interactive: true,
+                size: recordingOverlaySize(baseWidth: 196, baseHeight: 120), anchor: .bottom, offset: 16,
+                interactive: true
             )
         case .recordingLockedPreview:
             let isExpanded = model.recordingPreviewExpanded
             return OverlayMetrics(
                 size: recordingOverlaySize(
                     baseWidth: isExpanded ? 428 : 196,
-                    baseHeight: isExpanded ? LiveTranscriptPreviewLayout.expandedOverlayHeight : 120,
+                    baseHeight: isExpanded ? LiveTranscriptPreviewLayout.expandedOverlayHeight : 120
                 ), anchor: .bottom, offset: 16,
-                interactive: true,
+                interactive: true
             )
         case .processing:
             return OverlayMetrics(
-                size: NSSize(width: processingOverlayWidth() + Self.shadowGutter * 2, height: 112), anchor: .bottom, offset: 16,
-                interactive: false,
+                size: NSSize(width: processingOverlayWidth() + Self.shadowGutter * 2, height: 112), anchor: .bottom,
+                offset: 16,
+                interactive: false
             )
         case .processingPreview:
             return OverlayMetrics(
-                size: NSSize(width: 428, height: 218), anchor: .bottom, offset: 16,
-                interactive: false,
+                size: NSSize(width: 428, height: LiveTranscriptPreviewLayout.expandedOverlayHeight),
+                anchor: .bottom, offset: 16,
+                interactive: false
             )
-        case .transcriptPreview:
+        case .transcriptPreview, .notice, .failure, .personaPicker, .resultDialog:
+            // Every non-capsule presentation owns its height through its content.
+            // Keep native sizing disabled: capsule transitions still own their
+            // animated envelope, and scroll views retain their explicit limits.
+            let measured = NSHostingView(rootView: OverlayView(model: model)).fittingSize
             return OverlayMetrics(
-                size: NSSize(width: 344, height: 108), anchor: .bottom, offset: 80,
-                interactive: false,
-            )
-        case .notice:
-            return OverlayMetrics(
-                size: NSSize(width: 344, height: 108), anchor: .bottom, offset: 80,
-                interactive: true,
-            )
-        case .failure:
-            let actionCount = model.failureActions.count
-            let failureHeight: CGFloat = actionCount == 0 ? 216 : 216 + CGFloat(actionCount) * 40
-            return OverlayMetrics(
-                size: NSSize(width: 352, height: failureHeight), anchor: .bottom, offset: 80,
-                interactive: true,
-            )
-        case .personaPicker:
-            let viewportHeight = min(320, max(180, model.personaViewportHeight))
-            return OverlayMetrics(
-                size: NSSize(width: 458, height: viewportHeight + 152), anchor: .center, offset: 36,
-                interactive: true,
-            )
-        case .resultDialog:
-            return OverlayMetrics(
-                size: NSSize(width: 446, height: 236), anchor: .bottom, offset: 36,
-                interactive: true,
+                size: NSSize(width: ceil(measured.width), height: ceil(measured.height)),
+                anchor: presentation == .personaPicker ? .center : .bottom,
+                offset: presentation == .personaPicker || presentation == .resultDialog ? 36 : 80,
+                interactive: presentation != .transcriptPreview
+                    && (presentation != .notice || Self.noticeIsInteractive(dismissible: model.noticeDismissible))
             )
         }
     }
@@ -919,28 +1246,34 @@ final class OverlayController {
             return NSSize(width: baseWidth, height: baseHeight)
         }
 
-        let estimatedHintWidth = max(
-            baseWidth,
-            min(420, CGFloat(model.recordingHintText.count) * 10.0 + 44),
+        let hint = RecordingHintLayout(text: model.recordingHintText)
+        return NSSize(
+            width: max(baseWidth, hint.size.width + RecordingHintLayout.containerInset * 2),
+            height: baseHeight + hint.size.height + RecordingHintLayout.spacing
         )
-        return NSSize(width: estimatedHintWidth, height: baseHeight + 36)
     }
 
     private func processingOverlayWidth() -> CGFloat {
         let title = model.statusText.isEmpty ? L("overlay.processing.thinking") : model.statusText
-        let estimatedTextWidth = CGFloat(title.count) * 8.5 + 52
-        return min(188, max(118, estimatedTextWidth))
+        return OverlayMotion.processingWidth(for: title)
     }
 
     private func updateKeyMonitoring() {
-        if model.presentation == .recordingLocked
+        if model.presentation == .personaPicker {
+            installPickerSystemKeyCaptureIfNeeded()
+            if pickerSystemKeyRefs.isEmpty {
+                installKeyMonitoringIfNeeded()
+            } else {
+                removeKeyMonitoring()
+            }
+        } else if model.presentation == .recordingLocked
             || model.presentation == .recordingLockedPreview
             || model.presentation == .failure
-            || model.presentation == .personaPicker
-            || model.presentation == .resultDialog
-        {
+            || model.presentation == .resultDialog {
+            removePickerSystemKeyCapture()
             installKeyMonitoringIfNeeded()
         } else {
+            removePickerSystemKeyCapture()
             removeKeyMonitoring()
         }
 
@@ -951,11 +1284,63 @@ final class OverlayController {
         }
     }
 
+    private func installPickerSystemKeyCaptureIfNeeded() {
+        guard pickerSystemKeyRefs.isEmpty else { return }
+        installPickerSystemKeyHandlerIfNeeded()
+        guard pickerSystemKeyHandlerRef != nil else { return }
+
+        for keyCode in [53, 125, 126, 36, 76] {
+            let hotkeyID = EventHotKeyID(signature: overlayPickerSystemKeySignature, id: UInt32(keyCode))
+            var hotkeyRef: EventHotKeyRef?
+            let status = RegisterEventHotKey(
+                UInt32(keyCode),
+                0,
+                hotkeyID,
+                GetApplicationEventTarget(),
+                0,
+                &hotkeyRef
+            )
+            if status == noErr, let hotkeyRef {
+                pickerSystemKeyRefs[keyCode] = hotkeyRef
+            } else {
+                ErrorLogStore.shared.log("Overlay: failed to register picker system key \(keyCode), status \(status)")
+            }
+        }
+    }
+
+    private func installPickerSystemKeyHandlerIfNeeded() {
+        guard pickerSystemKeyHandlerRef == nil, let callbackTarget else { return }
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let userData = Unmanaged.passUnretained(callbackTarget).toOpaque()
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            overlayPickerSystemKeyCallback,
+            1,
+            &eventType,
+            userData,
+            &pickerSystemKeyHandlerRef
+        )
+        if status != noErr {
+            ErrorLogStore.shared.log("Overlay: failed to install picker system key handler, status \(status)")
+        }
+    }
+
+    private func removePickerSystemKeyCapture() {
+        for ref in pickerSystemKeyRefs.values {
+            UnregisterEventHotKey(ref)
+        }
+        pickerSystemKeyRefs = [:]
+    }
+
     private func installKeyMonitoringIfNeeded() {
-        guard eventTap == nil else { return }
+        guard eventTap == nil, let callbackTarget else { return }
 
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
-        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let selfPtr = Unmanaged.passUnretained(callbackTarget).toOpaque()
 
         guard
             let tap = CGEvent.tapCreate(
@@ -964,11 +1349,11 @@ final class OverlayController {
                 options: .defaultTap,
                 eventsOfInterest: mask,
                 callback: overlayEventTapCallback,
-                userInfo: selfPtr,
+                userInfo: selfPtr
             )
         else {
             NSLog(
-                "[OverlayController] Failed to create CGEventTap — falling back to NSEvent monitors",
+                "[OverlayController] Failed to create CGEventTap — falling back to NSEvent monitors"
             )
             installNSEventMonitorFallback()
             return
@@ -1005,7 +1390,7 @@ final class OverlayController {
     private func installMouseMonitoringIfNeeded() {
         guard _mouseOutsideMonitor == nil else { return }
         _mouseOutsideMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown],
+            matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] _ in
             guard let self, model.presentation == .personaPicker else { return }
             let mouseLocation = NSEvent.mouseLocation
@@ -1037,6 +1422,12 @@ final class OverlayController {
         _fallbackLocalMonitor = nil
     }
 
+    fileprivate func handlePickerSystemKey(keyCode: Int) {
+        DispatchQueue.main.async { [weak self] in
+            _ = self?.handleKeyCode(keyCode)
+        }
+    }
+
     /// Called from the CGEventTap C callback on the main run loop.
     fileprivate func handleEventTapEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
@@ -1056,7 +1447,8 @@ final class OverlayController {
     }
 
     private func handleKeyCode(_ keyCode: Int) -> Bool {
-        if model.presentation == .recordingHold || model.presentation == .recordingHoldPreview || model.presentation == .recordingLocked || model.presentation == .recordingLockedPreview {
+        if model.presentation == .recordingHold || model.presentation == .recordingHoldPreview || model
+            .presentation == .recordingLocked || model.presentation == .recordingLockedPreview {
             if keyCode == 53 {
                 model.requestCancel()
                 return true
@@ -1146,25 +1538,42 @@ final class OverlayViewModel: ObservableObject {
             self == .recordingHoldPreview || self == .recordingLockedPreview
         }
 
+        var isRecording: Bool {
+            self == .recordingHold || self == .recordingLocked || isRecordingPreview
+        }
+
+        var showsRecordingControls: Bool {
+            self == .recordingLocked || self == .recordingLockedPreview
+        }
+
+        var isCapsule: Bool { isRecording || isProcessing }
+
         var isProcessing: Bool {
             self == .processing || self == .processingPreview
         }
+
+        /// Pickers use the existing system key capture. Mouse clicks must not
+        /// take keyboard focus (and selection) away from the source editor.
+        var acceptsKeyboardFocus: Bool { self == .resultDialog }
     }
 
     @Published var presentation: Presentation = .recordingHold
+    @Published var isPresented = false
     @Published var statusText: String = ""
     @Published var detailText: String = ""
     @Published var recordingHintText: String = ""
     @Published var recordingPreviewExpanded: Bool = false
     @Published var level: Float = 0
     @Published var processingProgress: CGFloat = 0
-    @Published var processingEpoch: Int = 0
-    @Published var processingPhase: Int = 0
     @Published var personaItems: [OverlayController.PersonaPickerItem] = []
     @Published var personaSelectedIndex: Int = 0
     @Published var personaViewportHeight: CGFloat = 240
     @Published var personaPickerIcon: OverlayController.PersonaPickerIcon = .none
+    @Published var pickerStyle: OverlayController.PickerStyle = .persona
     @Published var failureActions: [OverlayFailureAction] = []
+    @Published var failureTone: OverlayFailureTone = .error
+    @Published var noticeDismissible = true
+    @Published var overlayStyle: OverlayStyle = .liquidGlass
     var onDismissRequested: (() -> Void)?
     var onCancelRequested: (() -> Void)?
     var onConfirmRequested: (() -> Void)?
@@ -1173,6 +1582,9 @@ final class OverlayViewModel: ObservableObject {
     var onPersonaSelectRequested: ((Int) -> Void)?
     var onPersonaConfirmRequested: (() -> Void)?
     var onPersonaCancelRequested: (() -> Void)?
+    var onHistoryCopyRequested: ((Int) -> Void)?
+    var onHistoryInsertRequested: ((Int) -> Void)?
+    var onHistoryRetryRequested: ((Int) -> Void)?
     var onResultCopyRequested: (() -> Void)?
     var onFailureRetryHandler: (() -> Void)?
 
@@ -1218,6 +1630,18 @@ final class OverlayViewModel: ObservableObject {
         onPersonaCancelRequested?()
     }
 
+    func requestHistoryCopy(at index: Int) {
+        onHistoryCopyRequested?(index)
+    }
+
+    func requestHistoryInsert(at index: Int) {
+        onHistoryInsertRequested?(index)
+    }
+
+    func requestHistoryRetry(at index: Int) {
+        onHistoryRetryRequested?(index)
+    }
+
     func requestResultCopy() {
         onResultCopyRequested?()
     }
@@ -1226,66 +1650,47 @@ final class OverlayViewModel: ObservableObject {
 private struct OverlayView: View {
     @ObservedObject var model: OverlayViewModel
 
-    private let recordingMotion = Animation.easeInOut(duration: 0.38)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if usesWindowChrome {
-            Group {
-                switch model.presentation {
-                case .recordingHold:
-                    recordingStack { recordingMorphCapsule(expanded: false, showControls: false) }
-                case .recordingHoldPreview:
-                    recordingStack { recordingMorphCapsule(expanded: model.recordingPreviewExpanded, showControls: false) }
-                case .recordingLocked:
-                    recordingStack { recordingMorphCapsule(expanded: false, showControls: true) }
-                case .recordingLockedPreview:
-                    recordingStack { recordingMorphCapsule(expanded: model.recordingPreviewExpanded, showControls: true) }
-                case .processing:
-                    processingCapsule
-                case .processingPreview:
-                    processingTranscriptCapsule
-                case .transcriptPreview:
-                    previewCard
-                case .notice:
-                    noticeToast
-                case .failure:
-                    failureCard
-                case .personaPicker:
-                    personaPickerCard
-                case .resultDialog:
-                    resultDialogCard
-                }
+        Group {
+            if usesWindowChrome {
+                content
+            } else {
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: contentAlignment)
+                    .padding(containerPadding)
             }
-        } else {
-            Group {
-                switch model.presentation {
-                case .recordingHold:
-                    recordingStack { recordingMorphCapsule(expanded: false, showControls: false) }
-                case .recordingHoldPreview:
-                    recordingStack { recordingMorphCapsule(expanded: model.recordingPreviewExpanded, showControls: false) }
-                case .recordingLocked:
-                    recordingStack { recordingMorphCapsule(expanded: false, showControls: true) }
-                case .recordingLockedPreview:
-                    recordingStack { recordingMorphCapsule(expanded: model.recordingPreviewExpanded, showControls: true) }
-                case .processing:
-                    processingCapsule
-                case .processingPreview:
-                    processingTranscriptCapsule
-                case .transcriptPreview:
-                    previewCard
-                case .notice:
-                    noticeToast
-                case .failure:
-                    failureCard
-                case .personaPicker:
-                    personaPickerCard
-                case .resultDialog:
-                    resultDialogCard
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: contentAlignment)
-            .padding(containerPadding)
-            .animation(recordingMotion, value: model.presentation)
+        }
+        .scaleEffect(isHiddenCapsule && !reduceMotion ? 0.96 : 1, anchor: .bottom)
+        .offset(y: isHiddenCapsule && !reduceMotion ? 6 : 0)
+        .opacity(isHiddenCapsule ? 0 : 1)
+        .environment(\.overlayStyle, model.overlayStyle)
+    }
+
+    private var isHiddenCapsule: Bool { model.presentation.isCapsule && !model.isPresented }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.presentation {
+        case .recordingHold, .recordingHoldPreview, .recordingLocked, .recordingLockedPreview,
+             .processing, .processingPreview:
+            // Keep one structural identity while captions and controls change.
+            recordingMorphCapsule(
+                expanded: model.presentation.isRecording
+                    ? model.recordingPreviewExpanded : model.presentation == .processingPreview,
+                showControls: model.presentation.showsRecordingControls
+            )
+        case .transcriptPreview:
+            previewCard
+        case .notice:
+            noticeToast
+        case .failure:
+            failureCard
+        case .personaPicker:
+            personaPickerCard
+        case .resultDialog:
+            resultDialogCard
         }
     }
 
@@ -1308,16 +1713,14 @@ private struct OverlayView: View {
 
     private var containerPadding: EdgeInsets {
         switch model.presentation {
-        case .recordingHold, .processing:
-            EdgeInsets(top: 28, leading: 34, bottom: 42, trailing: 34)
-        case .processingPreview:
-            EdgeInsets(top: 30, leading: 34, bottom: 42, trailing: 34)
-        case .recordingHoldPreview:
-            EdgeInsets(top: 30, leading: 34, bottom: 42, trailing: 34)
-        case .recordingLocked:
-            EdgeInsets(top: 28, leading: 34, bottom: 46, trailing: 34)
-        case .recordingLockedPreview:
-            EdgeInsets(top: 30, leading: 34, bottom: 46, trailing: 34)
+        case .recordingHold, .recordingLocked, .processing,
+             .recordingHoldPreview, .recordingLockedPreview, .processingPreview:
+            EdgeInsets(
+                top: model.presentation.isRecordingPreview || model.presentation == .processingPreview ? 30 : 28,
+                leading: RecordingHintLayout.containerInset,
+                bottom: 42,
+                trailing: RecordingHintLayout.containerInset
+            )
         case .transcriptPreview, .notice, .failure:
             EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
         case .personaPicker, .resultDialog:
@@ -1325,64 +1728,23 @@ private struct OverlayView: View {
         }
     }
 
-    private func recordingStack(@ViewBuilder content: () -> some View) -> some View {
-        VStack(spacing: 10) {
-            if !model.recordingHintText.isEmpty {
-                recordingHintBanner
-            }
-            content()
-        }
-        .fixedSize(horizontal: true, vertical: true)
-    }
-
-    private var recordingHintBanner: some View {
-        Text(model.recordingHintText)
-            .font(.system(size: 12.5, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(0.92))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(
-                LiquidGlassShapeBackground(
-                    shape: Capsule(style: .continuous),
-                    cornerRadius: nil,
-                    tintOpacity: 0.05,
-                    strokeOpacity: 0.14,
-                    lineWidth: 0.8,
-                ),
-            )
-            .fixedSize(horizontal: true, vertical: true)
-    }
-
-    private var processingCapsule: some View {
-        ThinkingProgressCapsule(
-            title: model.statusText.isEmpty ? L("overlay.processing.thinking") : model.statusText,
-            progress: model.processingProgress,
-            epoch: model.processingEpoch,
-            phase: model.processingPhase,
-        )
-    }
-
-    private var processingTranscriptCapsule: some View {
-        ProcessingTranscriptCapsule(
-            text: model.detailText,
-            title: model.statusText.isEmpty ? L("overlay.processing.thinking") : model.statusText,
-            progress: model.processingProgress,
-            epoch: model.processingEpoch,
-            phase: model.processingPhase,
-        )
-        .fixedSize(horizontal: true, vertical: true)
-    }
-
     private func recordingMorphCapsule(expanded: Bool, showControls: Bool) -> some View {
         MorphingRecordingCapsule(
             text: model.detailText,
+            hintText: model.recordingHintText,
             level: model.level,
             expanded: expanded,
             showControls: showControls,
+            isProcessing: model.presentation.isProcessing,
+            processingTitle: model.statusText.isEmpty ? L("overlay.processing.thinking") : model.statusText,
+            processingProgress: model.processingProgress,
             onCancel: model.requestCancel,
-            onConfirm: model.requestConfirm,
+            onConfirm: model.requestConfirm
         )
         .fixedSize(horizontal: true, vertical: true)
+        .animation(reduceMotion ? nil : OverlayMotion.morph, value: expanded)
+        .animation(reduceMotion ? nil : OverlayMotion.morph, value: showControls)
+        .animation(reduceMotion ? nil : OverlayMotion.morph, value: model.presentation.isProcessing)
     }
 
     private var previewCard: some View {
@@ -1403,39 +1765,29 @@ private struct OverlayView: View {
     }
 
     private var failureCard: some View {
-        OverlayCard(width: 352, hostedInWindowChrome: true, shadowed: false) {
-            VStack(alignment: .leading, spacing: 12) {
+        OverlayCard(width: 372, hostedInWindowChrome: true, shadowed: false) {
+            VStack(alignment: .leading, spacing: 14) {
                 cardHeader(
-                    icon: "exclamationmark.circle",
-                    accent: Color(red: 1.0, green: 0.42, blue: 0.08), title: model.statusText,
-                    dismissible: true,
+                    icon: failureIcon,
+                    accent: failureAccent,
+                    title: model.statusText,
+                    dismissible: true
                 )
 
                 ScrollView(showsIndicators: false) {
                     Text(model.detailText)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.72))
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Color.white.opacity(0.78))
+                        .lineSpacing(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
-                .frame(maxHeight: model.failureActions.isEmpty ? 92 : 124)
+                .frame(maxHeight: model.failureActions.isEmpty ? 96 : 132)
 
                 ForEach(Array(model.failureActions.enumerated()), id: \.offset) { index, action in
                     Button(action: { model.requestFailureAction(at: index) }) {
-                        HStack(spacing: 6) {
-                            Text(action.title)
-                                .font(.system(size: 13, weight: .semibold))
-
-                            if let trailingSystemImage = action.trailingSystemImage {
-                                Image(systemName: trailingSystemImage)
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                        }
-                        .foregroundStyle(action.style == .primary ? Color.white : Color.white.opacity(0.68))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, action.style == .primary ? 7 : 5)
-                        .background(failureActionBackground(for: action.style))
+                        failureActionLabel(action)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1444,37 +1796,91 @@ private struct OverlayView: View {
     }
 
     @ViewBuilder
+    private func failureActionLabel(_ action: OverlayFailureAction) -> some View {
+        if action.style == .text {
+            HStack(spacing: 5) {
+                Text(action.title)
+                    .font(.system(size: 12.5, weight: .medium))
+
+                if let trailingSystemImage = action.trailingSystemImage {
+                    Image(systemName: trailingSystemImage)
+                        .font(.system(size: 10.5, weight: .medium))
+                }
+            }
+            .foregroundStyle(Color.white.opacity(0.58))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 2)
+            .padding(.bottom, 1)
+            .contentShape(Rectangle())
+        } else {
+            HStack(spacing: 6) {
+                Text(action.title)
+                    .font(.system(size: 13, weight: .semibold))
+
+                if let trailingSystemImage = action.trailingSystemImage {
+                    Image(systemName: trailingSystemImage)
+                        .font(.system(size: 11, weight: .semibold))
+                }
+            }
+            .foregroundStyle(action.style == .primary ? Color.white : Color.white.opacity(0.68))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, action.style == .primary ? 8 : 6)
+            .background(failureActionBackground(for: action.style))
+        }
+    }
+
+    private var failureIcon: String {
+        switch model.failureTone {
+        case .error:
+            "exclamationmark.circle"
+        case .billing:
+            "creditcard.circle"
+        }
+    }
+
+    private var failureAccent: Color {
+        switch model.failureTone {
+        case .error:
+            Color(red: 1.0, green: 0.56, blue: 0.28)
+        case .billing:
+            Color(red: 0.34, green: 0.70, blue: 1.0)
+        }
+    }
+
+    @ViewBuilder
     private func failureActionBackground(for style: OverlayFailureAction.Style) -> some View {
         switch style {
         case .primary:
             RoundedRectangle(cornerRadius: 8).fill(
-                Color(red: 1.0, green: 0.42, blue: 0.08).opacity(0.55),
+                failureAccent.opacity(model.failureTone == .billing ? 0.62 : 0.48)
             )
         case .secondary:
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.045))
+                .fill(Color.white.opacity(0.055))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 0.8),
+                        .stroke(Color.white.opacity(0.09), lineWidth: 0.8)
                 )
+        case .text:
+            Color.clear
         }
     }
 
     private var noticeToast: some View {
-        OverlayCompactToast(width: 344, hostedInWindowChrome: true) {
+        OverlayCompactToast(width: NoticeToastLayout.width, hostedInWindowChrome: true) {
             VStack(alignment: .leading, spacing: 8) {
                 cardHeader(
                     icon: "info.circle",
                     accent: StudioTheme.accent,
                     title: model.statusText,
-                    dismissible: true,
-                    titleSize: 13.5,
+                    dismissible: model.noticeDismissible,
+                    titleSize: 13.5
                 )
 
                 Text(model.detailText)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.92))
-                    .lineLimit(2)
+                    .lineLimit(NoticeToastLayout.maxVisibleLineCount)
             }
         }
     }
@@ -1512,11 +1918,11 @@ private struct OverlayView: View {
                         .frame(width: 26, height: 26)
                         .background(
                             Circle()
-                                .fill(Color.black.opacity(0.18)),
+                                .fill(Color.black.opacity(0.18))
                         )
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(0.20), lineWidth: 0.8),
+                                .stroke(Color.white.opacity(0.20), lineWidth: 0.8)
                         )
                         .shadow(color: Color.black.opacity(0.18), radius: 5, x: 0, y: 2)
                 }
@@ -1530,7 +1936,7 @@ private struct OverlayView: View {
                             index, item in
                             personaPickerRow(
                                 item: item, index: index,
-                                isSelected: index == model.personaSelectedIndex,
+                                isSelected: index == model.personaSelectedIndex
                             )
                             .id(index)
                         }
@@ -1555,69 +1961,74 @@ private struct OverlayView: View {
         .contentShape(shape)
     }
 
+    @ViewBuilder
     private var personaPickerGlassBackground: some View {
         let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
 
-        return ZStack {
-            shape
-                .fill(Color.black.opacity(0.001))
-                .shadow(color: Color.black.opacity(0.30), radius: 24, x: 0, y: 16)
+        if model.overlayStyle == .classic {
+            shape.fill(Color.black)
+        } else {
+            ZStack {
+                shape
+                    .fill(Color.black.opacity(0.001))
+                    .shadow(color: Color.black.opacity(0.30), radius: 24, x: 0, y: 16)
 
-            shape
-                .fill(.ultraThinMaterial)
-        }
+                shape
+                    .fill(.ultraThinMaterial)
+            }
             .overlay(
                 shape
                     .fill(Color.black.opacity(0.28))
-                    .allowsHitTesting(false),
+                    .allowsHitTesting(false)
             )
-        .overlay(
-            shape
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.08),
-                            Color.clear,
-                            Color.black.opacity(0.10),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing,
-                    ),
-                )
-                .allowsHitTesting(false),
-        )
-        .overlay(
-            shape
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.26),
-                            Color.white.opacity(0.06),
-                            Color.white.opacity(0.18),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing,
-                    ),
-                    lineWidth: 1.0,
-                ),
-        )
-        .overlay(
-            shape
-                .inset(by: 1.6)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.20),
-                            Color.clear,
-                            Color.white.opacity(0.07),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom,
-                    ),
-                    lineWidth: 0.6,
-                )
-                .blendMode(.screen),
-        )
+            .overlay(
+                shape
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.08),
+                                Color.clear,
+                                Color.black.opacity(0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .allowsHitTesting(false)
+            )
+            .overlay(
+                shape
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.26),
+                                Color.white.opacity(0.06),
+                                Color.white.opacity(0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.0
+                    )
+            )
+            .overlay(
+                shape
+                    .inset(by: 1.6)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.20),
+                                Color.clear,
+                                Color.white.opacity(0.07)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.6
+                    )
+                    .blendMode(.screen)
+            )
+        }
     }
 
     @ViewBuilder
@@ -1626,11 +2037,11 @@ private struct OverlayView: View {
         case .none:
             EmptyView()
         case .global:
-                Image(systemName: "globe")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .frame(width: 42, height: 42)
-                    .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 2)
+            Image(systemName: "globe")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .frame(width: 42, height: 42)
+                .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 2)
         case let .application(icon):
             if let icon {
                 Image(nsImage: icon)
@@ -1655,7 +2066,7 @@ private struct OverlayView: View {
                     accent: StudioTheme.accent,
                     title: model.statusText,
                     dismissible: true,
-                    titleSize: 13.5,
+                    titleSize: 13.5
                 )
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -1680,11 +2091,11 @@ private struct OverlayView: View {
                                 .padding(.vertical, 9)
                                 .background(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(Color.white.opacity(0.14)),
+                                        .fill(Color.white.opacity(0.14))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(Color.white.opacity(0.12), lineWidth: 1),
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -1697,85 +2108,15 @@ private struct OverlayView: View {
     }
 
     private func personaPickerRow(
-        item: OverlayController.PersonaPickerItem, index: Int, isSelected: Bool,
+        item: OverlayController.PersonaPickerItem, index: Int, isSelected: Bool
     ) -> some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(
-                    isSelected
-                        ? StudioTheme.accent.opacity(0.34)
-                        : Color.black.opacity(0.16),
-                )
-                .frame(width: 40, height: 40)
-                .overlay(
-                    Text(String(item.title.prefix(2)).uppercased())
-                        .font(.system(size: 11.5, weight: .bold))
-                        .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.78)),
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(Color.white.opacity(isSelected ? 0.20 : 0.10), lineWidth: 0.8),
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(isSelected ? 0.98 : 0.94))
-                    .shadow(color: Color.black.opacity(0.34), radius: 2, x: 0, y: 1)
-                Text(item.subtitle)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(isSelected ? 0.76 : 0.58))
-                    .lineLimit(2)
-                    .shadow(color: Color.black.opacity(0.25), radius: 2, x: 0, y: 1)
-            }
-
-            Spacer(minLength: 0)
-
-            if isSelected {
-                ZStack {
-                    Circle()
-                        .fill(StudioTheme.accent.opacity(0.95))
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundStyle(Color.white)
-                }
-                .frame(width: 21, height: 21)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    isSelected
-                        ? StudioTheme.accent.opacity(0.18)
-                        : Color.black.opacity(0.10),
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(
-                            isSelected
-                                ? StudioTheme.accent.opacity(0.95) : Color.white.opacity(0.08),
-                            lineWidth: isSelected ? 1.15 : 0.8,
-                        ),
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: isSelected
-                                    ? [Color.white.opacity(0.055), Color.white.opacity(0.01)]
-                                    : [Color.clear, Color.clear],
-                                startPoint: .top,
-                                endPoint: .bottom,
-                            ),
-                        ),
-                ),
+        OverlayPickerRow(
+            model: model,
+            item: item,
+            index: index,
+            isSelected: isSelected,
+            isHistory: model.pickerStyle == .history
         )
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture {
-            model.requestPersonaSelection(at: index)
-        }
     }
 
     private func scrollPersonaSelection(with proxy: ScrollViewProxy) {
@@ -1785,12 +2126,156 @@ private struct OverlayView: View {
         }
     }
 
+    private struct OverlayPickerRow: View {
+        @ObservedObject var model: OverlayViewModel
+        let item: OverlayController.PersonaPickerItem
+        let index: Int
+        let isSelected: Bool
+        let isHistory: Bool
+
+        @State private var isHovered = false
+
+        var body: some View {
+            rowContent
+                .contextMenu {
+                    if isHistory {
+                        historyActions
+                    }
+                }
+        }
+
+        private var rowContent: some View {
+            HStack(spacing: 12) {
+                if !isHistory {
+                    personaAvatar
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(isSelected ? 0.98 : 0.94))
+                        .lineLimit(isHistory ? 2 : 1)
+                        .shadow(color: Color.black.opacity(0.34), radius: 2, x: 0, y: 1)
+                    Text(item.subtitle)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(isSelected ? 0.76 : 0.58))
+                        .lineLimit(2)
+                        .shadow(color: Color.black.opacity(0.25), radius: 2, x: 0, y: 1)
+                }
+
+                Spacer(minLength: 0)
+
+                if isHistory {
+                    historyCopyButton
+                        .opacity(isHovered ? 1 : 0)
+                        .accessibilityHidden(!isHovered)
+                } else if isSelected {
+                    selectedCheckmark
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, isHistory ? 12 : 10)
+            .background(rowBackground)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .onTapGesture {
+                model.requestPersonaSelection(at: index)
+            }
+            .onHover { isHovered = $0 }
+        }
+
+        private var personaAvatar: some View {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(
+                    isSelected
+                        ? StudioTheme.accent.opacity(0.34)
+                        : Color.black.opacity(0.16)
+                )
+                .frame(width: 40, height: 40)
+                .overlay(
+                    Text(String(item.title.prefix(2)).uppercased())
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.78))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(Color.white.opacity(isSelected ? 0.20 : 0.10), lineWidth: 0.8)
+                )
+        }
+
+        private var selectedCheckmark: some View {
+            ZStack {
+                Circle()
+                    .fill(StudioTheme.accent.opacity(0.95))
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(Color.white)
+            }
+            .frame(width: 21, height: 21)
+        }
+
+        private var historyCopyButton: some View {
+            Button {
+                model.requestHistoryCopy(at: index)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .help(L("common.copy"))
+        }
+
+        @ViewBuilder
+        private var historyActions: some View {
+            Button(L("common.copy")) {
+                model.requestHistoryCopy(at: index)
+            }
+            Button(L("overlay.historyPicker.insertAtCursor")) {
+                model.requestHistoryInsert(at: index)
+            }
+            Button(L("overlay.historyPicker.retryTranscription")) {
+                model.requestHistoryRetry(at: index)
+            }
+        }
+
+        private var rowBackground: some View {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    isSelected
+                        ? StudioTheme.accent.opacity(0.18)
+                        : Color.black.opacity(0.10)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(
+                            isSelected
+                                ? StudioTheme.accent.opacity(0.95) : Color.white.opacity(0.08),
+                            lineWidth: isSelected ? 1.15 : 0.8
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: isSelected
+                                    ? [Color.white.opacity(0.055), Color.white.opacity(0.01)]
+                                    : [Color.clear, Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+        }
+    }
+
     private func cardHeader(
         icon: String,
         accent: Color,
         title: String,
         dismissible: Bool,
-        titleSize: CGFloat = 16.5,
+        titleSize: CGFloat = 16.5
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
@@ -1811,7 +2296,7 @@ private struct OverlayView: View {
                         .frame(width: 22, height: 22)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.08)),
+                                .fill(Color.white.opacity(0.08))
                         )
                 }
                 .buttonStyle(.plain)
@@ -1834,7 +2319,7 @@ private struct LockedRecordingCapsule: View {
             roundIconButton(systemName: "xmark", action: onCancel)
 
             LevelWaveform(level: level, activeColor: Color.white.opacity(0.95))
-                .frame(width: 38, height: 14)
+                .frame(width: 38, height: OverlayWaveformMetrics.maximumBarHeight)
 
             roundIconButton(systemName: "checkmark", action: onConfirm, inverted: true)
         }
@@ -1847,15 +2332,15 @@ private struct LockedRecordingCapsule: View {
                 tintOpacity: 0.05,
                 strokeOpacity: 0.16,
                 lineWidth: 1.0,
-                interactive: true,
-            ),
+                interactive: true
+            )
         )
         .shadow(color: Color.black.opacity(0.24), radius: 16, x: 0, y: 12)
         .environment(\.colorScheme, .dark)
     }
 
     private func roundIconButton(
-        systemName: String, action: @escaping () -> Void, inverted: Bool = false,
+        systemName: String, action: @escaping () -> Void, inverted: Bool = false
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -1864,11 +2349,11 @@ private struct LockedRecordingCapsule: View {
                 .frame(width: 24, height: 24)
                 .background(
                     Circle()
-                        .fill(inverted ? Color.white.opacity(0.92) : Color.black.opacity(0.20)),
+                        .fill(inverted ? Color.white.opacity(0.92) : Color.black.opacity(0.20))
                 )
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(inverted ? 0.46 : 0.22), lineWidth: 0.8),
+                        .stroke(Color.white.opacity(inverted ? 0.46 : 0.22), lineWidth: 0.8)
                 )
                 .shadow(color: Color.black.opacity(0.20), radius: 5, x: 0, y: 2)
         }
@@ -1876,69 +2361,172 @@ private struct LockedRecordingCapsule: View {
     }
 }
 
-private struct MorphingRecordingCapsule: View {
+private struct RecordingHintBanner: View {
     let text: String
+
+    var body: some View {
+        let layout = RecordingHintLayout(text: text)
+        Text(text)
+            .font(Font(RecordingHintLayout.font))
+            .foregroundStyle(Color.white.opacity(0.92))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: layout.textSize.width, height: layout.textSize.height)
+            .padding(.horizontal, RecordingHintLayout.horizontalPadding)
+            .padding(.vertical, RecordingHintLayout.verticalPadding)
+            .background(
+                LiquidGlassShapeBackground(
+                    shape: RoundedRectangle(cornerRadius: layout.cornerRadius, style: .continuous),
+                    cornerRadius: layout.cornerRadius,
+                    tintOpacity: 0.05,
+                    strokeOpacity: 0.14,
+                    lineWidth: 0.8
+                )
+            )
+            .fixedSize(horizontal: true, vertical: true)
+    }
+}
+
+private struct MorphingRecordingCapsule: View, Animatable {
+    let text: String
+    let hintText: String
     let level: Float
     let expanded: Bool
     let showControls: Bool
+    let isProcessing: Bool
+    let processingTitle: String
+    let processingProgress: CGFloat
     let onCancel: () -> Void
     let onConfirm: () -> Void
+    private var expansion: CGFloat
+    private var controlsVisibility: CGFloat
+    private var processingVisibility: CGFloat
+
+    init(
+        text: String, hintText: String, level: Float, expanded: Bool, showControls: Bool,
+        isProcessing: Bool, processingTitle: String, processingProgress: CGFloat,
+        onCancel: @escaping () -> Void, onConfirm: @escaping () -> Void
+    ) {
+        self.text = text
+        self.hintText = hintText
+        self.level = level
+        self.expanded = expanded
+        self.showControls = showControls
+        self.isProcessing = isProcessing
+        self.processingTitle = processingTitle
+        self.processingProgress = processingProgress
+        self.onCancel = onCancel
+        self.onConfirm = onConfirm
+        expansion = expanded ? 1 : 0
+        controlsVisibility = showControls ? 1 : 0
+        processingVisibility = isProcessing ? 1 : 0
+    }
+
+    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(expansion, AnimatablePair(controlsVisibility, processingVisibility)) }
+        set {
+            expansion = newValue.first
+            controlsVisibility = newValue.second.first
+            processingVisibility = newValue.second.second
+        }
+    }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: expanded ? 22 : 999, style: .continuous)
-        let width: CGFloat = expanded ? 360 : (showControls ? 114 : 78)
-        let height: CGFloat = expanded ? LiveTranscriptPreviewLayout.expandedCapsuleHeight : 35
+        let cornerRadius: CGFloat = 17.5 + 4.5 * expansion
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let recordingWidth: CGFloat = 78 + 36 * controlsVisibility
+        let processingWidth = OverlayMotion.processingWidth(for: processingTitle)
+        let compactWidth = recordingWidth + (processingWidth - recordingWidth) * processingVisibility
+        let width = compactWidth + (360 - compactWidth) * expansion
+        let height = 35 + (LiveTranscriptPreviewLayout.expandedCapsuleHeight - 35) * expansion
+        // Reveal text only when there is room for its fixed-width viewport.
+        let captionVisibility = max(0, min(1, (expansion - 0.9) / 0.1))
+        let recordingOpacity = max(0, 1 - processingVisibility / 0.35)
+        let processingOpacity = max(0, (processingVisibility - 0.35) / 0.65)
 
         ZStack(alignment: .bottom) {
-            if expanded {
-                LiveTranscriptPreviewText(text: text)
-                    .padding(.horizontal, 15)
-                    .padding(.top, 12)
-                    .padding(.bottom, 43)
-                    .opacity(expanded ? 1 : 0)
-                    .transition(.opacity)
-            }
+            Rectangle()
+                .fill(Color.white.opacity(0.22 * processingVisibility))
+                .frame(width: processingWidth * max(0, min(1, processingProgress)), height: 35)
+                .frame(width: processingWidth, height: 35, alignment: .leading)
+                .clipShape(Capsule(style: .continuous))
+                .animation(.linear(duration: 0.06), value: processingProgress)
+                .allowsHitTesting(false)
+
+            LiveTranscriptPreviewText(text: text)
+                .frame(width: 330, height: LiveTranscriptPreviewLayout.textViewportHeight, alignment: .topLeading)
+                .padding(.top, 12)
+                .padding(.bottom, 43)
+                .opacity(captionVisibility)
+                .allowsHitTesting(expanded)
+                .accessibilityHidden(!expanded)
 
             controlsRow
-                .frame(height: showControls ? 24 : 14)
-                .padding(.horizontal, showControls ? 7 : 20)
-                .padding(.bottom, showControls ? 5.5 : 10.5)
+                .frame(height: OverlayWaveformMetrics.maximumBarHeight)
+                .padding(.horizontal, 20 - 13 * controlsVisibility)
+                .padding(.bottom, 5.5)
+                .opacity(recordingOpacity)
+                .allowsHitTesting(!isProcessing)
+                .accessibilityHidden(isProcessing)
+
+            Text(processingTitle)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+                .padding(.horizontal, 12)
+                .frame(width: processingWidth, height: 35)
+                .opacity(processingOpacity)
+                .accessibilityHidden(!isProcessing)
         }
         .frame(width: width, height: height, alignment: .bottom)
+        .clipShape(shape)
         .background(
             LiquidGlassShapeBackground(
                 shape: shape,
-                cornerRadius: expanded ? 22 : nil,
-                tintOpacity: expanded ? 0.06 : 0.045,
+                cornerRadius: cornerRadius,
+                tintOpacity: 0.045 + 0.015 * expansion,
                 strokeOpacity: 0.15,
                 lineWidth: 0.9,
-                interactive: showControls,
-            ),
+                interactive: showControls
+            )
         )
         .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 12)
+        .overlay(alignment: .bottom) {
+            if !hintText.isEmpty {
+                RecordingHintBanner(text: hintText)
+                    .offset(y: -height - RecordingHintLayout.spacing)
+            }
+        }
         .environment(\.colorScheme, .dark)
-        .animation(.easeInOut(duration: 0.38), value: expanded)
+        // Geometry is interpolated once, above. Re-lay out children at each
+        // intermediate size instead of animating their positions a second time.
+        .transaction { $0.animation = nil }
     }
 
-    @ViewBuilder
     private var controlsRow: some View {
-        if showControls {
-            HStack(spacing: 7) {
-                roundIconButton(systemName: "xmark", action: onCancel)
+        HStack(spacing: 7 * controlsVisibility) {
+            roundIconButton(systemName: "xmark", action: onCancel)
+                .frame(width: 24 * controlsVisibility)
+                .opacity(controlsVisibility)
+                .clipped()
+                .allowsHitTesting(showControls)
+                .accessibilityHidden(!showControls)
 
-                LevelWaveform(level: level, activeColor: Color.white.opacity(0.95))
-                    .frame(width: 38, height: 14)
-
-                roundIconButton(systemName: "checkmark", action: onConfirm, inverted: true)
-            }
-        } else {
             LevelWaveform(level: level, activeColor: Color.white.opacity(0.95))
-                .frame(width: 38, height: 14)
+                .frame(width: 38, height: OverlayWaveformMetrics.maximumBarHeight)
+
+            roundIconButton(systemName: "checkmark", action: onConfirm, inverted: true)
+                .frame(width: 24 * controlsVisibility)
+                .opacity(controlsVisibility)
+                .clipped()
+                .allowsHitTesting(showControls)
+                .accessibilityHidden(!showControls)
         }
     }
 
     private func roundIconButton(
-        systemName: String, action: @escaping () -> Void, inverted: Bool = false,
+        systemName: String, action: @escaping () -> Void, inverted: Bool = false
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -1947,11 +2535,11 @@ private struct MorphingRecordingCapsule: View {
                 .frame(width: 24, height: 24)
                 .background(
                     Circle()
-                        .fill(inverted ? Color.white.opacity(0.92) : Color.black.opacity(0.20)),
+                        .fill(inverted ? Color.white.opacity(0.92) : Color.black.opacity(0.20))
                 )
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(inverted ? 0.46 : 0.22), lineWidth: 0.8),
+                        .stroke(Color.white.opacity(inverted ? 0.46 : 0.22), lineWidth: 0.8)
                 )
                 .shadow(color: Color.black.opacity(0.20), radius: 5, x: 0, y: 2)
         }
@@ -2002,12 +2590,9 @@ private struct LiveTranscriptPreviewText: View {
     }
 }
 
-private struct ThinkingProgressCapsule: View {
+struct ThinkingProgressCapsule: View {
     let title: String
     let progress: CGFloat
-    let epoch: Int
-    let phase: Int
-    @State private var displayProgress: CGFloat = 0
 
     var body: some View {
         let capsuleShape = Capsule(style: .continuous)
@@ -2018,7 +2603,7 @@ private struct ThinkingProgressCapsule: View {
                 cornerRadius: nil,
                 tintOpacity: 0.05,
                 strokeOpacity: 0.16,
-                lineWidth: 1.0,
+                lineWidth: 1.0
             )
 
             GeometryReader { geo in
@@ -2028,7 +2613,7 @@ private struct ThinkingProgressCapsule: View {
                     Color.clear
                     Rectangle()
                         .fill(Color.white.opacity(0.22))
-                        .frame(width: max(0, width * displayProgress))
+                        .frame(width: max(0, width * progress))
                 }
             }
             .mask(capsuleShape)
@@ -2044,44 +2629,14 @@ private struct ThinkingProgressCapsule: View {
         .compositingGroup()
         .shadow(color: Color.black.opacity(0.24), radius: 16, x: 0, y: 12)
         .environment(\.colorScheme, .dark)
-        .onAppear {
-            startProcessingPhase()
-        }
-        .onChange(of: epoch) { _ in
-            displayProgress = 0
-            startProcessingPhase()
-        }
-        .onChange(of: phase) { newPhase in
-            guard newPhase == 1, progress < 1 else { return }
-            withAnimation(.easeOut(duration: 2.0)) {
-                displayProgress = 0.85
-            }
-        }
-        .onChange(of: progress) { newValue in
-            if newValue >= 1 {
-                withAnimation(.easeOut(duration: 0.22)) {
-                    displayProgress = 1
-                }
-            }
-        }
-    }
-
-    private func startProcessingPhase() {
-        guard progress < 1 else { return }
-        let targetProgress: CGFloat = phase == 1 ? 0.85 : 0.5
-        withAnimation(.easeOut(duration: 1.5)) {
-            displayProgress = targetProgress
-        }
+        .animation(.linear(duration: 0.06), value: progress)
     }
 }
 
-private struct ProcessingTranscriptCapsule: View {
+struct ProcessingTranscriptCapsule: View {
     let text: String
     let title: String
     let progress: CGFloat
-    let epoch: Int
-    let phase: Int
-    @State private var displayProgress: CGFloat = 0
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -2103,31 +2658,12 @@ private struct ProcessingTranscriptCapsule: View {
                 cornerRadius: 22,
                 tintOpacity: 0.06,
                 strokeOpacity: 0.15,
-                lineWidth: 0.9,
-            ),
+                lineWidth: 0.9
+            )
         )
         .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 12)
         .environment(\.colorScheme, .dark)
-        .onAppear {
-            startProcessingPhase()
-        }
-        .onChange(of: epoch) { _ in
-            displayProgress = 0
-            startProcessingPhase()
-        }
-        .onChange(of: phase) { newPhase in
-            guard newPhase == 1, progress < 1 else { return }
-            withAnimation(.easeOut(duration: 2.0)) {
-                displayProgress = 0.85
-            }
-        }
-        .onChange(of: progress) { newValue in
-            if newValue >= 1 {
-                withAnimation(.easeOut(duration: 0.22)) {
-                    displayProgress = 1
-                }
-            }
-        }
+        .animation(.linear(duration: 0.06), value: progress)
     }
 
     private var processingRow: some View {
@@ -2139,7 +2675,7 @@ private struct ProcessingTranscriptCapsule: View {
                     Color.white.opacity(0.08)
                     Rectangle()
                         .fill(Color.white.opacity(0.24))
-                        .frame(width: max(0, geo.size.width * displayProgress))
+                        .frame(width: max(0, geo.size.width * progress))
                 }
             }
             .mask(capsuleShape)
@@ -2154,17 +2690,10 @@ private struct ProcessingTranscriptCapsule: View {
         .clipShape(capsuleShape)
         .overlay(
             capsuleShape
-                .stroke(Color.white.opacity(0.18), lineWidth: 0.8),
+                .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
         )
     }
 
-    private func startProcessingPhase() {
-        guard progress < 1 else { return }
-        let targetProgress: CGFloat = phase == 1 ? 0.85 : 0.5
-        withAnimation(.easeOut(duration: 1.5)) {
-            displayProgress = targetProgress
-        }
-    }
 }
 
 private struct OverlayCapsule<Content: View>: View {
@@ -2186,8 +2715,8 @@ private struct OverlayCapsule<Content: View>: View {
                     cornerRadius: nil,
                     tintOpacity: 0.05,
                     strokeOpacity: 0.16,
-                    lineWidth: 1.0,
-                ),
+                    lineWidth: 1.0
+                )
             )
             .shadow(color: Color.black.opacity(0.24), radius: 16, x: 0, y: 12)
             .environment(\.colorScheme, .dark)
@@ -2206,7 +2735,7 @@ private struct OverlayCard<Content: View>: View {
         compact: Bool = false,
         hostedInWindowChrome: Bool = false,
         shadowed: Bool = true,
-        @ViewBuilder content: () -> Content,
+        @ViewBuilder content: () -> Content
     ) {
         self.width = width
         self.compact = compact
@@ -2223,7 +2752,7 @@ private struct OverlayCard<Content: View>: View {
             .background(cardBackground)
             .shadow(
                 color: Color.black.opacity(shadowed ? 0.32 : 0), radius: shadowed ? 26 : 0, x: 0,
-                y: shadowed ? 16 : 0,
+                y: shadowed ? 16 : 0
             )
     }
 
@@ -2236,7 +2765,7 @@ private struct OverlayCard<Content: View>: View {
                 .fill(Color(red: 0.13, green: 0.11, blue: 0.11).opacity(0.96))
                 .overlay(
                     RoundedRectangle(cornerRadius: compact ? 14 : 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1),
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
         }
     }
@@ -2261,7 +2790,7 @@ private struct OverlayCompactToast<Content: View>: View {
             .background(toastBackground)
             .shadow(
                 color: Color.black.opacity(hostedInWindowChrome ? 0 : 0.28),
-                radius: hostedInWindowChrome ? 0 : 18, x: 0, y: hostedInWindowChrome ? 0 : 12,
+                radius: hostedInWindowChrome ? 0 : 18, x: 0, y: hostedInWindowChrome ? 0 : 12
             )
     }
 
@@ -2274,7 +2803,7 @@ private struct OverlayCompactToast<Content: View>: View {
                 .fill(Color(red: 0.13, green: 0.11, blue: 0.11).opacity(0.96))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1),
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
         }
     }
@@ -2297,12 +2826,14 @@ private struct OverlayButton: View {
             .padding(.vertical, compact ? 8.5 : 10.5)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.14)),
+                    .fill(Color.white.opacity(0.14))
             )
     }
 }
 
 private struct LevelWaveform: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let level: Float
     let activeColor: Color
 
@@ -2313,11 +2844,12 @@ private struct LevelWaveform: View {
                     .fill(activeColor)
                     .frame(
                         width: 2.3,
-                        height: OverlayWaveformMetrics.barHeight(for: index, level: level),
+                        height: OverlayWaveformMetrics.barHeight(for: index, level: level)
                     )
                     .shadow(color: Color.black.opacity(0.34), radius: 1.6, x: 0, y: 0.6)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: level)
     }
 }

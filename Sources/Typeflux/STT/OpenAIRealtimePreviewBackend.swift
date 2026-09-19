@@ -5,12 +5,12 @@ enum OpenAIRealtimePreviewSupport {
     static func isSupported(baseURL: String, model: String) -> Bool {
         let normalized = OpenAIAudioModelCatalog.resolvedWhisperModel(
             model,
-            endpoint: baseURL,
+            endpoint: baseURL
         ).lowercased()
         guard !normalized.isEmpty else { return false }
         return OpenAIRealtimeTranscriber.shouldUseRealtime(
             baseURL: OpenAIAudioModelCatalog.resolvedWhisperEndpoint(baseURL),
-            model: normalized,
+            model: normalized
         )
     }
 
@@ -18,7 +18,7 @@ enum OpenAIRealtimePreviewSupport {
         let endpoint = OpenAIAudioModelCatalog.resolvedWhisperEndpoint(baseURL)
         let resolvedModel = OpenAIAudioModelCatalog.resolvedWhisperModel(
             model,
-            endpoint: baseURL,
+            endpoint: baseURL
         )
         guard var components = URLComponents(string: endpoint) else { return nil }
         switch components.scheme?.lowercased() {
@@ -74,7 +74,8 @@ struct OpenAIRealtimeTranscriptAccumulator {
         case "conversation.item.input_audio_transcription.completed":
             guard let itemID = payload["item_id"] as? String else { return nil }
             insert(itemID: itemID, after: payload["previous_item_id"] as? String)
-            let transcript = (payload["transcript"] as? String ?? partialTexts[itemID] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let transcript = (payload["transcript"] as? String ?? partialTexts[itemID] ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             partialTexts[itemID] = transcript
             finalTexts[itemID] = transcript
             return snapshot(isFinal: false)
@@ -137,7 +138,7 @@ actor OpenAIRealtimePreviewBackend: LivePreviewBackend {
     static func isSupported(settingsStore: SettingsStore) -> Bool {
         OpenAIRealtimePreviewSupport.isSupported(
             baseURL: settingsStore.whisperBaseURL,
-            model: settingsStore.whisperModel,
+            model: settingsStore.whisperModel
         )
     }
 
@@ -146,16 +147,16 @@ actor OpenAIRealtimePreviewBackend: LivePreviewBackend {
 
         let model = OpenAIAudioModelCatalog.resolvedWhisperModel(
             settingsStore.whisperModel,
-            endpoint: settingsStore.whisperBaseURL,
+            endpoint: settingsStore.whisperBaseURL
         )
         guard let url = OpenAIRealtimePreviewSupport.webSocketURL(
             baseURL: settingsStore.whisperBaseURL,
-            model: model,
+            model: model
         ) else {
             throw NSError(
                 domain: "OpenAIRealtimePreviewBackend",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid realtime WebSocket URL."],
+                userInfo: [NSLocalizedDescriptionKey: "Invalid realtime WebSocket URL."]
             )
         }
 
@@ -190,7 +191,7 @@ actor OpenAIRealtimePreviewBackend: LivePreviewBackend {
             guard !audioData.isEmpty else { return }
             let payload: [String: Any] = [
                 "type": "input_audio_buffer.append",
-                "audio": audioData.base64EncodedString(),
+                "audio": audioData.base64EncodedString()
             ]
             try await send(payload)
         } catch {
@@ -241,12 +242,12 @@ actor OpenAIRealtimePreviewBackend: LivePreviewBackend {
     private func buildSessionUpdatePayload() -> [String: Any] {
         let model = OpenAIAudioModelCatalog.resolvedWhisperModel(
             settingsStore.whisperModel,
-            endpoint: settingsStore.whisperBaseURL,
+            endpoint: settingsStore.whisperBaseURL
         )
         let prompt = TranscriptionLanguageHints.remotePrompt(vocabularyTerms: VocabularyStore.activeTerms())
 
         var transcriptionPayload: [String: Any] = [
-            "model": model,
+            "model": model
         ]
         if let prompt {
             transcriptionPayload["prompt"] = prompt
@@ -260,17 +261,17 @@ actor OpenAIRealtimePreviewBackend: LivePreviewBackend {
                     "input": [
                         "format": [
                             "type": "audio/pcm",
-                            "rate": 24000,
+                            "rate": 24000
                         ],
                         "transcription": transcriptionPayload,
                         "turn_detection": [
                             "type": "server_vad",
                             "silence_duration_ms": 500,
-                            "prefix_padding_ms": 300,
-                        ],
-                    ],
-                ],
-            ] as [String: Any],
+                            "prefix_padding_ms": 300
+                        ]
+                    ]
+                ]
+            ] as [String: Any]
         ]
     }
 
@@ -281,7 +282,7 @@ actor OpenAIRealtimePreviewBackend: LivePreviewBackend {
             throw NSError(
                 domain: "OpenAIRealtimePreviewBackend",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to encode realtime payload."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to encode realtime payload."]
             )
         }
         try await sendWithRetry(socketTask: socketTask, message: .string(text))
@@ -302,7 +303,7 @@ private extension OpenAIRealtimePreviewBackend {
 
     func sendWithRetry(
         socketTask: URLSessionWebSocketTask,
-        message: URLSessionWebSocketTask.Message,
+        message: URLSessionWebSocketTask.Message
     ) async throws {
         let retryDelays: [Duration] = [.zero, .milliseconds(120), .milliseconds(300)]
 
@@ -321,7 +322,7 @@ private extension OpenAIRealtimePreviewBackend {
 
                 NetworkDebugLogger.logError(
                     context: "Realtime preview send failed before socket was ready; retrying",
-                    error: error,
+                    error: error
                 )
             }
         }
@@ -357,7 +358,7 @@ private actor WebSocketOpenDelegateState {
                 throw NSError(
                     domain: "OpenAIRealtimePreviewBackend",
                     code: 3,
-                    userInfo: [NSLocalizedDescriptionKey: "Realtime preview handshake timed out."],
+                    userInfo: [NSLocalizedDescriptionKey: "Realtime preview handshake timed out."]
                 )
             }
             try await group.next()
@@ -381,7 +382,7 @@ private actor WebSocketOpenDelegateState {
         let error = NSError(
             domain: "OpenAIRealtimePreviewBackend",
             code: 4,
-            userInfo: [NSLocalizedDescriptionKey: description],
+            userInfo: [NSLocalizedDescriptionKey: description]
         )
         continuation?.resume(throwing: error)
         continuation = nil
@@ -412,7 +413,7 @@ private final class WebSocketOpenDelegate: NSObject, URLSessionWebSocketDelegate
     func urlSession(
         _: URLSession,
         webSocketTask _: URLSessionWebSocketTask,
-        didOpenWithProtocol _: String?,
+        didOpenWithProtocol _: String?
     ) {
         Task { await state.markOpened() }
     }
@@ -420,7 +421,7 @@ private final class WebSocketOpenDelegate: NSObject, URLSessionWebSocketDelegate
     func urlSession(
         _: URLSession,
         task _: URLSessionTask,
-        didCompleteWithError error: Error?,
+        didCompleteWithError error: Error?
     ) {
         guard let error else { return }
         Task { await state.markFailed(error) }
@@ -430,7 +431,7 @@ private final class WebSocketOpenDelegate: NSObject, URLSessionWebSocketDelegate
         _: URLSession,
         webSocketTask _: URLSessionWebSocketTask,
         didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
-        reason: Data?,
+        reason: Data?
     ) {
         let reasonText = reason
             .flatMap { String(data: $0, encoding: .utf8) }?
@@ -441,7 +442,7 @@ private final class WebSocketOpenDelegate: NSObject, URLSessionWebSocketDelegate
             ""
         }
         NetworkDebugLogger.logMessage(
-            "Realtime preview WebSocket closed with code=\(closeCode.rawValue)\(suffix)",
+            "Realtime preview WebSocket closed with code=\(closeCode.rawValue)\(suffix)"
         )
         Task { await state.markClosed(code: closeCode, reason: reason) }
     }
@@ -453,12 +454,12 @@ private final class OpenAIRealtimeAudioEncoder {
             commonFormat: .pcmFormatInt16,
             sampleRate: 24000,
             channels: 1,
-            interleaved: true,
+            interleaved: true
         ) else {
             throw NSError(
                 domain: "OpenAIRealtimeAudioEncoder",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime output format."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime output format."]
             )
         }
 
@@ -466,7 +467,7 @@ private final class OpenAIRealtimeAudioEncoder {
             throw NSError(
                 domain: "OpenAIRealtimeAudioEncoder",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime audio converter."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create realtime audio converter."]
             )
         }
 
@@ -476,7 +477,7 @@ private final class OpenAIRealtimeAudioEncoder {
             throw NSError(
                 domain: "OpenAIRealtimeAudioEncoder",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate realtime audio buffer."],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate realtime audio buffer."]
             )
         }
 
@@ -500,7 +501,7 @@ private final class OpenAIRealtimeAudioEncoder {
             throw NSError(
                 domain: "OpenAIRealtimeAudioEncoder",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Realtime audio conversion failed."],
+                userInfo: [NSLocalizedDescriptionKey: "Realtime audio conversion failed."]
             )
         }
 

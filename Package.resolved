@@ -10,6 +10,15 @@
       }
     },
     {
+      "identity" : "opencc-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/doggy8088/opencc-swift.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "5e22c21ac6775ea21ebf880349c53dab1253b003"
+      }
+    },
+    {
       "identity" : "swift-algorithms",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-algorithms.git",

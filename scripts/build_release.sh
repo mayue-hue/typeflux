@@ -226,9 +226,21 @@ sign_nested_binaries() {
   done < <(find "$resources_root/LocalRuntimes" "$resources_root/BundledModels" -type f \( -perm -u+x -o -name '*.dylib' -o -name '*.so' \) -print0 2>/dev/null)
 }
 
-# Sign the bundle if an identity is available.
-# Hardened runtime is required for notarization with a Developer ID signature.
-if [[ -n "${TYPEFLUX_CODESIGN_IDENTITY:-}" ]] && command -v codesign >/dev/null 2>&1; then
+# Sign the bundle with a stable Developer ID identity. Hardened runtime is
+# required for notarization, and a stable identity is required for Keychain
+# continuity across app updates.
+if [[ -z "${TYPEFLUX_CODESIGN_IDENTITY:-}" ]]; then
+  echo "Error: TYPEFLUX_CODESIGN_IDENTITY is required for release builds." >&2
+  echo "Refusing to create an ad-hoc signed release because it can break Keychain-backed login state." >&2
+  exit 1
+fi
+
+if ! command -v codesign >/dev/null 2>&1; then
+  echo "Error: codesign is required for release builds." >&2
+  exit 1
+fi
+
+if [[ -n "${TYPEFLUX_CODESIGN_IDENTITY:-}" ]]; then
   codesign_args=(
     --force
     --sign "$TYPEFLUX_CODESIGN_IDENTITY"
@@ -242,13 +254,6 @@ if [[ -n "${TYPEFLUX_CODESIGN_IDENTITY:-}" ]] && command -v codesign >/dev/null 
   codesign "${codesign_args[@]}" "$APP_BUNDLE"
   codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
   echo "Signed with identity: $TYPEFLUX_CODESIGN_IDENTITY"
-elif command -v codesign >/dev/null 2>&1; then
-  sign_nested_binaries "" true
-  codesign --force --sign - --identifier "ai.gulu.app.typeflux" \
-    --entitlements "$entitlements_to_use" "$APP_EXECUTABLE"
-  codesign --force --sign - --identifier "ai.gulu.app.typeflux" \
-    --entitlements "$entitlements_to_use" "$APP_BUNDLE"
-  echo "Signed with ad-hoc identity"
 fi
 
 if [[ "$use_apple_sign_in_entitlements" == true ]]; then

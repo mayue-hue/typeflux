@@ -16,7 +16,7 @@ final class LoginWindowController: NSObject {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let window = self.window else { return }
@@ -38,7 +38,7 @@ final class LoginWindowController: NSObject {
             contentRect: contentRect,
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
-            defer: false,
+            defer: false
         )
         let loginView = LoginView(
             onDismiss: { [weak self] in

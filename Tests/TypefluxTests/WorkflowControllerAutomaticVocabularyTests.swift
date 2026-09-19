@@ -14,8 +14,8 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
-            ),
+                failureReason: nil
+            )
         )
 
         let matches = controller.automaticVocabularyMatchesExpectedApp(
@@ -27,9 +27,9 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello world",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
+                failureReason: nil
             ),
-            expectedApp: expected,
+            expectedApp: expected
         )
 
         XCTAssertTrue(matches)
@@ -46,8 +46,8 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
-            ),
+                failureReason: nil
+            )
         )
 
         let matches = controller.automaticVocabularyMatchesExpectedApp(
@@ -59,9 +59,9 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello world",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
+                failureReason: nil
             ),
-            expectedApp: expected,
+            expectedApp: expected
         )
 
         XCTAssertTrue(matches)
@@ -78,7 +78,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
+                failureReason: nil
             ),
             CurrentInputTextSnapshot(
                 processID: 101,
@@ -88,7 +88,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
+                failureReason: nil
             ),
             CurrentInputTextSnapshot(
                 processID: 202,
@@ -98,8 +98,8 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "hello fix",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
-            ),
+                failureReason: nil
+            )
         ])
         let controller = makeWorkflowController(textInjector: textInjector, llmService: llmService)
 
@@ -122,7 +122,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
             insertedText: "please check the seedsr config",
             baselineText: "please check the seedsr config",
             latestObservedText: "please check the SeedASR config",
-            hasObservedChange: true,
+            hasObservedChange: true
         )
 
         controller.finalizePreviousAutomaticVocabularySessionIfNeeded()
@@ -149,7 +149,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
             insertedText: "hello",
             baselineText: "hello",
             latestObservedText: "hello",
-            hasObservedChange: false,
+            hasObservedChange: false
         )
 
         controller.finalizePreviousAutomaticVocabularySessionIfNeeded()
@@ -166,7 +166,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
         await controller.runAutomaticVocabularyAnalysis(
             insertedText: "please review the prddraft text",
             baselineText: "please review the prddraft text",
-            finalText: "please review the PRDPlus text",
+            finalText: "please review the PRDPlus text"
         )
 
         XCTAssertEqual(llmService.completeJSONCallCount, 1)
@@ -183,7 +183,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
         await controller.runAutomaticVocabularyAnalysis(
             insertedText: "please check the gpt api response",
             baselineText: "please check the gpt api response",
-            finalText: "please check the GPT API response",
+            finalText: "please check the GPT API response"
         )
 
         XCTAssertEqual(llmService.completeJSONCallCount, 1)
@@ -203,7 +203,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
         await controller.runAutomaticVocabularyAnalysis(
             insertedText: "hello world",
             baselineText: "hello world",
-            finalText: "this is a completely different sentence written by the user instead",
+            finalText: "this is a completely different sentence written by the user instead"
         )
 
         XCTAssertEqual(llmService.completeJSONCallCount, 0)
@@ -216,7 +216,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
         await controller.runAutomaticVocabularyAnalysis(
             insertedText: "hello world",
             baselineText: "hello world",
-            finalText: "hello world",
+            finalText: "hello world"
         )
 
         XCTAssertEqual(llmService.completeJSONCallCount, 0)
@@ -232,7 +232,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
         await controller.runAutomaticVocabularyAnalysis(
             insertedText: "SeedASR Doubao",
             baselineText: "",
-            finalText: "SeedASR Doubao",
+            finalText: "SeedASR Doubao"
         )
 
         XCTAssertEqual(llmService.completeJSONCallCount, 0)
@@ -245,7 +245,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
         await controller.runAutomaticVocabularyAnalysis(
             insertedText: "please check the apidoc",
             baselineText: "please check the apidoc",
-            finalText: "please check the OpenAPI",
+            finalText: "please check the OpenAPI"
         )
 
         XCTAssertEqual(llmService.completeJSONCallCount, 1)
@@ -263,14 +263,14 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "please check the prddraft text",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
-            ),
+                failureReason: nil
+            )
         ])
         let controller = makeWorkflowController(textInjector: textInjector)
 
         let start = Date()
         let snapshot = await controller.readAutomaticVocabularyBaselineWithRetry(
-            expectedSubstring: "prddraft",
+            expectedSubstring: "prddraft"
         )
         let elapsed = Date().timeIntervalSince(start)
 
@@ -289,7 +289,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "please check the ",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
+                failureReason: nil
             ),
             CurrentInputTextSnapshot(
                 processID: 1,
@@ -299,7 +299,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "please check the ",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
+                failureReason: nil
             ),
             // Third read finally shows the inserted text.
             CurrentInputTextSnapshot(
@@ -310,13 +310,13 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 text: "please check the prddraft text",
                 isEditable: true,
                 isFocusedTarget: true,
-                failureReason: nil,
-            ),
+                failureReason: nil
+            )
         ])
         let controller = makeWorkflowController(textInjector: textInjector)
 
         let snapshot = await controller.readAutomaticVocabularyBaselineWithRetry(
-            expectedSubstring: "prddraft",
+            expectedSubstring: "prddraft"
         )
 
         XCTAssertEqual(snapshot.text, "please check the prddraft text")
@@ -324,7 +324,7 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
 
     private func makeWorkflowController(
         textInjector: TextInjector = MockWorkflowTextInjector(),
-        llmService: LLMService = MockWorkflowLLMService(),
+        llmService: LLMService = MockWorkflowLLMService()
     ) -> WorkflowController {
         let suiteName = "WorkflowControllerAutomaticVocabularyTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -353,7 +353,8 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
                 doubaoRealtime: MockWorkflowTranscriber(),
                 googleCloud: MockWorkflowTranscriber(),
                 groq: MockWorkflowTranscriber(),
-                typefluxOfficial: MockWorkflowTranscriber(),
+                soniox: MockWorkflowTranscriber(),
+                typefluxOfficial: MockWorkflowTranscriber()
             ),
             llmService: llmService,
             llmAgentService: MockWorkflowLLMAgentService(),
@@ -367,11 +368,13 @@ final class WorkflowControllerAutomaticVocabularyTests: XCTestCase {
             askAnswerWindowController: AskAnswerWindowController(
                 clipboard: MockClipboardService(),
                 settingsStore: settingsStore,
+                outputPostProcessor: NoopOutputPostProcessor()
             ),
             agentClarificationWindowController: AgentClarificationWindowController(
-                settingsStore: settingsStore,
+                settingsStore: settingsStore
             ),
             soundEffectPlayer: SoundEffectPlayer(settingsStore: settingsStore),
+            outputPostProcessor: NoopOutputPostProcessor()
         )
     }
 }
@@ -389,13 +392,13 @@ private final class MockWorkflowTextInjector: TextInjector {
             text: "",
             isEditable: true,
             isFocusedTarget: true,
-            failureReason: nil,
-        ),
+            failureReason: nil
+        )
     ]) {
         self.snapshots = snapshots
     }
 
-    func getSelectionSnapshot() async -> TextSelectionSnapshot {
+    func selectionSnapshot(for _: SelectionCaptureIntent) async -> TextSelectionSnapshot {
         TextSelectionSnapshot()
     }
 
@@ -411,9 +414,10 @@ private final class MockWorkflowTextInjector: TextInjector {
         await currentInputTextSnapshot().text
     }
 
-    func insert(text _: String) throws {}
-
-    func replaceSelection(text _: String) throws {}
+    @MainActor
+    func deliver(text _: String, to _: TextDeliveryDestination) async throws -> TextDeliveryResult {
+        .delivered(.ax)
+    }
 }
 
 private final class MockWorkflowLLMService: LLMService, @unchecked Sendable {
@@ -454,13 +458,14 @@ private final class MockWorkflowLLMAgentService: LLMAgentService {
 }
 
 private final class MockWorkflowHotkeyService: HotkeyService {
-    var onActivationTap: (() -> Void)?
-    var onActivationPressBegan: (() -> Void)?
-    var onActivationPressEnded: (() -> Void)?
+    var onActivationTap: ((HotkeyEventContext) -> Void)?
+    var onActivationPressBegan: ((HotkeyEventContext) -> Void)?
+    var onActivationPressEnded: ((HotkeyEventContext) -> Void)?
     var onActivationCancelled: (() -> Void)?
-    var onAskPressBegan: (() -> Void)?
+    var onAskPressBegan: ((HotkeyEventContext) -> Void)?
     var onAskPressEnded: (() -> Void)?
     var onPersonaPickerRequested: (() -> Void)?
+    var onHistoryRequested: (() -> Void)?
     var onError: ((String) -> Void)?
 
     func start() {}
@@ -471,7 +476,7 @@ private final class MockWorkflowHotkeyService: HotkeyService {
 private final class MockWorkflowAudioRecorder: AudioRecorder {
     func start(
         levelHandler _: @escaping (Float) -> Void,
-        audioBufferHandler _: ((AVAudioPCMBuffer) -> Void)?,
+        audioBufferHandler _: ((AVAudioPCMBuffer) -> Void)?
     ) throws {}
 
     func stop() throws -> AudioFile {

@@ -45,7 +45,7 @@ final class LLMServiceTests: XCTestCase {
     func testObjectConversion() {
         let value = AnySendable.object([
             "name": .string("test"),
-            "count": .int(5),
+            "count": .int(5)
         ])
         let dict = value.foundationValue as? [String: Any]
         XCTAssertNotNil(dict)
@@ -55,7 +55,7 @@ final class LLMServiceTests: XCTestCase {
 
     func testNestedArrayInObject() {
         let value = AnySendable.object([
-            "items": .array([.string("x"), .string("y")]),
+            "items": .array([.string("x"), .string("y")])
         ])
         let dict = value.foundationValue as? [String: Any]
         let items = dict?["items"] as? [Any]
@@ -65,7 +65,7 @@ final class LLMServiceTests: XCTestCase {
 
     func testNestedObjectInArray() {
         let value = AnySendable.array([
-            .object(["key": .string("value")]),
+            .object(["key": .string("value")])
         ])
         let array = value.foundationValue as? [Any]
         let nested = array?.first as? [String: Any]
@@ -76,9 +76,9 @@ final class LLMServiceTests: XCTestCase {
         let value = AnySendable.object([
             "level1": .object([
                 "level2": .array([
-                    .object(["level3": .string("deep")]),
-                ]),
-            ]),
+                    .object(["level3": .string("deep")])
+                ])
+            ])
         ])
         let dict = value.foundationValue as? [String: Any]
         let level1 = dict?["level1"] as? [String: Any]
@@ -95,9 +95,9 @@ final class LLMServiceTests: XCTestCase {
             schema: [
                 "type": .string("object"),
                 "properties": .object([
-                    "name": .object(["type": .string("string")]),
-                ]),
-            ],
+                    "name": .object(["type": .string("string")])
+                ])
+            ]
         )
 
         let jsonObj = schema.jsonObject
@@ -122,7 +122,7 @@ final class LLMServiceTests: XCTestCase {
             systemPrompt: "system",
             userPrompt: "user",
             stream: true,
-            temperature: 0.4,
+            temperature: 0.4
         )
 
         XCTAssertEqual(body["keep_alive"] as? String, "30m")

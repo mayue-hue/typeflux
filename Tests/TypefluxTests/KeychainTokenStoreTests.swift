@@ -4,11 +4,13 @@ import XCTest
 final class KeychainTokenStoreTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        KeychainTokenStore.useInMemoryStoreForTesting = true
         KeychainTokenStore.clearAll()
     }
 
     override func tearDown() {
         KeychainTokenStore.clearAll()
+        KeychainTokenStore.useInMemoryStoreForTesting = false
         super.tearDown()
     }
 
@@ -93,7 +95,7 @@ final class KeychainTokenStoreTests: XCTestCase {
 
     func testOverwriteWithNilRefreshTokenClearsIt() {
         KeychainTokenStore.saveToken("first", expiresAt: 111, refreshToken: "rt_first")
-        KeychainTokenStore.saveToken("second", expiresAt: 222)  // no refreshToken
+        KeychainTokenStore.saveToken("second", expiresAt: 222) // no refreshToken
         XCTAssertNil(KeychainTokenStore.loadRefreshToken())
     }
 

@@ -64,8 +64,7 @@ private struct HTMLVisitor: MarkupVisitor {
         let tagName = isRenderingTableHead ? "th" : "td"
         var attributes: [String] = []
         if currentTableColumn < tableColumnAlignments.count,
-           let alignment = tableColumnAlignments[currentTableColumn]
-        {
+           let alignment = tableColumnAlignments[currentTableColumn] {
             attributes.append(" align=\"\(htmlAlignment(alignment))\"")
         }
         if tableCell.rowspan > 1 {

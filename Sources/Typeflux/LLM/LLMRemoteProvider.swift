@@ -146,23 +146,23 @@ enum LLMRemoteProvider: String, CaseIterable, Codable {
             [
                 LLMRemoteEndpointPreset(
                     labelKey: "settings.models.endpointPreset.international",
-                    url: "https://api.z.ai/api/paas/v4",
+                    url: "https://api.z.ai/api/paas/v4"
                 ),
                 LLMRemoteEndpointPreset(
                     labelKey: "settings.models.endpointPreset.china",
-                    url: "https://open.bigmodel.cn/api/paas/v4",
-                ),
+                    url: "https://open.bigmodel.cn/api/paas/v4"
+                )
             ]
         case .minimax:
             [
                 LLMRemoteEndpointPreset(
                     labelKey: "settings.models.endpointPreset.international",
-                    url: "https://api.minimax.io/v1",
+                    url: "https://api.minimax.io/v1"
                 ),
                 LLMRemoteEndpointPreset(
                     labelKey: "settings.models.endpointPreset.china",
-                    url: "https://api.minimaxi.com/v1",
-                ),
+                    url: "https://api.minimaxi.com/v1"
+                )
             ]
         default:
             []
@@ -202,20 +202,20 @@ enum LLMRemoteProvider: String, CaseIterable, Codable {
                 "z-ai/glm-5",
                 "z-ai/glm-4.5-air",
                 "qwen/qwen3.5-flash-02-23",
-                "deepseek/deepseek-v3.2",
+                "deepseek/deepseek-v3.2"
             ]
         case .openAI:
             return [
                 "gpt-5.4",
                 "gpt-5.4-mini",
                 "gpt-5.4-nano",
-                "gpt-5.3-codex",
+                "gpt-5.3-codex"
             ]
         case .anthropic:
             return [
                 "claude-opus-4-6",
                 "claude-sonnet-4-6",
-                "claude-haiku-4-5",
+                "claude-haiku-4-5"
             ]
         case .gemini:
             return [
@@ -223,42 +223,42 @@ enum LLMRemoteProvider: String, CaseIterable, Codable {
                 "gemini-3-flash-preview",
                 "gemini-3.1-flash-lite-preview",
                 "gemini-2.5-flash",
-                "gemini-2.5-pro",
+                "gemini-2.5-pro"
             ]
         case .deepSeek:
             return [
                 "deepseek-chat",
-                "deepseek-reasoner",
+                "deepseek-reasoner"
             ]
         case .kimi:
             return [
                 "kimi-k2.5",
-                "kimi-k2-turbo-preview",
+                "kimi-k2-turbo-preview"
             ]
         case .qwen:
             return [
                 "qwen3.6-plus",
                 "qwen3-max",
-                "qwen3.5-flash",
+                "qwen3.5-flash"
             ]
         case .zhipu:
             return [
                 "glm-5",
                 "glm-5-turbo",
                 "glm-4.7-flash",
-                "glm-4.5-air",
+                "glm-4.5-air"
             ]
         case .minimax:
             return [
                 "MiniMax-M2.7",
-                "MiniMax-M2.7-highspeed",
+                "MiniMax-M2.7-highspeed"
             ]
         case .grok:
             return [
                 "grok-4-1-fast-reasoning",
                 "grok-4-1-fast-non-reasoning",
                 "grok-4.20-0309-reasoning",
-                "grok-4.20-0309-non-reasoning",
+                "grok-4.20-0309-non-reasoning"
             ]
         case .groq:
             return [
@@ -267,13 +267,13 @@ enum LLMRemoteProvider: String, CaseIterable, Codable {
                 "llama-3.1-8b-instant",
                 "llama-3.3-70b-versatile",
                 "openai/gpt-oss-120b",
-                "openai/gpt-oss-20b",
+                "openai/gpt-oss-20b"
             ]
         case .xiaomi:
             return [
                 "mimo-v2-pro",
                 "mimo-v2-flash",
-                "mimo-v2-omni",
+                "mimo-v2-omni"
             ]
         case .openCodeZen:
             return [
@@ -289,7 +289,7 @@ enum LLMRemoteProvider: String, CaseIterable, Codable {
                 "qwen3.6-plus",
                 "minimax-m2.7",
                 "glm-5.1",
-                "kimi-k2.6",
+                "kimi-k2.6"
             ]
         case .openCodeGo:
             return [
@@ -306,7 +306,7 @@ enum LLMRemoteProvider: String, CaseIterable, Codable {
                 "mimo-v2.5",
                 "mimo-v2.5-pro",
                 "mimo-v2-pro",
-                "mimo-v2-omni",
+                "mimo-v2-omni"
             ]
         }
     }

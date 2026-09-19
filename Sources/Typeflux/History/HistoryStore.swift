@@ -1,22 +1,58 @@
 import Foundation
 
 struct HistoryPipelineTiming: Codable, Equatable {
+    var hotkeyDetectedAt: Date?
+    var recordingWorkflowStartedAt: Date?
+    var audioEngineStartedAt: Date?
+    var firstAudioBufferAt: Date?
+    var firstAudioSignalAt: Date?
+    var leadingZeroDuration: TimeInterval?
     var recordingStoppedAt: Date?
     var audioFileReadyAt: Date?
     var transcriptionStartedAt: Date?
     var transcriptionCompletedAt: Date?
+    var realtimeSessionStartedAt: Date?
+    var realtimeConnectionReadyAt: Date?
+    var realtimeFirstAudioSubmittedAt: Date?
+    var realtimeFirstResultReceivedAt: Date?
+    var realtimeFinalResultReceivedAt: Date?
+    var realtimeFinishStartedAt: Date?
+    var realtimeFinishCompletedAt: Date?
+    var realtimeTransport: NetworkTransportDiagnosticsSnapshot?
+    var asrRace: ASRRaceDiagnostics?
     var llmProcessingStartedAt: Date?
+    var llmFirstOutputAt: Date?
     var llmProcessingCompletedAt: Date?
+    var llmRequestAttempts: [LLMRequestAttemptDiagnostics]?
+    var llmOutcome: LLMProcessingOutcomeDiagnostics?
     var applyStartedAt: Date?
     var applyCompletedAt: Date?
 
     var hasData: Bool {
-        recordingStoppedAt != nil ||
+        hotkeyDetectedAt != nil ||
+            recordingWorkflowStartedAt != nil ||
+            audioEngineStartedAt != nil ||
+            firstAudioBufferAt != nil ||
+            firstAudioSignalAt != nil ||
+            leadingZeroDuration != nil ||
+            recordingStoppedAt != nil ||
             audioFileReadyAt != nil ||
             transcriptionStartedAt != nil ||
             transcriptionCompletedAt != nil ||
+            realtimeSessionStartedAt != nil ||
+            realtimeConnectionReadyAt != nil ||
+            realtimeFirstAudioSubmittedAt != nil ||
+            realtimeFirstResultReceivedAt != nil ||
+            realtimeFinalResultReceivedAt != nil ||
+            realtimeFinishStartedAt != nil ||
+            realtimeFinishCompletedAt != nil ||
+            realtimeTransport != nil ||
+            asrRace != nil ||
             llmProcessingStartedAt != nil ||
+            llmFirstOutputAt != nil ||
             llmProcessingCompletedAt != nil ||
+            !(llmRequestAttempts?.isEmpty ?? true) ||
+            llmOutcome != nil ||
             applyStartedAt != nil ||
             applyCompletedAt != nil
     }
@@ -28,58 +64,163 @@ struct HistoryPipelineTiming: Codable, Equatable {
 
     func generatedStats() -> HistoryPipelineStats {
         HistoryPipelineStats(
+            hotkeyDetectedAt: hotkeyDetectedAt,
+            recordingWorkflowStartedAt: recordingWorkflowStartedAt,
+            audioEngineStartedAt: audioEngineStartedAt,
+            firstAudioBufferAt: firstAudioBufferAt,
+            firstAudioSignalAt: firstAudioSignalAt,
+            leadingZeroDuration: leadingZeroDuration,
             recordingStoppedAt: recordingStoppedAt,
             audioFileReadyAt: audioFileReadyAt,
             transcriptionStartedAt: transcriptionStartedAt,
             transcriptionCompletedAt: transcriptionCompletedAt,
+            realtimeSessionStartedAt: realtimeSessionStartedAt,
+            realtimeConnectionReadyAt: realtimeConnectionReadyAt,
+            realtimeFirstAudioSubmittedAt: realtimeFirstAudioSubmittedAt,
+            realtimeFirstResultReceivedAt: realtimeFirstResultReceivedAt,
+            realtimeFinalResultReceivedAt: realtimeFinalResultReceivedAt,
+            realtimeFinishStartedAt: realtimeFinishStartedAt,
+            realtimeFinishCompletedAt: realtimeFinishCompletedAt,
+            realtimeTransport: realtimeTransport,
+            asrRace: asrRace,
             llmProcessingStartedAt: llmProcessingStartedAt,
+            llmFirstOutputAt: llmFirstOutputAt,
             llmProcessingCompletedAt: llmProcessingCompletedAt,
+            llmRequestAttempts: llmRequestAttempts,
+            llmOutcome: llmOutcome,
             applyStartedAt: applyStartedAt,
             applyCompletedAt: applyCompletedAt,
+            hotkeyToFirstAudioMilliseconds: millisecondsBetween(hotkeyDetectedAt, firstAudioBufferAt),
+            hotkeyDispatchMilliseconds: millisecondsBetween(hotkeyDetectedAt, recordingWorkflowStartedAt),
+            recordingPreparationMilliseconds: millisecondsBetween(recordingWorkflowStartedAt, audioEngineStartedAt),
+            audioEngineToFirstBufferMilliseconds: millisecondsBetween(audioEngineStartedAt, firstAudioBufferAt),
             stopToAudioReadyMilliseconds: millisecondsBetween(recordingStoppedAt, audioFileReadyAt),
             transcriptionDurationMilliseconds: millisecondsBetween(transcriptionStartedAt, transcriptionCompletedAt),
             stopToTranscriptionCompletedMilliseconds: millisecondsBetween(recordingStoppedAt, transcriptionCompletedAt),
+            realtimeConnectionDurationMilliseconds: millisecondsBetween(
+                realtimeSessionStartedAt, realtimeConnectionReadyAt
+            ),
+            realtimeReadyToFirstAudioMilliseconds: millisecondsBetween(
+                realtimeConnectionReadyAt, realtimeFirstAudioSubmittedAt
+            ),
+            realtimeAudioToFirstResultMilliseconds: millisecondsBetween(
+                realtimeFirstAudioSubmittedAt, realtimeFirstResultReceivedAt
+            ),
+            realtimeFinishDurationMilliseconds: millisecondsBetween(
+                realtimeFinishStartedAt, realtimeFinishCompletedAt
+            ),
+            realtimeStopToFinalResultMilliseconds: millisecondsBetween(
+                realtimeFinishStartedAt, realtimeFinalResultReceivedAt
+            ),
             transcriptToLLMStartMilliseconds: millisecondsBetween(transcriptionCompletedAt, llmProcessingStartedAt),
+            llmTimeToFirstOutputMilliseconds: millisecondsBetween(llmProcessingStartedAt, llmFirstOutputAt),
             llmDurationMilliseconds: millisecondsBetween(llmProcessingStartedAt, llmProcessingCompletedAt),
             applyDurationMilliseconds: millisecondsBetween(applyStartedAt, applyCompletedAt),
             endToEndMilliseconds: millisecondsBetween(
                 recordingStoppedAt,
-                applyCompletedAt ?? llmProcessingCompletedAt ?? transcriptionCompletedAt,
-            ),
+                applyCompletedAt ?? llmProcessingCompletedAt ?? transcriptionCompletedAt
+            )
         )
+    }
+
+    mutating func merge(_ diagnostics: RealtimeTranscriptionDiagnosticsSnapshot) {
+        realtimeSessionStartedAt = diagnostics.sessionStartedAt
+        realtimeConnectionReadyAt = diagnostics.connectionReadyAt
+        realtimeFirstAudioSubmittedAt = diagnostics.firstAudioSubmittedAt
+        realtimeFirstResultReceivedAt = diagnostics.firstResultReceivedAt
+        realtimeFinalResultReceivedAt = diagnostics.finalResultReceivedAt
+        realtimeFinishStartedAt = diagnostics.finishStartedAt
+        realtimeFinishCompletedAt = diagnostics.finishCompletedAt
+        realtimeTransport = diagnostics.transport
     }
 }
 
 struct HistoryPipelineStats: Codable, Equatable {
+    var hotkeyDetectedAt: Date?
+    var recordingWorkflowStartedAt: Date?
+    var audioEngineStartedAt: Date?
+    var firstAudioBufferAt: Date?
+    var firstAudioSignalAt: Date?
+    var leadingZeroDuration: TimeInterval?
     var recordingStoppedAt: Date?
     var audioFileReadyAt: Date?
     var transcriptionStartedAt: Date?
     var transcriptionCompletedAt: Date?
+    var realtimeSessionStartedAt: Date?
+    var realtimeConnectionReadyAt: Date?
+    var realtimeFirstAudioSubmittedAt: Date?
+    var realtimeFirstResultReceivedAt: Date?
+    var realtimeFinalResultReceivedAt: Date?
+    var realtimeFinishStartedAt: Date?
+    var realtimeFinishCompletedAt: Date?
+    var realtimeTransport: NetworkTransportDiagnosticsSnapshot?
+    var asrRace: ASRRaceDiagnostics?
     var llmProcessingStartedAt: Date?
+    var llmFirstOutputAt: Date?
     var llmProcessingCompletedAt: Date?
+    var llmRequestAttempts: [LLMRequestAttemptDiagnostics]?
+    var llmOutcome: LLMProcessingOutcomeDiagnostics?
     var applyStartedAt: Date?
     var applyCompletedAt: Date?
+    var hotkeyToFirstAudioMilliseconds: Int?
+    var hotkeyDispatchMilliseconds: Int?
+    var recordingPreparationMilliseconds: Int?
+    var audioEngineToFirstBufferMilliseconds: Int?
     var stopToAudioReadyMilliseconds: Int?
     var transcriptionDurationMilliseconds: Int?
     var stopToTranscriptionCompletedMilliseconds: Int?
+    var realtimeConnectionDurationMilliseconds: Int?
+    var realtimeReadyToFirstAudioMilliseconds: Int?
+    var realtimeAudioToFirstResultMilliseconds: Int?
+    var realtimeFinishDurationMilliseconds: Int?
+    var realtimeStopToFinalResultMilliseconds: Int?
     var transcriptToLLMStartMilliseconds: Int?
+    var llmTimeToFirstOutputMilliseconds: Int?
     var llmDurationMilliseconds: Int?
     var applyDurationMilliseconds: Int?
     var endToEndMilliseconds: Int?
 
     var hasData: Bool {
-        recordingStoppedAt != nil ||
+        hotkeyDetectedAt != nil ||
+            recordingWorkflowStartedAt != nil ||
+            audioEngineStartedAt != nil ||
+            firstAudioBufferAt != nil ||
+            firstAudioSignalAt != nil ||
+            leadingZeroDuration != nil ||
+            recordingStoppedAt != nil ||
             audioFileReadyAt != nil ||
             transcriptionStartedAt != nil ||
             transcriptionCompletedAt != nil ||
+            realtimeSessionStartedAt != nil ||
+            realtimeConnectionReadyAt != nil ||
+            realtimeFirstAudioSubmittedAt != nil ||
+            realtimeFirstResultReceivedAt != nil ||
+            realtimeFinalResultReceivedAt != nil ||
+            realtimeFinishStartedAt != nil ||
+            realtimeFinishCompletedAt != nil ||
+            realtimeTransport != nil ||
+            asrRace != nil ||
             llmProcessingStartedAt != nil ||
+            llmFirstOutputAt != nil ||
             llmProcessingCompletedAt != nil ||
+            !(llmRequestAttempts?.isEmpty ?? true) ||
+            llmOutcome != nil ||
             applyStartedAt != nil ||
             applyCompletedAt != nil ||
+            hotkeyToFirstAudioMilliseconds != nil ||
+            hotkeyDispatchMilliseconds != nil ||
+            recordingPreparationMilliseconds != nil ||
+            audioEngineToFirstBufferMilliseconds != nil ||
             stopToAudioReadyMilliseconds != nil ||
             transcriptionDurationMilliseconds != nil ||
             stopToTranscriptionCompletedMilliseconds != nil ||
+            realtimeConnectionDurationMilliseconds != nil ||
+            realtimeReadyToFirstAudioMilliseconds != nil ||
+            realtimeAudioToFirstResultMilliseconds != nil ||
+            realtimeFinishDurationMilliseconds != nil ||
+            realtimeStopToFinalResultMilliseconds != nil ||
             transcriptToLLMStartMilliseconds != nil ||
+            llmTimeToFirstOutputMilliseconds != nil ||
             llmDurationMilliseconds != nil ||
             applyDurationMilliseconds != nil ||
             endToEndMilliseconds != nil
@@ -109,6 +250,9 @@ struct HistoryRecord: Codable, Identifiable {
     var transcriptText: String?
     var personaPrompt: String?
     var personaResultText: String?
+    var openCCResultText: String?
+    var openCCConfig: String?
+    var postProcessedText: String?
     var selectionOriginalText: String?
     var selectionEditedText: String?
     var recordingDurationSeconds: TimeInterval?
@@ -129,6 +273,9 @@ struct HistoryRecord: Codable, Identifiable {
         transcriptText: String? = nil,
         personaPrompt: String? = nil,
         personaResultText: String? = nil,
+        openCCResultText: String? = nil,
+        openCCConfig: String? = nil,
+        postProcessedText: String? = nil,
         selectionOriginalText: String? = nil,
         selectionEditedText: String? = nil,
         recordingDurationSeconds: TimeInterval? = nil,
@@ -139,7 +286,7 @@ struct HistoryRecord: Codable, Identifiable {
         recordingStatus: StepStatus = .pending,
         transcriptionStatus: StepStatus = .pending,
         processingStatus: StepStatus = .pending,
-        applyStatus: StepStatus = .pending,
+        applyStatus: StepStatus = .pending
     ) {
         self.id = id
         self.date = date
@@ -148,6 +295,9 @@ struct HistoryRecord: Codable, Identifiable {
         self.transcriptText = transcriptText
         self.personaPrompt = personaPrompt
         self.personaResultText = personaResultText
+        self.openCCResultText = openCCResultText
+        self.openCCConfig = openCCConfig
+        self.postProcessedText = postProcessedText
         self.selectionOriginalText = selectionOriginalText
         self.selectionEditedText = selectionEditedText
         self.recordingDurationSeconds = recordingDurationSeconds
@@ -162,11 +312,12 @@ struct HistoryRecord: Codable, Identifiable {
     }
 
     var text: String {
-        selectionEditedText ?? personaResultText ?? transcriptText ?? errorMessage ?? ""
+        postProcessedText ?? openCCResultText ?? selectionEditedText ?? personaResultText ?? transcriptText ??
+            errorMessage ?? ""
     }
 
     var finalText: String? {
-        selectionEditedText ?? personaResultText ?? transcriptText
+        postProcessedText ?? openCCResultText ?? selectionEditedText ?? personaResultText ?? transcriptText
     }
 
     var hasFailure: Bool {
@@ -196,6 +347,9 @@ struct HistoryRecord: Codable, Identifiable {
         case transcriptText
         case personaPrompt
         case personaResultText
+        case openCCResultText
+        case openCCConfig
+        case postProcessedText
         case selectionOriginalText
         case selectionEditedText
         case recordingDurationSeconds
@@ -222,6 +376,9 @@ struct HistoryRecord: Codable, Identifiable {
         transcriptText = try container.decodeIfPresent(String.self, forKey: .transcriptText) ?? legacyText
         personaPrompt = try container.decodeIfPresent(String.self, forKey: .personaPrompt)
         personaResultText = try container.decodeIfPresent(String.self, forKey: .personaResultText)
+        openCCResultText = try container.decodeIfPresent(String.self, forKey: .openCCResultText)
+        openCCConfig = try container.decodeIfPresent(String.self, forKey: .openCCConfig)
+        postProcessedText = try container.decodeIfPresent(String.self, forKey: .postProcessedText)
         selectionOriginalText = try container.decodeIfPresent(String.self, forKey: .selectionOriginalText)
         selectionEditedText = try container.decodeIfPresent(String.self, forKey: .selectionEditedText)
         recordingDurationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .recordingDurationSeconds)
@@ -231,9 +388,12 @@ struct HistoryRecord: Codable, Identifiable {
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
         applyMessage = try container.decodeIfPresent(String.self, forKey: .applyMessage)
         recordingStatus = try container.decodeIfPresent(StepStatus.self, forKey: .recordingStatus) ?? .succeeded
-        transcriptionStatus = try container.decodeIfPresent(StepStatus.self, forKey: .transcriptionStatus) ?? (legacyText == nil ? .pending : .succeeded)
+        transcriptionStatus = try container
+            .decodeIfPresent(StepStatus.self, forKey: .transcriptionStatus) ??
+            (legacyText == nil ? .pending : .succeeded)
         processingStatus = try container.decodeIfPresent(StepStatus.self, forKey: .processingStatus) ?? .skipped
-        applyStatus = try container.decodeIfPresent(StepStatus.self, forKey: .applyStatus) ?? (legacyText == nil ? .pending : .succeeded)
+        applyStatus = try container
+            .decodeIfPresent(StepStatus.self, forKey: .applyStatus) ?? (legacyText == nil ? .pending : .succeeded)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -245,6 +405,9 @@ struct HistoryRecord: Codable, Identifiable {
         try container.encodeIfPresent(transcriptText, forKey: .transcriptText)
         try container.encodeIfPresent(personaPrompt, forKey: .personaPrompt)
         try container.encodeIfPresent(personaResultText, forKey: .personaResultText)
+        try container.encodeIfPresent(openCCResultText, forKey: .openCCResultText)
+        try container.encodeIfPresent(openCCConfig, forKey: .openCCConfig)
+        try container.encodeIfPresent(postProcessedText, forKey: .postProcessedText)
         try container.encodeIfPresent(selectionOriginalText, forKey: .selectionOriginalText)
         try container.encodeIfPresent(selectionEditedText, forKey: .selectionEditedText)
         try container.encodeIfPresent(recordingDurationSeconds, forKey: .recordingDurationSeconds)

@@ -7,7 +7,7 @@ enum AgentJobTitleGenerator {
     static func generateTitle(
         for job: AgentJob,
         using llmService: LLMService,
-        appLanguage _: AppLanguage = .english,
+        appLanguage _: AppLanguage = .english
     ) async -> String? {
         let systemPrompt = """
         You generate short, descriptive titles for completed AI assistant tasks.

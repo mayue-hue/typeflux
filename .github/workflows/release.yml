@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  pull_request:
-    branches:
-      - main
   release:
     types:
       - published
@@ -19,20 +16,7 @@ permissions:
   contents: write
 
 jobs:
-  x86_64-release-build-smoke:
-    if: github.event_name == 'pull_request'
-    runs-on: macos-latest
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build release target for Intel
-        run: swift build --arch x86_64 -c release
-
   build-signed-macos-app:
-    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 180
     strategy:
@@ -222,7 +206,6 @@ jobs:
           rm -f "$APPLE_CERTIFICATE_PATH"
 
   publish-release-artifacts:
-    if: github.event_name != 'pull_request'
     needs: build-signed-macos-app
     runs-on: macos-latest
     timeout-minutes: 45
@@ -252,27 +235,6 @@ jobs:
           set -euo pipefail
 
           ./scripts/verify_release_artifacts.sh
-
-      - name: Upload pre-release build artifacts
-        if: github.event_name == 'push' && github.ref_name == 'pre-release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: typeflux-pre-release-installers-${{ github.sha }}
-          path: |
-            .build/release/Typeflux-pre-release-minimal-apple-silicon.zip
-            .build/release/Typeflux-pre-release-minimal-apple-silicon.dmg
-            .build/release/Typeflux-pre-release-minimal-intel.zip
-            .build/release/Typeflux-pre-release-minimal-intel.dmg
-            .build/release/Typeflux-pre-release-full-apple-silicon.zip
-            .build/release/Typeflux-pre-release-full-apple-silicon.dmg
-            .build/release/Typeflux-pre-release-full-intel.zip
-            .build/release/Typeflux-pre-release-full-intel.dmg
-            .build/release/Typeflux-pre-release-app-only-apple-silicon.zip
-            .build/release/Typeflux-pre-release-app-only-apple-silicon.dmg
-            .build/release/Typeflux-pre-release-app-only-intel.zip
-            .build/release/Typeflux-pre-release-app-only-intel.dmg
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Prepare pre-release metadata
         if: github.event_name == 'push' && github.ref_name == 'pre-release'

@@ -18,7 +18,7 @@ private final class MockTranscriber: Transcriber {
 
     func transcribeStream(
         audioFile _: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         transcribeCallCount += 1
         if let error = errorToThrow {
@@ -26,6 +26,30 @@ private final class MockTranscriber: Transcriber {
         }
         await onUpdate(TranscriptionSnapshot(text: resultToReturn, isFinal: true))
         return resultToReturn
+    }
+}
+
+private final class DelayedMockTranscriber: Transcriber {
+    let delayNanoseconds: UInt64
+    let result: Result<String, Error>
+
+    init(delay: TimeInterval, result: Result<String, Error>) {
+        delayNanoseconds = UInt64(delay * 1_000_000_000)
+        self.result = result
+    }
+
+    func transcribe(audioFile: AudioFile) async throws -> String {
+        try await transcribeStream(audioFile: audioFile) { _ in }
+    }
+
+    func transcribeStream(
+        audioFile _: AudioFile,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        try await Task.sleep(nanoseconds: delayNanoseconds)
+        let text = try result.get()
+        await onUpdate(TranscriptionSnapshot(text: text, isFinal: true))
+        return text
     }
 }
 
@@ -44,7 +68,7 @@ private final class MockRecordingPrewarmingTranscriber: RecordingPrewarmingTrans
 
     func transcribeStream(
         audioFile _: AudioFile,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         transcribeCallCount += 1
         if let error = errorToThrow { throw error }
@@ -75,11 +99,76 @@ private final class MockScenarioAwareTranscriber: TypefluxCloudScenarioAwareTran
     func transcribeStream(
         audioFile _: AudioFile,
         scenario: TypefluxCloudScenario,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         transcribeCallCount += 1
         lastScenario = scenario
         await onUpdate(TranscriptionSnapshot(text: resultToReturn, isFinal: true))
+        return resultToReturn
+    }
+}
+
+private final class MockOptimizeAwareTranscriber: ASROptimizeAwareTranscriber {
+    var resultToReturn = "transcribed"
+    var transcribeCallCount = 0
+    var lastOptimize: Bool?
+
+    func transcribeStream(
+        audioFile _: AudioFile,
+        scenario _: TypefluxCloudScenario,
+        optimize: Bool,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        transcribeCallCount += 1
+        lastOptimize = optimize
+        await onUpdate(TranscriptionSnapshot(text: resultToReturn, isFinal: true))
+        return resultToReturn
+    }
+
+    func transcribeStream(
+        audioFile: AudioFile,
+        scenario: TypefluxCloudScenario,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        try await transcribeStream(
+            audioFile: audioFile,
+            scenario: scenario,
+            optimize: true,
+            onUpdate: onUpdate
+        )
+    }
+}
+
+private final class MockIntegratedTypefluxTranscriber: TypefluxCloudLLMIntegratedTranscriber {
+    var resultToReturn: (transcript: String, rewritten: String?) = ("transcribed", "rewritten")
+    var errorToThrow: Error?
+    var integratedCallCount = 0
+
+    func transcribe(audioFile _: AudioFile, scenario _: TypefluxCloudScenario) async throws -> String {
+        resultToReturn.transcript
+    }
+
+    func transcribeStream(
+        audioFile _: AudioFile,
+        scenario _: TypefluxCloudScenario,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
+    ) async throws -> String {
+        await onUpdate(TranscriptionSnapshot(text: resultToReturn.transcript, isFinal: true))
+        return resultToReturn.transcript
+    }
+
+    func transcribeStreamWithLLMRewrite(
+        audioFile _: AudioFile,
+        llmConfig _: ASRLLMConfig,
+        scenario _: TypefluxCloudScenario,
+        onASRUpdate _: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onLLMStart _: @escaping @Sendable () async -> Void,
+        onLLMChunk _: @escaping @Sendable (String) async -> Void
+    ) async throws -> (transcript: String, rewritten: String?) {
+        integratedCallCount += 1
+        if let errorToThrow {
+            throw errorToThrow
+        }
         return resultToReturn
     }
 }
@@ -139,6 +228,11 @@ final class STTRouterTests: XCTestCase {
     private func makeRouter(
         localModelOverride: Transcriber? = nil,
         doubaoRealtimeOverride: Transcriber? = nil,
+        typefluxOfficialOverride: Transcriber? = nil,
+        typefluxCloudLoginFallbackLocalModel: Transcriber? = nil,
+        typefluxOfficialCloudPriorityWindow: TimeInterval? = nil,
+        isTypefluxCloudLoggedIn: @escaping @Sendable () async -> Bool = { false },
+        hasPaidTypefluxCloudSubscription: @escaping @Sendable () async -> Bool = { true }
     ) -> STTRouter {
         STTRouter(
             settingsStore: settings,
@@ -151,7 +245,12 @@ final class STTRouterTests: XCTestCase {
             doubaoRealtime: doubaoRealtimeOverride ?? doubaoRealtime,
             googleCloud: googleCloud,
             groq: groq,
-            typefluxOfficial: typefluxOfficial,
+            soniox: MockTranscriber(),
+            typefluxOfficial: typefluxOfficialOverride ?? typefluxOfficial,
+            typefluxCloudLoginFallbackLocalModel: typefluxCloudLoginFallbackLocalModel,
+            typefluxOfficialCloudPriorityWindow: typefluxOfficialCloudPriorityWindow,
+            isTypefluxCloudLoggedIn: isTypefluxCloudLoggedIn,
+            hasPaidTypefluxCloudSubscription: hasPaidTypefluxCloudSubscription
         )
     }
 
@@ -160,6 +259,96 @@ final class STTRouterTests: XCTestCase {
     }
 
     // MARK: - Routing
+
+    func testFreePlanUsesDefaultLocalModelWithoutCallingCloud() async throws {
+        settings.sttProvider = .typefluxOfficial
+        typefluxOfficial.resultToReturn = "cloud result"
+        let fallback = MockTranscriber()
+        fallback.resultToReturn = "local result"
+        let router = makeRouter(
+            typefluxCloudLoginFallbackLocalModel: fallback,
+            hasPaidTypefluxCloudSubscription: { false }
+        )
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "local result")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 0)
+        XCTAssertEqual(fallback.transcribeCallCount, 1)
+    }
+
+    func testFreePlanUsesDefaultLocalModelForEveryRemoteProvider() async throws {
+        let remoteProviders: [STTProvider] = [
+            .freeModel,
+            .whisperAPI,
+            .appleSpeech,
+            .multimodalLLM,
+            .aliCloud,
+            .doubaoRealtime,
+            .googleCloud,
+            .groq,
+            .typefluxOfficial,
+            .soniox,
+        ]
+
+        for provider in remoteProviders {
+            settings.sttProvider = provider
+            let fallback = MockTranscriber()
+            fallback.resultToReturn = "local result"
+            let router = makeRouter(
+                typefluxCloudLoginFallbackLocalModel: fallback,
+                hasPaidTypefluxCloudSubscription: { false }
+            )
+
+            let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+            XCTAssertEqual(result, "local result", "provider=\(provider.rawValue)")
+            XCTAssertEqual(fallback.transcribeCallCount, 1, "provider=\(provider.rawValue)")
+        }
+
+        XCTAssertEqual(freeSTT.transcribeCallCount, 0)
+        XCTAssertEqual(whisper.transcribeCallCount, 0)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+        XCTAssertEqual(multimodal.transcribeCallCount, 0)
+        XCTAssertEqual(aliCloud.transcribeCallCount, 0)
+        XCTAssertEqual(doubaoRealtime.transcribeCallCount, 0)
+        XCTAssertEqual(googleCloud.transcribeCallCount, 0)
+        XCTAssertEqual(groq.transcribeCallCount, 0)
+        XCTAssertEqual(soniox.transcribeCallCount, 0)
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 0)
+    }
+
+    func testFreePlanDoesNotUseAppleSpeechWhenLocalFallbackFails() async {
+        settings.sttProvider = .typefluxOfficial
+        settings.useAppleSpeechFallback = true
+        appleSpeech.resultToReturn = "apple result"
+        let fallback = MockTranscriber()
+        fallback.errorToThrow = NSError(domain: "local", code: 1)
+        let router = makeRouter(
+            typefluxCloudLoginFallbackLocalModel: fallback,
+            hasPaidTypefluxCloudSubscription: { false }
+        )
+
+        do {
+            _ = try await router.transcribe(audioFile: dummyAudioFile())
+            XCTFail("Expected local fallback directive")
+        } catch {
+            XCTAssertNotNil(TypefluxCloudASRDirectiveError.fromError(error))
+        }
+
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testFreePlanCanStillUseSelectedLocalModel() async throws {
+        settings.sttProvider = .localModel
+        localModel.resultToReturn = "selected local result"
+        let router = makeRouter(hasPaidTypefluxCloudSubscription: { false })
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "selected local result")
+        XCTAssertEqual(localModel.transcribeCallCount, 1)
+    }
 
     func testRoutesToFreeModelTranscriber() async throws {
         settings.sttProvider = .freeModel
@@ -280,6 +469,304 @@ final class STTRouterTests: XCTestCase {
         }
     }
 
+    func testFallsBackToTypefluxCloudWhenSelectedLocalModelIsNotPreparedAndLoggedIn() async throws {
+        settings.sttProvider = .localModel
+        settings.useAppleSpeechFallback = false
+        localModel.errorToThrow = NSError(
+            domain: LocalModelTranscriber.notPreparedErrorDomain,
+            code: LocalModelTranscriber.notPreparedErrorCode
+        )
+        typefluxOfficial.resultToReturn = "cloud fallback"
+        let router = makeRouter(isTypefluxCloudLoggedIn: { true })
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "cloud fallback")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testLocalModelCloudFallbackPreservesOptimize() async throws {
+        settings.sttProvider = .localModel
+        settings.useAppleSpeechFallback = false
+        localModel.errorToThrow = NSError(
+            domain: LocalModelTranscriber.notPreparedErrorDomain,
+            code: LocalModelTranscriber.notPreparedErrorCode
+        )
+        let optimizeAwareCloud = MockOptimizeAwareTranscriber()
+        optimizeAwareCloud.resultToReturn = "cloud fallback"
+        let router = makeRouter(
+            typefluxOfficialOverride: optimizeAwareCloud,
+            isTypefluxCloudLoggedIn: { true }
+        )
+
+        let result = try await router.transcribeStream(
+            audioFile: dummyAudioFile(),
+            optimize: false
+        ) { _ in }
+
+        XCTAssertEqual(result, "cloud fallback")
+        XCTAssertEqual(optimizeAwareCloud.transcribeCallCount, 1)
+        XCTAssertEqual(optimizeAwareCloud.lastOptimize, false)
+    }
+
+    func testTypefluxOfficialPrefersCloudInsidePriorityWindow() async throws {
+        settings.sttProvider = .typefluxOfficial
+        let cloud = MockTranscriber()
+        cloud.resultToReturn = "cloud result"
+        let local = MockTranscriber()
+        local.resultToReturn = "local result"
+        let router = makeRouter(
+            typefluxOfficialOverride: cloud,
+            typefluxCloudLoginFallbackLocalModel: local,
+            typefluxOfficialCloudPriorityWindow: 60
+        )
+        let diagnosticsRecorder = ASRRaceDiagnosticsRecorder()
+
+        let result = try await router.transcribeStream(
+            audioFile: dummyAudioFile(),
+            diagnosticsRecorder: diagnosticsRecorder
+        ) { _ in }
+
+        XCTAssertEqual(result, "cloud result")
+        XCTAssertEqual(diagnosticsRecorder.snapshot()?.selectedSource, .cloud)
+        XCTAssertEqual(diagnosticsRecorder.snapshot()?.selectionReason, .cloudWithinPriorityWindow)
+    }
+
+    func testTypefluxOfficialCloudPriorityWindowIsOneSecondQualityGracePeriod() {
+        XCTAssertEqual(STTRouter.typefluxOfficialCloudPriorityWindowSeconds, 1)
+    }
+
+    func testTypefluxOfficialCloudPriorityWindowDoesNotFollowVoiceProcessingTimeout() {
+        let router = makeRouter(typefluxOfficialCloudPriorityWindow: nil)
+        XCTAssertEqual(router.typefluxOfficialCloudPriorityWindow, 1)
+
+        settings.voiceProcessingTimeout = .thirtySeconds
+
+        XCTAssertEqual(router.typefluxOfficialCloudPriorityWindow, 1)
+    }
+
+    func testTypefluxOfficialUsesReadyLocalResultWhenPriorityWindowExpires() async throws {
+        settings.sttProvider = .typefluxOfficial
+        let cloud = DelayedMockTranscriber(delay: 60, result: .success("cloud result"))
+        let local = MockTranscriber()
+        local.resultToReturn = "local result"
+        let router = makeRouter(
+            typefluxOfficialOverride: cloud,
+            typefluxCloudLoginFallbackLocalModel: local,
+            typefluxOfficialCloudPriorityWindow: 0
+        )
+        let diagnosticsRecorder = ASRRaceDiagnosticsRecorder()
+
+        let result = try await router.transcribeStream(
+            audioFile: dummyAudioFile(),
+            diagnosticsRecorder: diagnosticsRecorder
+        ) { _ in }
+
+        XCTAssertEqual(result, "local result")
+        XCTAssertEqual(diagnosticsRecorder.snapshot()?.selectedSource, .local)
+        XCTAssertEqual(diagnosticsRecorder.snapshot()?.cloudAttempt.outcome, .cancelled)
+    }
+
+    func testTypefluxOfficialUsesCloudWhenLocalFailsAfterPriorityWindow() async throws {
+        settings.sttProvider = .typefluxOfficial
+        let cloud = MockTranscriber()
+        cloud.resultToReturn = "cloud result"
+        let local = MockTranscriber()
+        local.errorToThrow = NSError(domain: "local", code: 1)
+        let router = makeRouter(
+            typefluxOfficialOverride: cloud,
+            typefluxCloudLoginFallbackLocalModel: local,
+            typefluxOfficialCloudPriorityWindow: 0
+        )
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "cloud result")
+    }
+
+    func testTypefluxOfficialBillingFailureDoesNotFallBackToAppleSpeech() async throws {
+        let billingError = TypefluxCloudBillingError(reason: .subscriptionRequired, serverMessage: nil)
+        settings.sttProvider = .typefluxOfficial
+        settings.useAppleSpeechFallback = true
+        typefluxOfficial.errorToThrow = billingError
+        let router = makeRouter()
+
+        do {
+            _ = try await router.transcribe(audioFile: dummyAudioFile())
+            XCTFail("Expected billing error")
+        } catch let error as TypefluxCloudBillingError {
+            XCTAssertEqual(error, billingError)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testTypefluxOfficialQuotaFailureUsesDefaultSenseVoiceFallbackForPaidSubscription() async throws {
+        let billingError = TypefluxCloudBillingError(reason: .quotaExceeded, serverMessage: nil)
+        settings.sttProvider = .typefluxOfficial
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        typefluxOfficial.errorToThrow = billingError
+        let defaultSenseVoiceFallback = MockTranscriber()
+        defaultSenseVoiceFallback.resultToReturn = "sensevoice fallback"
+        let router = makeRouter(
+            typefluxCloudLoginFallbackLocalModel: defaultSenseVoiceFallback,
+            hasPaidTypefluxCloudSubscription: { true }
+        )
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "sensevoice fallback")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 1)
+        XCTAssertEqual(defaultSenseVoiceFallback.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testTypefluxOfficialFreePlanUsesLocalWithoutCloudRequest() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        let defaultSenseVoiceFallback = MockTranscriber()
+        defaultSenseVoiceFallback.resultToReturn = "sensevoice fallback"
+        let router = makeRouter(
+            typefluxCloudLoginFallbackLocalModel: defaultSenseVoiceFallback,
+            hasPaidTypefluxCloudSubscription: { false }
+        )
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "sensevoice fallback")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 0)
+        XCTAssertEqual(defaultSenseVoiceFallback.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testTypefluxOfficialLoginRequiredFallsBackToAppleSpeech() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.useAppleSpeechFallback = true
+        typefluxOfficial.errorToThrow = TypefluxOfficialASRError.notLoggedIn
+        appleSpeech.resultToReturn = "apple fallback"
+        let router = makeRouter()
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "apple fallback")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 1)
+    }
+
+    func testTypefluxOfficialRoutingUnauthorizedFallsBackToAppleSpeech() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.useAppleSpeechFallback = true
+        typefluxOfficial.errorToThrow = TypefluxOfficialASRRoutingError.unauthorized
+        appleSpeech.resultToReturn = "apple fallback"
+        let router = makeRouter()
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "apple fallback")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 1)
+    }
+
+    func testTypefluxOfficialLoginRequiredUsesDefaultSenseVoiceFallbackWhenLocalOptimizationIsDisabled() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        typefluxOfficial.errorToThrow = TypefluxOfficialASRError.notLoggedIn
+        let defaultSenseVoiceFallback = MockTranscriber()
+        defaultSenseVoiceFallback.resultToReturn = "sensevoice fallback"
+        let router = makeRouter(typefluxCloudLoginFallbackLocalModel: defaultSenseVoiceFallback)
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "sensevoice fallback")
+        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 1)
+        XCTAssertEqual(defaultSenseVoiceFallback.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testIntegratedTypefluxLoginRequiredUsesDefaultSenseVoiceFallbackWhenLocalOptimizationIsDisabled() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        let integrated = MockIntegratedTypefluxTranscriber()
+        integrated.errorToThrow = TypefluxOfficialASRError.notLoggedIn
+        let defaultSenseVoiceFallback = MockTranscriber()
+        defaultSenseVoiceFallback.resultToReturn = "sensevoice fallback"
+        let router = makeRouter(
+            typefluxOfficialOverride: integrated,
+            typefluxCloudLoginFallbackLocalModel: defaultSenseVoiceFallback
+        )
+
+        let result = try await router.transcribeStreamWithLLMRewrite(
+            audioFile: dummyAudioFile(),
+            llmConfig: ASRLLMConfig(systemPrompt: "sys", userPromptTemplate: "{{transcript}}"),
+            scenario: .voiceInput,
+            onASRUpdate: { _ in },
+            onLLMStart: {},
+            onLLMChunk: { _ in }
+        )
+
+        XCTAssertEqual(result.transcript, "sensevoice fallback")
+        XCTAssertNil(result.rewritten)
+        XCTAssertEqual(integrated.integratedCallCount, 1)
+        XCTAssertEqual(defaultSenseVoiceFallback.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testIntegratedTypefluxQuotaFailureUsesDefaultSenseVoiceFallbackForPaidSubscription() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        let integrated = MockIntegratedTypefluxTranscriber()
+        integrated.errorToThrow = TypefluxCloudBillingError(reason: .quotaExceeded, serverMessage: nil)
+        let defaultSenseVoiceFallback = MockTranscriber()
+        defaultSenseVoiceFallback.resultToReturn = "sensevoice fallback"
+        let router = makeRouter(
+            typefluxOfficialOverride: integrated,
+            typefluxCloudLoginFallbackLocalModel: defaultSenseVoiceFallback,
+            hasPaidTypefluxCloudSubscription: { true }
+        )
+
+        let result = try await router.transcribeStreamWithLLMRewrite(
+            audioFile: dummyAudioFile(),
+            llmConfig: ASRLLMConfig(systemPrompt: "sys", userPromptTemplate: "{{transcript}}"),
+            scenario: .voiceInput,
+            onASRUpdate: { _ in },
+            onLLMStart: {},
+            onLLMChunk: { _ in }
+        )
+
+        XCTAssertEqual(result.transcript, "sensevoice fallback")
+        XCTAssertNil(result.rewritten)
+        XCTAssertEqual(integrated.integratedCallCount, 1)
+        XCTAssertEqual(defaultSenseVoiceFallback.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testDoesNotUseTypefluxCloudForUnpreparedLocalModelWhenLoggedOut() async {
+        settings.sttProvider = .localModel
+        settings.useAppleSpeechFallback = false
+        localModel.errorToThrow = NSError(
+            domain: LocalModelTranscriber.notPreparedErrorDomain,
+            code: LocalModelTranscriber.notPreparedErrorCode
+        )
+        let router = makeRouter(isTypefluxCloudLoggedIn: { false })
+
+        do {
+            _ = try await router.transcribe(audioFile: dummyAudioFile())
+            XCTFail("Expected local model not prepared error")
+        } catch {
+            XCTAssertEqual((error as NSError).domain, LocalModelTranscriber.notPreparedErrorDomain)
+            XCTAssertEqual(typefluxOfficial.transcribeCallCount, 0)
+        }
+    }
+
     // MARK: - Fallback with RequestRetry providers (these include retry delays)
 
     func testFallsBackToAppleSpeechWhenFreeModelFailsAndFallbackEnabled() async throws {
@@ -320,6 +807,42 @@ final class STTRouterTests: XCTestCase {
         }
     }
 
+    func testConnectivityFailureUsesBundledLocalFallbackWhenOptimizationIsDisabled() async throws {
+        settings.sttProvider = .whisperAPI
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        whisper.errorToThrow = URLError(.cannotConnectToHost)
+        let bundledLocalFallback = MockTranscriber()
+        bundledLocalFallback.resultToReturn = "offline transcript"
+        let router = makeRouter(typefluxCloudLoginFallbackLocalModel: bundledLocalFallback)
+
+        let result = try await router.transcribe(audioFile: dummyAudioFile())
+
+        XCTAssertEqual(result, "offline transcript")
+        XCTAssertEqual(whisper.transcribeCallCount, 1)
+        XCTAssertEqual(bundledLocalFallback.transcribeCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
+    }
+
+    func testNonConnectivityFailureDoesNotUseBundledLocalFallback() async {
+        settings.sttProvider = .whisperAPI
+        settings.localOptimizationEnabled = false
+        settings.useAppleSpeechFallback = false
+        whisper.errorToThrow = NSError(domain: "RemoteSTT", code: 401)
+        let bundledLocalFallback = MockTranscriber()
+        bundledLocalFallback.resultToReturn = "must not be used"
+        let router = makeRouter(typefluxCloudLoginFallbackLocalModel: bundledLocalFallback)
+
+        do {
+            _ = try await router.transcribe(audioFile: dummyAudioFile())
+            XCTFail("Expected remote provider error")
+        } catch {
+            XCTAssertEqual((error as NSError).domain, "RemoteSTT")
+        }
+
+        XCTAssertEqual(bundledLocalFallback.transcribeCallCount, 0)
+    }
+
     // MARK: - WhisperAPI default OpenAI endpoint
 
     func testWhisperAPIWithEmptyBaseURLStillRoutesToWhisperTranscriber() async throws {
@@ -346,6 +869,49 @@ final class STTRouterTests: XCTestCase {
         XCTAssertEqual(result, "apple fallback")
         XCTAssertEqual(whisper.transcribeCallCount, 4)
         XCTAssertEqual(appleSpeech.transcribeCallCount, 1)
+    }
+
+    func testAutoModelFallbackReconcilesBaselineWhenOptimizationIsDisabled() async throws {
+        settings.localOptimizationEnabled = false
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("typeflux-router-auto-model-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let manager = LocalModelManager(
+            fileManager: .default,
+            sherpaOnnxInstaller: FakeSherpaOnnxInstaller(),
+            applicationSupportURL: applicationSupportURL,
+            downloadSourceResolver: FixedLocalModelDownloadSourceResolver(sources: [.huggingFace]),
+            bundledModelsRootURL: applicationSupportURL.appendingPathComponent("empty-bundle", isDirectory: true)
+        )
+        let service = AutoModelDownloadService(modelManager: manager, settingsStore: settings)
+        let router = STTRouter(
+            settingsStore: settings,
+            whisper: whisper,
+            freeSTT: freeSTT,
+            appleSpeech: appleSpeech,
+            localModel: localModel,
+            multimodal: multimodal,
+            aliCloud: aliCloud,
+            doubaoRealtime: doubaoRealtime,
+            googleCloud: googleCloud,
+            groq: groq,
+            soniox: MockTranscriber(),
+            typefluxOfficial: typefluxOfficial,
+            autoModelDownloadService: service
+        )
+
+        let result = await router.transcribeWithAutoModelIfReady(
+            audioFile: dummyAudioFile(),
+            onUpdate: { _ in }
+        )
+
+        XCTAssertNil(result)
+        let deadline = Date().addingTimeInterval(2)
+        while service.status != .completed, Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(service.status, .completed)
     }
 
     // MARK: - prepareForRecording
@@ -376,6 +942,32 @@ final class STTRouterTests: XCTestCase {
         await router.prepareForRecording()
     }
 
+    func testFreePlanDoesNotPrewarmTypefluxCloud() async {
+        settings.sttProvider = .typefluxOfficial
+        let cloud = MockRecordingPrewarmingTranscriber()
+        let router = makeRouter(
+            typefluxOfficialOverride: cloud,
+            hasPaidTypefluxCloudSubscription: { false }
+        )
+
+        await router.prepareForRecording()
+
+        XCTAssertEqual(cloud.prepareCallCount, 0)
+    }
+
+    func testFreePlanDoesNotPrewarmOtherRemoteProviders() async {
+        settings.sttProvider = .doubaoRealtime
+        let cloud = MockRecordingPrewarmingTranscriber()
+        let router = makeRouter(
+            doubaoRealtimeOverride: cloud,
+            hasPaidTypefluxCloudSubscription: { false }
+        )
+
+        await router.prepareForRecording()
+
+        XCTAssertEqual(cloud.prepareCallCount, 0)
+    }
+
     func testRoutesTypefluxOfficialWithProvidedBusinessScenario() async throws {
         settings.sttProvider = .typefluxOfficial
         let scenarioAware = MockScenarioAwareTranscriber()
@@ -390,16 +982,43 @@ final class STTRouterTests: XCTestCase {
             doubaoRealtime: doubaoRealtime,
             googleCloud: googleCloud,
             groq: groq,
+            soniox: MockTranscriber(),
             typefluxOfficial: scenarioAware,
+            hasPaidTypefluxCloudSubscription: { true }
         )
 
         let result = try await router.transcribe(
             audioFile: dummyAudioFile(),
-            scenario: .askAnything,
+            scenario: .askAnything
         )
 
         XCTAssertEqual(result, "transcribed")
         XCTAssertEqual(scenarioAware.lastScenario, .askAnything)
         XCTAssertEqual(scenarioAware.transcribeCallCount, 1)
+    }
+
+    func testIntegratedBillingFailureAfterASRReturnsTranscriptFallback() async throws {
+        settings.sttProvider = .typefluxOfficial
+        settings.useAppleSpeechFallback = true
+        let integrated = MockIntegratedTypefluxTranscriber()
+        integrated.errorToThrow = TypefluxCloudIntegratedRewriteError(
+            transcript: "already transcribed",
+            underlyingError: TypefluxCloudBillingError(reason: .subscriptionRequired, serverMessage: nil)
+        )
+        let router = makeRouter(typefluxOfficialOverride: integrated)
+
+        let result = try await router.transcribeStreamWithLLMRewrite(
+            audioFile: dummyAudioFile(),
+            llmConfig: ASRLLMConfig(systemPrompt: "sys", userPromptTemplate: "{{transcript}}"),
+            scenario: .voiceInput,
+            onASRUpdate: { _ in },
+            onLLMStart: {},
+            onLLMChunk: { _ in }
+        )
+
+        XCTAssertEqual(result.transcript, "already transcribed")
+        XCTAssertNil(result.rewritten)
+        XCTAssertEqual(integrated.integratedCallCount, 1)
+        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
     }
 }

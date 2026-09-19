@@ -164,7 +164,7 @@ final class AppLocalizationInstanceTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { _ in
             expectation.fulfill()
         }
@@ -185,7 +185,7 @@ final class AppLocalizationInstanceTests: XCTestCase {
         let observer = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { _ in
             notificationCount += 1
         }

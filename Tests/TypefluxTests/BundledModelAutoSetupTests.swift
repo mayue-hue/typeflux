@@ -1,11 +1,11 @@
-import XCTest
 @testable import Typeflux
+import XCTest
 
 @MainActor
 final class BundledModelAutoSetupTests: XCTestCase {
     func testApplyIfNeededInvokesLinkerAndSwallowsErrors() {
         let throwingLinker = StubBundledSenseVoiceLinker(result: .failure(
-            NSError(domain: "BundledModelAutoSetupTests", code: 1),
+            NSError(domain: "BundledModelAutoSetupTests", code: 1)
         ))
         let setup = BundledModelAutoSetup(linker: throwingLinker)
 
@@ -41,7 +41,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             fileManager: .default,
             sherpaOnnxInstaller: NoopSherpaOnnxInstaller(),
             applicationSupportURL: makeTempApplicationSupportURL(),
-            bundledModelsRootURL: emptyBundleRoot,
+            bundledModelsRootURL: emptyBundleRoot
         )
 
         let result = try manager.ensureBundledSenseVoiceLinked()
@@ -60,7 +60,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             model: .senseVoiceSmall,
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             downloadSource: .huggingFace,
-            autoSetup: true,
+            autoSetup: true
         )
         let targetPath = manager.storagePath(for: configuration)
         XCTAssertTrue(targetPath.hasPrefix(appSupportURL.path))
@@ -73,7 +73,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             atPath: URL(fileURLWithPath: targetPath, isDirectory: true)
                 .appendingPathComponent(layout.modelRootDirectory, isDirectory: true)
                 .appendingPathComponent("model.int8.onnx")
-                .path,
+                .path
         ))
         let runtimeLinkPath = URL(fileURLWithPath: targetPath, isDirectory: true)
             .appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
@@ -83,7 +83,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             appSupportURL
                 .appendingPathComponent("Typeflux/LocalRuntimes", isDirectory: true)
                 .appendingPathComponent(layout.runtimeRootDirectory, isDirectory: true)
-                .path,
+                .path
         )
 
         let recordURL = URL(fileURLWithPath: targetPath, isDirectory: true)
@@ -91,7 +91,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             .appendingPathComponent("prepared.json", isDirectory: false)
         let recordData = try Data(contentsOf: recordURL)
         let recordJSON = try XCTUnwrap(
-            try JSONSerialization.jsonObject(with: recordData) as? [String: Any],
+            try JSONSerialization.jsonObject(with: recordData) as? [String: Any]
         )
         XCTAssertEqual(recordJSON["source"] as? String, LocalModelManager.bundledPreparedSource)
         XCTAssertEqual(recordJSON["modelIdentifier"] as? String, configuration.modelIdentifier)
@@ -110,7 +110,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             model: .senseVoiceSmall,
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             downloadSource: .huggingFace,
-            autoSetup: true,
+            autoSetup: true
         )
         let targetPath = manager.storagePath(for: configuration)
         XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: targetPath))
@@ -138,7 +138,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             model: .senseVoiceSmall,
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             downloadSource: .huggingFace,
-            autoSetup: true,
+            autoSetup: true
         )
         let installedTokensURL = URL(fileURLWithPath: manager.storagePath(for: configuration), isDirectory: true)
             .appendingPathComponent(layout.modelRootDirectory, isDirectory: true)
@@ -159,7 +159,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
         XCTAssertFalse(DirectoryContentMatcher.contentsMatch(
             sourceURL: sourceURL,
             targetURL: targetURL,
-            fileManager: .default,
+            fileManager: .default
         ))
     }
 
@@ -177,7 +177,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             .appendingPathComponent(LocalSTTModel.senseVoiceSmall.defaultModelIdentifier, isDirectory: true)
         try FileManager.default.createDirectory(
             at: bundledStorageURL,
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try writeSenseVoiceFixture(into: bundledStorageURL)
 
@@ -186,7 +186,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             fileManager: .default,
             sherpaOnnxInstaller: NoopSherpaOnnxInstaller(),
             applicationSupportURL: appSupportURL,
-            bundledModelsRootURL: bundledModelsRootURL,
+            bundledModelsRootURL: bundledModelsRootURL
         )
         return (manager, bundledStorageURL, appSupportURL)
     }
@@ -209,11 +209,13 @@ final class BundledModelAutoSetupTests: XCTestCase {
         try machOMagic.write(to: executableURL)
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o755))],
-            ofItemAtPath: executableURL.path,
+            ofItemAtPath: executableURL.path
         )
         try machOMagic.write(to: runtimeLibURL.appendingPathComponent("libsherpa-onnx-c-api.dylib"))
         try machOMagic.write(to: runtimeLibURL.appendingPathComponent("libonnxruntime.dylib"))
-        try machOMagic.write(to: runtimeLibURL.appendingPathComponent(LocalModelDownloadCatalog.sherpaOnnxRuntimeVersionedLibraryName))
+        try machOMagic
+            .write(to: runtimeLibURL
+                .appendingPathComponent(LocalModelDownloadCatalog.sherpaOnnxRuntimeVersionedLibraryName))
 
         let modelDirectory = storageURL.appendingPathComponent(layout.modelRootDirectory, isDirectory: true)
         try FileManager.default.createDirectory(at: modelDirectory, withIntermediateDirectories: true)
@@ -225,7 +227,7 @@ final class BundledModelAutoSetupTests: XCTestCase {
             <s> 1
             </s> 2
             ▁the 3
-            """.utf8,
+            """.utf8
         ).write(to: modelDirectory.appendingPathComponent("tokens.txt"))
     }
 
@@ -252,10 +254,10 @@ private final class StubBundledSenseVoiceLinker: BundledSenseVoiceLinking {
 
 private final class NoopSherpaOnnxInstaller: SherpaOnnxModelInstalling {
     func prepareModel(
-        _ model: LocalSTTModel,
+        _: LocalSTTModel,
         at storageURL: URL,
-        downloadSource: ModelDownloadSource,
-        onUpdate: (@Sendable (LocalSTTPreparationUpdate) -> Void)?,
+        downloadSource _: ModelDownloadSource,
+        onUpdate _: (@Sendable (LocalSTTPreparationUpdate) -> Void)?
     ) async throws -> String {
         storageURL.path
     }

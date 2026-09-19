@@ -8,7 +8,7 @@ struct UnavailableTranscriber: Transcriber {
         throw NSError(
             domain: "UnavailableTranscriber",
             code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "\(providerName) is not ready."],
+            userInfo: [NSLocalizedDescriptionKey: "\(providerName) is not ready."]
         )
     }
 }
@@ -28,7 +28,7 @@ actor LocalModelLivePreviewBackend: LivePreviewBackend {
     init(
         settingsStore: SettingsStore,
         modelManager: LocalSTTModelManaging,
-        transcriberFactory: (() -> any Transcriber)? = nil,
+        transcriberFactory: (() -> any Transcriber)? = nil
     ) {
         self.transcriberFactory = transcriberFactory ?? {
             LocalModelTranscriber(settingsStore: settingsStore, modelManager: modelManager)
@@ -132,7 +132,7 @@ actor LocalModelLivePreviewBackend: LivePreviewBackend {
             throw NSError(
                 domain: "LocalModelLivePreviewBackend",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "No audio buffers are available for live preview."],
+                userInfo: [NSLocalizedDescriptionKey: "No audio buffers are available for live preview."]
             )
         }
 

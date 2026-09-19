@@ -25,7 +25,7 @@ enum OpenAIRealtimeTranscriber {
         baseURL: String,
         apiKey: String,
         model: String,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         let pcmData = try convertToPCM16(url: audioFile.fileURL)
 
@@ -34,7 +34,7 @@ enum OpenAIRealtimeTranscriber {
         }
 
         NetworkDebugLogger.logMessage(
-            "OpenAI Realtime ASR: connecting to \(wsURL.absoluteString)",
+            "OpenAI Realtime ASR: connecting to \(wsURL.absoluteString)"
         )
 
         var request = URLRequest(url: wsURL)
@@ -61,7 +61,7 @@ enum OpenAIRealtimeTranscriber {
 
         // Configure transcription session without turn detection (manual commit only)
         let prompt = TranscriptionLanguageHints.remotePrompt(
-            vocabularyTerms: VocabularyStore.activeTerms(),
+            vocabularyTerms: VocabularyStore.activeTerms()
         )
         try await sendSessionUpdate(socketTask: socketTask, model: model, prompt: prompt)
 
@@ -73,13 +73,13 @@ enum OpenAIRealtimeTranscriber {
             let chunk = pcmData.subdata(in: offset ..< end)
             try await sendPayload(socketTask: socketTask, payload: [
                 "type": "input_audio_buffer.append",
-                "audio": chunk.base64EncodedString(),
+                "audio": chunk.base64EncodedString()
             ])
             offset = end
         }
 
         NetworkDebugLogger.logMessage(
-            "OpenAI Realtime ASR: sent \(pcmData.count) bytes of PCM16 audio, committing buffer",
+            "OpenAI Realtime ASR: sent \(pcmData.count) bytes of PCM16 audio, committing buffer"
         )
 
         try await sendPayload(socketTask: socketTask, payload: ["type": "input_audio_buffer.commit"])
@@ -88,7 +88,7 @@ enum OpenAIRealtimeTranscriber {
         return try await receiveTranscription(
             socketTask: socketTask,
             timeout: max(30, audioFile.duration * 3),
-            onUpdate: onUpdate,
+            onUpdate: onUpdate
         )
     }
 
@@ -105,7 +105,7 @@ enum OpenAIRealtimeTranscriber {
             commonFormat: .pcmFormatInt16,
             sampleRate: targetSampleRate,
             channels: 1,
-            interleaved: true,
+            interleaved: true
         ) else {
             throw makeError(code: 10, message: "Failed to create target audio format.")
         }
@@ -115,7 +115,7 @@ enum OpenAIRealtimeTranscriber {
         }
 
         guard let sourceBuffer = AVAudioPCMBuffer(
-            pcmFormat: sourceFormat, frameCapacity: totalSourceFrames,
+            pcmFormat: sourceFormat, frameCapacity: totalSourceFrames
         ) else {
             throw makeError(code: 12, message: "Failed to allocate source audio buffer.")
         }
@@ -124,7 +124,7 @@ enum OpenAIRealtimeTranscriber {
         let ratio = targetSampleRate / sourceFormat.sampleRate
         let targetCapacity = AVAudioFrameCount(Double(totalSourceFrames) * ratio) + 512
         guard let targetBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat, frameCapacity: targetCapacity,
+            pcmFormat: targetFormat, frameCapacity: targetCapacity
         ) else {
             throw makeError(code: 13, message: "Failed to allocate target audio buffer.")
         }
@@ -157,10 +157,10 @@ enum OpenAIRealtimeTranscriber {
     private static func sendSessionUpdate(
         socketTask: URLSessionWebSocketTask,
         model: String,
-        prompt: String?,
+        prompt: String?
     ) async throws {
         var transcriptionPayload: [String: Any] = [
-            "model": model,
+            "model": model
         ]
         if let prompt { transcriptionPayload["prompt"] = prompt }
 
@@ -172,13 +172,13 @@ enum OpenAIRealtimeTranscriber {
                     "input": [
                         "format": [
                             "type": "audio/pcm",
-                            "rate": 24000,
+                            "rate": 24000
                         ],
                         "transcription": transcriptionPayload,
-                        "turn_detection": NSNull(),
-                    ],
-                ],
-            ] as [String: Any],
+                        "turn_detection": NSNull()
+                    ]
+                ]
+            ] as [String: Any]
         ]
         try await sendPayload(socketTask: socketTask, payload: payload)
     }
@@ -186,7 +186,7 @@ enum OpenAIRealtimeTranscriber {
     private static func receiveTranscription(
         socketTask: URLSessionWebSocketTask,
         timeout: TimeInterval,
-        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void,
+        onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
@@ -208,7 +208,7 @@ enum OpenAIRealtimeTranscriber {
                         await onUpdate(TranscriptionSnapshot(text: finalText, isFinal: true))
                         NetworkDebugLogger.logMessage(
                             "OpenAI Realtime ASR: transcription complete: "
-                                + (finalText.isEmpty ? "<empty>" : finalText),
+                                + (finalText.isEmpty ? "<empty>" : finalText)
                         )
                         return finalText
                     }
@@ -230,7 +230,7 @@ enum OpenAIRealtimeTranscriber {
 
     private static func sendPayload(
         socketTask: URLSessionWebSocketTask,
-        payload: [String: Any],
+        payload: [String: Any]
     ) async throws {
         let data = try JSONSerialization.data(withJSONObject: payload)
         guard let text = String(data: data, encoding: .utf8) else {
@@ -262,13 +262,13 @@ enum OpenAIRealtimeTranscriber {
         NSError(
             domain: "OpenAIRealtimeTranscriber",
             code: code,
-            userInfo: [NSLocalizedDescriptionKey: message],
+            userInfo: [NSLocalizedDescriptionKey: message]
         )
     }
 
     private static func sendWithRetry(
         socketTask: URLSessionWebSocketTask,
-        message: URLSessionWebSocketTask.Message,
+        message: URLSessionWebSocketTask.Message
     ) async throws {
         let retryDelays: [Duration] = [.zero, .milliseconds(120), .milliseconds(300)]
 
@@ -287,7 +287,7 @@ enum OpenAIRealtimeTranscriber {
 
                 NetworkDebugLogger.logError(
                     context: "OpenAI Realtime ASR send failed before socket was ready; retrying",
-                    error: error,
+                    error: error
                 )
             }
         }
@@ -321,7 +321,7 @@ private actor RealtimeTranscriberWSDelegateState {
                 throw NSError(
                     domain: "OpenAIRealtimeTranscriber",
                     code: 5,
-                    userInfo: [NSLocalizedDescriptionKey: "WebSocket connection timed out."],
+                    userInfo: [NSLocalizedDescriptionKey: "WebSocket connection timed out."]
                 )
             }
             try await group.next()
@@ -345,7 +345,7 @@ private actor RealtimeTranscriberWSDelegateState {
         let error = NSError(
             domain: "OpenAIRealtimeTranscriber",
             code: 6,
-            userInfo: [NSLocalizedDescriptionKey: description],
+            userInfo: [NSLocalizedDescriptionKey: description]
         )
         continuation?.resume(throwing: error)
         continuation = nil
@@ -367,8 +367,7 @@ private actor RealtimeTranscriberWSDelegateState {
 }
 
 private final class RealtimeTranscriberWSDelegate: NSObject, URLSessionWebSocketDelegate,
-    URLSessionTaskDelegate
-{
+    URLSessionTaskDelegate {
     private let state = RealtimeTranscriberWSDelegateState()
 
     func waitUntilOpen(timeout: Duration) async throws {
@@ -378,7 +377,7 @@ private final class RealtimeTranscriberWSDelegate: NSObject, URLSessionWebSocket
     func urlSession(
         _: URLSession,
         webSocketTask _: URLSessionWebSocketTask,
-        didOpenWithProtocol _: String?,
+        didOpenWithProtocol _: String?
     ) {
         Task { await state.markOpened() }
     }
@@ -386,7 +385,7 @@ private final class RealtimeTranscriberWSDelegate: NSObject, URLSessionWebSocket
     func urlSession(
         _: URLSession,
         task _: URLSessionTask,
-        didCompleteWithError error: Error?,
+        didCompleteWithError error: Error?
     ) {
         guard let error else { return }
         Task { await state.markFailed(error) }
@@ -396,7 +395,7 @@ private final class RealtimeTranscriberWSDelegate: NSObject, URLSessionWebSocket
         _: URLSession,
         webSocketTask _: URLSessionWebSocketTask,
         didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
-        reason: Data?,
+        reason: Data?
     ) {
         let reasonText = reason
             .flatMap { String(data: $0, encoding: .utf8) }?
@@ -407,7 +406,7 @@ private final class RealtimeTranscriberWSDelegate: NSObject, URLSessionWebSocket
             ""
         }
         NetworkDebugLogger.logMessage(
-            "OpenAI Realtime ASR: WebSocket closed with code=\(closeCode.rawValue)\(suffix)",
+            "OpenAI Realtime ASR: WebSocket closed with code=\(closeCode.rawValue)\(suffix)"
         )
         Task { await state.markClosed(code: closeCode, reason: reason) }
     }

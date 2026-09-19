@@ -45,13 +45,13 @@ extension WorkflowController {
             insertedText: normalizedInsertedText,
             baselineText: nil,
             latestObservedText: nil,
-            hasObservedChange: false,
+            hasObservedChange: false
         )
         logAutomaticVocabulary(
             "session scheduled | session=\(shortSessionID(sessionID)) "
                 + "| insertedText=\(automaticVocabularyPreview(normalizedInsertedText)) "
                 + "| observationWindow=\(Int(Self.automaticVocabularyObservationWindow))s "
-                + "| idleSettleDelay=\(Self.automaticVocabularyIdleSettleDelay)s",
+                + "| idleSettleDelay=\(Self.automaticVocabularyIdleSettleDelay)s"
         )
 
         automaticVocabularyObservationTask = Task { [weak self] in
@@ -66,18 +66,20 @@ extension WorkflowController {
             do {
                 try await Task.sleep(for: Self.automaticVocabularyStartupDelay)
             } catch {
-                logAutomaticVocabulary("session cancelled before startup delay finished | session=\(shortSessionID(sessionID))")
+                logAutomaticVocabulary(
+                    "session cancelled before startup delay finished | session=\(shortSessionID(sessionID))"
+                )
                 return
             }
 
             guard !Task.isCancelled else { return }
             let baselineSnapshot = await readAutomaticVocabularyBaselineWithRetry(
-                expectedSubstring: normalizedInsertedText,
+                expectedSubstring: normalizedInsertedText
             )
             guard let baselineText = baselineSnapshot.text else {
                 logAutomaticVocabulary(
                     "session aborted: failed to read baseline input text | session=\(shortSessionID(sessionID)) | "
-                        + describeCurrentInputTextSnapshot(baselineSnapshot),
+                        + describeCurrentInputTextSnapshot(baselineSnapshot)
                 )
                 clearActiveAutomaticVocabularySession(for: sessionID)
                 return
@@ -87,7 +89,7 @@ extension WorkflowController {
                     "session aborted: focused app changed before baseline was captured | session=\(shortSessionID(sessionID)) | expected="
                         + describeAutomaticVocabularyExpectedApp(expectedApp)
                         + " | actual="
-                        + describeCurrentInputTextSnapshot(baselineSnapshot),
+                        + describeCurrentInputTextSnapshot(baselineSnapshot)
                 )
                 clearActiveAutomaticVocabularySession(for: sessionID)
                 return
@@ -100,11 +102,11 @@ extension WorkflowController {
 
             var observationState = AutomaticVocabularyMonitor.makeObservationState(
                 baselineText: baselineText,
-                startedAt: Date(),
+                startedAt: Date()
             )
             logAutomaticVocabulary(
                 "session started | session=\(shortSessionID(sessionID)) "
-                    + "| baselineText=\(automaticVocabularyPreview(baselineText))",
+                    + "| baselineText=\(automaticVocabularyPreview(baselineText))"
             )
             let deadline = Date().addingTimeInterval(Self.automaticVocabularyObservationWindow)
             var exitReason: AutomaticVocabularySessionExit = .deadlineReached
@@ -128,7 +130,7 @@ extension WorkflowController {
                 guard let currentText = currentSnapshot.text else {
                     logAutomaticVocabulary(
                         "poll skipped: failed to read current input text | session=\(shortSessionID(sessionID)) | "
-                            + describeCurrentInputTextSnapshot(currentSnapshot),
+                            + describeCurrentInputTextSnapshot(currentSnapshot)
                     )
                     continue pollingLoop
                 }
@@ -137,7 +139,7 @@ extension WorkflowController {
                         "session aborted: focused app changed during observation | session=\(shortSessionID(sessionID)) | expected="
                             + describeAutomaticVocabularyExpectedApp(expectedApp)
                             + " | actual="
-                            + describeCurrentInputTextSnapshot(currentSnapshot),
+                            + describeCurrentInputTextSnapshot(currentSnapshot)
                     )
                     clearActiveAutomaticVocabularySession(for: sessionID)
                     return
@@ -147,7 +149,7 @@ extension WorkflowController {
                 let didChange = AutomaticVocabularyMonitor.observe(
                     text: currentText,
                     at: pollAt,
-                    state: &observationState,
+                    state: &observationState
                 )
                 if didChange {
                     updateActiveAutomaticVocabularySession(sessionID: sessionID) { session in
@@ -156,14 +158,14 @@ extension WorkflowController {
                     }
                     logAutomaticVocabulary(
                         "change observed | session=\(shortSessionID(sessionID)) "
-                            + "| latestText=\(automaticVocabularyPreview(currentText))",
+                            + "| latestText=\(automaticVocabularyPreview(currentText))"
                     )
                 }
 
                 if AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                     state: observationState,
                     now: pollAt,
-                    idleSettleDelay: Self.automaticVocabularyIdleSettleDelay,
+                    idleSettleDelay: Self.automaticVocabularyIdleSettleDelay
                 ) {
                     exitReason = .settled
                     break pollingLoop
@@ -173,7 +175,7 @@ extension WorkflowController {
             logAutomaticVocabulary(
                 "observation finished | session=\(shortSessionID(sessionID)) "
                     + "| reason=\(exitReason) "
-                    + "| finalText=\(automaticVocabularyPreview(observationState.latestObservedText))",
+                    + "| finalText=\(automaticVocabularyPreview(observationState.latestObservedText))"
             )
 
             clearActiveAutomaticVocabularySession(for: sessionID)
@@ -181,7 +183,7 @@ extension WorkflowController {
                 sessionID: sessionID,
                 insertedText: normalizedInsertedText,
                 baselineText: observationState.baselineText,
-                finalText: observationState.latestObservedText,
+                finalText: observationState.latestObservedText
             )
         }
     }
@@ -190,26 +192,32 @@ extension WorkflowController {
         sessionID: UUID = UUID(),
         insertedText: String,
         baselineText: String,
-        finalText: String,
+        finalText: String
     ) async {
         guard finalText != baselineText else {
-            logAutomaticVocabulary("analysis skipped: final text unchanged from baseline | session=\(shortSessionID(sessionID))")
+            logAutomaticVocabulary(
+                "analysis skipped: final text unchanged from baseline | session=\(shortSessionID(sessionID))"
+            )
             return
         }
 
         guard let change = AutomaticVocabularyMonitor.detectChange(
             from: baselineText,
-            to: finalText,
+            to: finalText
         ) else {
-            logAutomaticVocabulary("analysis skipped: no candidate terms found after diff | session=\(shortSessionID(sessionID))")
+            logAutomaticVocabulary(
+                "analysis skipped: no candidate terms found after diff | session=\(shortSessionID(sessionID))"
+            )
             return
         }
 
         if AutomaticVocabularyMonitor.changeIsJustInitialInsertion(
             change: change,
-            insertedText: insertedText,
+            insertedText: insertedText
         ) {
-            logAutomaticVocabulary("analysis skipped: change resembles initial text insertion | session=\(shortSessionID(sessionID))")
+            logAutomaticVocabulary(
+                "analysis skipped: change resembles initial text insertion | session=\(shortSessionID(sessionID))"
+            )
             return
         }
 
@@ -217,18 +225,18 @@ extension WorkflowController {
             inserted: insertedText,
             baseline: baselineText,
             final: finalText,
-            ratioLimit: Self.automaticVocabularyEditRatioLimit,
+            ratioLimit: Self.automaticVocabularyEditRatioLimit
         ) {
             let ratio = AutomaticVocabularyMonitor.editRatio(
                 inserted: insertedText,
                 baseline: baselineText,
-                final: finalText,
+                final: finalText
             )
             logAutomaticVocabulary(
                 "analysis skipped: edit too large | session=\(shortSessionID(sessionID)) "
                     + "| editRatio=\(String(format: "%.2f", ratio)) "
                     + "| insertedLen=\(insertedText.count) "
-                    + "| baselineLen=\(baselineText.count) | finalLen=\(finalText.count)",
+                    + "| baselineLen=\(baselineText.count) | finalLen=\(finalText.count)"
             )
             return
         }
@@ -238,13 +246,13 @@ extension WorkflowController {
             "diff detected | session=\(shortSessionID(sessionID)) "
                 + "| oldFragment=\(automaticVocabularyPreview(change.oldFragment)) "
                 + "| newFragment=\(automaticVocabularyPreview(change.newFragment)) "
-                + "| candidates=\(candidateSummary)",
+                + "| candidates=\(candidateSummary)"
         )
 
         let configStatus = await validateLLMConfiguration()
         guard case .ready = configStatus else {
             logAutomaticVocabulary(
-                "analysis skipped: llm not configured | session=\(shortSessionID(sessionID))",
+                "analysis skipped: llm not configured | session=\(shortSessionID(sessionID))"
             )
             return
         }
@@ -252,10 +260,12 @@ extension WorkflowController {
         do {
             let acceptedTerms = try await evaluateAutomaticVocabularyCandidates(
                 transcript: insertedText,
-                change: change,
+                change: change
             )
             let approvedSummary = acceptedTerms.joined(separator: ", ")
-            logAutomaticVocabulary("llm decision received | session=\(shortSessionID(sessionID)) | approvedTerms=\(approvedSummary)")
+            logAutomaticVocabulary(
+                "llm decision received | session=\(shortSessionID(sessionID)) | approvedTerms=\(approvedSummary)"
+            )
             let addedTerms = addAutomaticVocabularyTerms(acceptedTerms)
             guard !addedTerms.isEmpty else {
                 logAutomaticVocabulary("analysis completed: no new terms added | session=\(shortSessionID(sessionID))")
@@ -267,13 +277,15 @@ extension WorkflowController {
 
             await MainActor.run {
                 self.overlayController.showNotice(
-                    message: self.automaticVocabularyNotice(for: addedTerms),
+                    message: self.automaticVocabularyNotice(for: addedTerms)
                 )
             }
         } catch {
-            logAutomaticVocabulary("analysis failed | session=\(shortSessionID(sessionID)) | error=\(error.localizedDescription)")
+            logAutomaticVocabulary(
+                "analysis failed | session=\(shortSessionID(sessionID)) | error=\(error.localizedDescription)"
+            )
             ErrorLogStore.shared.log(
-                "Automatic vocabulary evaluation failed: \(error.localizedDescription)",
+                "Automatic vocabulary evaluation failed: \(error.localizedDescription)"
             )
         }
     }
@@ -288,7 +300,7 @@ extension WorkflowController {
             logAutomaticVocabulary(
                 "initial snapshot not editable, retrying \(attempt)/\(Self.automaticVocabularyInitialSnapshotRetryCount) "
                     + "| session=\(shortSessionID(sessionID)) | "
-                    + describeCurrentInputTextSnapshot(latestSnapshot),
+                    + describeCurrentInputTextSnapshot(latestSnapshot)
             )
 
             do {
@@ -305,26 +317,26 @@ extension WorkflowController {
 
         logAutomaticVocabulary(
             "session aborted: context is not editable after retry | session=\(shortSessionID(sessionID)) | "
-                + describeCurrentInputTextSnapshot(latestSnapshot),
+                + describeCurrentInputTextSnapshot(latestSnapshot)
         )
         return nil
     }
 
     func evaluateAutomaticVocabularyCandidates(
         transcript: String,
-        change: AutomaticVocabularyChange,
+        change: AutomaticVocabularyChange
     ) async throws -> [String] {
         let prompts = PromptCatalog.automaticVocabularyDecisionPrompts(
             transcript: transcript,
             oldFragment: change.oldFragment,
             newFragment: change.newFragment,
             candidateTerms: change.candidateTerms,
-            existingTerms: VocabularyStore.allTerms(),
+            existingTerms: VocabularyStore.allTerms()
         )
         let response = try await llmService.completeJSON(
             systemPrompt: prompts.system,
             userPrompt: prompts.user,
-            schema: AutomaticVocabularyMonitor.decisionSchema,
+            schema: AutomaticVocabularyMonitor.decisionSchema
         )
         logAutomaticVocabulary("llm raw response | response=\(automaticVocabularyPreview(response))")
         return AutomaticVocabularyMonitor.parseAcceptedTerms(from: response)
@@ -334,7 +346,7 @@ extension WorkflowController {
         let existingTerms = Set(
             VocabularyStore.allTerms().map {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            },
+            }
         )
         var knownTerms = existingTerms
         var addedTerms: [String] = []
@@ -360,19 +372,18 @@ extension WorkflowController {
     }
 
     func readAutomaticVocabularyBaselineWithRetry(
-        expectedSubstring: String? = nil,
+        expectedSubstring: String? = nil
     ) async -> CurrentInputTextSnapshot {
         var latestSnapshot = await textInjector.currentInputTextSnapshot()
         if latestSnapshot.text != nil,
-           automaticVocabularyBaselineContainsExpected(latestSnapshot.text, expected: expectedSubstring)
-        {
+           automaticVocabularyBaselineContainsExpected(latestSnapshot.text, expected: expectedSubstring) {
             return latestSnapshot
         }
 
         for attempt in 1 ... Self.automaticVocabularyBaselineRetryCount {
             logAutomaticVocabulary(
                 "baseline read retry \(attempt)/\(Self.automaticVocabularyBaselineRetryCount) | "
-                    + describeCurrentInputTextSnapshot(latestSnapshot),
+                    + describeCurrentInputTextSnapshot(latestSnapshot)
             )
 
             do {
@@ -383,11 +394,10 @@ extension WorkflowController {
 
             latestSnapshot = await textInjector.currentInputTextSnapshot()
             if latestSnapshot.text != nil,
-               automaticVocabularyBaselineContainsExpected(latestSnapshot.text, expected: expectedSubstring)
-            {
+               automaticVocabularyBaselineContainsExpected(latestSnapshot.text, expected: expectedSubstring) {
                 logAutomaticVocabulary(
                     "baseline read recovered on retry \(attempt) | "
-                        + describeCurrentInputTextSnapshot(latestSnapshot),
+                        + describeCurrentInputTextSnapshot(latestSnapshot)
                 )
                 return latestSnapshot
             }
@@ -396,7 +406,7 @@ extension WorkflowController {
         if latestSnapshot.text != nil {
             logAutomaticVocabulary(
                 "baseline may be stale (expected substring missing) | "
-                    + describeCurrentInputTextSnapshot(latestSnapshot),
+                    + describeCurrentInputTextSnapshot(latestSnapshot)
             )
         }
         return latestSnapshot
@@ -404,7 +414,7 @@ extension WorkflowController {
 
     private func automaticVocabularyBaselineContainsExpected(
         _ text: String?,
-        expected: String?,
+        expected: String?
     ) -> Bool {
         guard let expected, !expected.isEmpty else { return true }
         guard let text else { return false }
@@ -443,29 +453,26 @@ extension WorkflowController {
         AutomaticVocabularyExpectedApp(
             bundleIdentifier: normalizedAutomaticVocabularyAppField(snapshot.bundleIdentifier),
             processID: snapshot.processID,
-            processName: normalizedAutomaticVocabularyAppField(snapshot.processName),
+            processName: normalizedAutomaticVocabularyAppField(snapshot.processName)
         )
     }
 
     func automaticVocabularyMatchesExpectedApp(
         _ snapshot: CurrentInputTextSnapshot,
-        expectedApp: AutomaticVocabularyExpectedApp,
+        expectedApp: AutomaticVocabularyExpectedApp
     ) -> Bool {
         if let expectedBundleIdentifier = expectedApp.bundleIdentifier,
-           let actualBundleIdentifier = normalizedAutomaticVocabularyAppField(snapshot.bundleIdentifier)
-        {
+           let actualBundleIdentifier = normalizedAutomaticVocabularyAppField(snapshot.bundleIdentifier) {
             return expectedBundleIdentifier == actualBundleIdentifier
         }
 
         if let expectedProcessID = expectedApp.processID,
-           let actualProcessID = snapshot.processID
-        {
+           let actualProcessID = snapshot.processID {
             return expectedProcessID == actualProcessID
         }
 
         if let expectedProcessName = expectedApp.processName,
-           let actualProcessName = normalizedAutomaticVocabularyAppField(snapshot.processName)
-        {
+           let actualProcessName = normalizedAutomaticVocabularyAppField(snapshot.processName) {
             return expectedProcessName == actualProcessName
         }
 
@@ -489,7 +496,7 @@ extension WorkflowController {
 
     func updateActiveAutomaticVocabularySession(
         sessionID: UUID,
-        mutate: (inout AutomaticVocabularyActiveSession) -> Void,
+        mutate: (inout AutomaticVocabularyActiveSession) -> Void
     ) {
         guard var session = automaticVocabularyActiveSession,
               session.sessionID == sessionID
@@ -526,16 +533,16 @@ extension WorkflowController {
         logAutomaticVocabulary(
             "finalizing previous session before new observation "
                 + "| session=\(shortSessionID(sessionID)) "
-                + "| finalText=\(automaticVocabularyPreview(latest))",
+                + "| finalText=\(automaticVocabularyPreview(latest))"
         )
 
         Task.detached { [weak self] in
             guard let self else { return }
-            await self.runAutomaticVocabularyAnalysis(
+            await runAutomaticVocabularyAnalysis(
                 sessionID: sessionID,
                 insertedText: insertedText,
                 baselineText: baseline,
-                finalText: latest,
+                finalText: latest
             )
         }
     }

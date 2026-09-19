@@ -1,5 +1,5 @@
-@testable import Typeflux
 import AppKit
+@testable import Typeflux
 import XCTest
 
 @MainActor

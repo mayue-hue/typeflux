@@ -39,7 +39,7 @@ final class ProcessCommandRunnerTests: XCTestCase {
             executablePath: "/usr/bin/env",
             arguments: ["bash", "-c", "echo $TYPEFLUX_TEST_VAR"],
             environment: ["TYPEFLUX_TEST_VAR": "test_value"],
-            currentDirectoryURL: nil,
+            currentDirectoryURL: nil
         )
         XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines), "test_value")
     }
@@ -48,14 +48,37 @@ final class ProcessCommandRunnerTests: XCTestCase {
         do {
             _ = try await runner.run(
                 executablePath: "/usr/bin/env",
-                arguments: ["bash", "-c", "echo error_output >&2; exit 1"],
+                arguments: ["bash", "-c", "echo error_output >&2; exit 1"]
             )
             XCTFail("Expected error")
         } catch let error as NSError {
             XCTAssertTrue(
                 error.localizedDescription.contains("error_output"),
-                "stderr should be captured in error description",
+                "stderr should be captured in error description"
             )
         }
+    }
+
+    func testCancellationTerminatesRunningProcess() async {
+        let started = expectation(description: "process started")
+        let completed = expectation(description: "cancelled process completed")
+        let runner = ProcessCommandRunner {
+            started.fulfill()
+        }
+        let task = Task {
+            defer { completed.fulfill() }
+            do {
+                _ = try await runner.run(executablePath: "/bin/sleep", arguments: ["60"])
+                XCTFail("Expected cancellation")
+            } catch is CancellationError {
+                // Expected.
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        await fulfillment(of: [completed], timeout: 2)
     }
 }

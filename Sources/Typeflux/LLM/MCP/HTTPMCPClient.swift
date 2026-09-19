@@ -39,7 +39,7 @@ actor HTTPMCPClient: MCPClient {
         let initParams = MCPInitializeParams(
             protocolVersion: negotiatedProtocolVersion,
             capabilities: MCPServerCapabilities(tools: MCPToolsCapability(listChanged: nil)),
-            clientInfo: MCPClientInfo(name: "Typeflux", version: "1.0.0"),
+            clientInfo: MCPClientInfo(name: "Typeflux", version: "1.0.0")
         )
         let initMsg = try MCPJsonRPCMessage.initializeRequest(id: .string(id), params: initParams)
         let (response, httpResponse) = try await post(message: initMsg)
@@ -50,7 +50,7 @@ actor HTTPMCPClient: MCPClient {
         connectionInfo = MCPConnectionInfo(
             name: initResult.serverInfo?.name ?? "Unknown",
             protocolVersion: initResult.protocolVersion,
-            capabilities: initResult.capabilities,
+            capabilities: initResult.capabilities
         )
     }
 
@@ -135,14 +135,14 @@ actor HTTPMCPClient: MCPClient {
         if !(200 ..< 300).contains(httpResponse.statusCode) {
             throw MCPClientError.serverError(
                 code: httpResponse.statusCode,
-                message: "HTTP \(httpResponse.statusCode)",
+                message: "HTTP \(httpResponse.statusCode)"
             )
         }
 
         do {
             let message = try Self.decodeMessage(
                 from: data,
-                contentType: httpResponse.value(forHTTPHeaderField: "Content-Type"),
+                contentType: httpResponse.value(forHTTPHeaderField: "Content-Type")
             )
             return (message, httpResponse)
         } catch {
@@ -153,7 +153,7 @@ actor HTTPMCPClient: MCPClient {
                 | contentType=\(httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "<missing>") \
                 | bodyPreview=\(Self.debugPreview(for: data))
                 """,
-                error: error,
+                error: error
             )
             throw error
         }

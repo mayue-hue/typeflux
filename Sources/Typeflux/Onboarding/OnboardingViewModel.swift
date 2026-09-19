@@ -12,12 +12,24 @@ final class OnboardingViewModel: ObservableObject {
         case llm = 3
         case permissions = 4
         case shortcuts = 5
+
+        var analyticsName: String {
+            switch self {
+            case .language: "language"
+            case .account: "account"
+            case .stt: "stt"
+            case .llm: "llm"
+            case .permissions: "permissions"
+            case .shortcuts: "shortcuts"
+            }
+        }
     }
 
     enum ConnectionTestState: Equatable {
         case idle
         case testing
         case success(totalMs: Int, preview: String)
+        case notice(message: String)
         case failure(message: String)
     }
 
@@ -78,6 +90,8 @@ final class OnboardingViewModel: ObservableObject {
     @Published var googleCloudModel: String
     @Published var groqSTTAPIKey: String
     @Published var groqSTTModel: String
+    @Published var sonioxAPIKey: String
+    @Published var sonioxModel: String
 
     // LLM Config
     @Published var llmProvider: LLMProvider
@@ -92,30 +106,56 @@ final class OnboardingViewModel: ObservableObject {
     @Published var permissions: [PrivacyGuard.PermissionSnapshot] = []
     @Published var requestingPermissions: Set<PrivacyGuard.PermissionID> = []
     @Published var showIncompletePermissionsAlert = false
+    @Published var showIncompleteSTTConfigurationAlert = false
+    @Published var showIncompleteLLMConfigurationAlert = false
 
     // Globe key (🌐) macOS keyboard setting
     @Published var isGlobeKeyReady: Bool = true
+    @Published private(set) var auxiliaryHotkey: HotkeyBinding?
+    @Published private(set) var auxiliaryPersonaName: String
+    @Published var shortcutReplacementConflict = false
     @Published private(set) var activationHotkey: HotkeyBinding
     @Published private(set) var askHotkey: HotkeyBinding?
+    @Published private(set) var historyHotkey: HotkeyBinding
     @Published private(set) var externalKeyboardShortcutReplacement: ExternalKeyboardShortcutReplacement?
     @Published var showShortcutReplacementAppliedAlert = false
 
     private let settingsStore: SettingsStore
     private let authState: AuthState
     private let globeKeyReader: GlobeKeyPreferenceReading
+    private let localModelManager: (any LocalSTTModelManaging)?
+    private let notificationService: LocalNotificationSending
+    private let analyticsReporter: AnalyticsEventReporting
+    private let permissionStatusAnalyticsMonitor: PermissionStatusAnalyticsMonitor?
+    private let onboardingStartedAt: Date
+    private let now: () -> Date
+    private var didReportTerminalEvent = false
     let onComplete: () -> Void
     private var cloudAccountModelDefaultsObserver: NSObjectProtocol?
+    private var localSTTPreparationTask: Task<Void, Never>?
+    private var localSTTPreparationModel: LocalSTTModel?
 
     init(
         settingsStore: SettingsStore,
         authState: AuthState? = nil,
         globeKeyReader: GlobeKeyPreferenceReading = SystemGlobeKeyPreferenceReader(),
+        localModelManager: (any LocalSTTModelManaging)? = nil,
+        notificationService: LocalNotificationSending = NoopLocalNotificationService(),
+        analyticsReporter: AnalyticsEventReporting = NoopAnalyticsEventReporter.shared,
+        permissionStatusAnalyticsMonitor: PermissionStatusAnalyticsMonitor? = nil,
+        now: @escaping () -> Date = { Date() },
         onComplete: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         let resolvedAuthState = authState ?? .shared
         self.authState = resolvedAuthState
         self.globeKeyReader = globeKeyReader
+        self.localModelManager = localModelManager
+        self.notificationService = notificationService
+        self.analyticsReporter = analyticsReporter
+        self.permissionStatusAnalyticsMonitor = permissionStatusAnalyticsMonitor
+        self.now = now
+        onboardingStartedAt = now()
         self.onComplete = onComplete
         let initialUseCloudAccountModels = resolvedAuthState.isLoggedIn
             && settingsStore.sttProvider == .typefluxOfficial
@@ -151,6 +191,8 @@ final class OnboardingViewModel: ObservableObject {
         googleCloudModel = settingsStore.googleCloudModel
         groqSTTAPIKey = settingsStore.groqSTTAPIKey
         groqSTTModel = settingsStore.groqSTTModel
+        sonioxAPIKey = settingsStore.sonioxAPIKey
+        sonioxModel = settingsStore.sonioxModel
 
         let initialLLMProvider = settingsStore.llmProvider
         let storedRemoteProvider = settingsStore.llmRemoteProvider
@@ -170,17 +212,21 @@ final class OnboardingViewModel: ObservableObject {
         isGlobeKeyReady = globeKeyReader.isReadyForHotkey
         let storedActivationHotkey = settingsStore.activationHotkey ?? .defaultActivation
         let storedAskHotkey = settingsStore.askHotkey
+        let storedHistoryHotkey = settingsStore.historyHotkey ?? .defaultHistory
+        auxiliaryHotkey = settingsStore.auxiliaryHotkey
+        auxiliaryPersonaName = settingsStore.auxiliaryPersona.name
         activationHotkey = storedActivationHotkey
         askHotkey = storedAskHotkey
+        historyHotkey = storedHistoryHotkey
         externalKeyboardShortcutReplacement = Self.detectExternalKeyboardShortcutReplacement(
             activationHotkey: storedActivationHotkey,
-            askHotkey: storedAskHotkey,
+            askHotkey: storedAskHotkey
         )
 
         cloudAccountModelDefaultsObserver = NotificationCenter.default.addObserver(
             forName: .cloudAccountModelDefaultsDidApply,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.syncCloudAccountModelsFromStore()
@@ -192,6 +238,7 @@ final class OnboardingViewModel: ObservableObject {
         if let cloudAccountModelDefaultsObserver {
             NotificationCenter.default.removeObserver(cloudAccountModelDefaultsObserver)
         }
+        localSTTPreparationTask?.cancel()
     }
 
     var canGoBack: Bool {
@@ -214,10 +261,51 @@ final class OnboardingViewModel: ObservableObject {
 
     var isSkippable: Bool {
         switch currentStep {
-        case .language, .stt, .llm, .permissions:
+        case .language, .permissions:
             true
-        case .account, .shortcuts:
+        case .account, .stt, .llm, .shortcuts:
             false
+        }
+    }
+
+    var isSTTConfigurationComplete: Bool {
+        switch sttProvider {
+        case .localModel, .appleSpeech, .typefluxOfficial:
+            true
+        case .freeModel:
+            hasText(freeSTTModel)
+        case .whisperAPI:
+            hasText(whisperBaseURL) && hasText(whisperAPIKey) && hasText(whisperModel)
+        case .multimodalLLM:
+            hasText(multimodalLLMBaseURL) && hasText(multimodalLLMAPIKey) && hasText(multimodalLLMModel)
+        case .aliCloud:
+            hasText(aliCloudAPIKey)
+        case .doubaoRealtime:
+            hasText(doubaoAppID) && hasText(doubaoAccessToken) && hasText(doubaoResourceID)
+        case .googleCloud:
+            hasText(googleCloudProjectID) && hasText(googleCloudModel)
+        case .groq:
+            hasText(groqSTTAPIKey) && hasText(groqSTTModel)
+        case .soniox:
+            hasText(sonioxAPIKey)
+        }
+    }
+
+    var isLLMConfigurationComplete: Bool {
+        switch llmProvider {
+        case .ollama:
+            hasText(ollamaBaseURL) && hasText(ollamaModel)
+        case .openAICompatible:
+            switch llmRemoteProvider {
+            case .typefluxCloud:
+                authState.isLoggedIn
+            case .freeModel:
+                hasText(llmModel)
+            case .custom:
+                hasText(llmBaseURL) && hasText(llmModel)
+            default:
+                hasText(llmBaseURL) && hasText(llmModel) && hasText(llmAPIKey)
+            }
         }
     }
 
@@ -238,24 +326,34 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func advance() {
-        if currentStep == .permissions && !allRequiredPermissionsGranted {
+        if currentStep == .stt, !isSTTConfigurationComplete {
+            showIncompleteSTTConfigurationAlert = true
+            return
+        }
+        if currentStep == .stt {
+            showIncompleteSTTConfigurationAlert = false
+        }
+
+        if currentStep == .llm, !isLLMConfigurationComplete {
+            showIncompleteLLMConfigurationAlert = true
+            return
+        }
+        if currentStep == .llm {
+            showIncompleteLLMConfigurationAlert = false
+        }
+
+        if currentStep == .permissions, !allRequiredPermissionsGranted {
             showIncompletePermissionsAlert = true
             return
         }
 
         saveCurrentStepSettings()
-        if isLastStep {
-            complete()
-        } else {
-            let nextStep = adjacentStep(offset: 1) ?? (visibleSteps.last ?? .shortcuts)
-            stepDirection = 1
-            withAnimation(.easeInOut(duration: 0.22)) {
-                currentStep = nextStep
-            }
-        }
+        reportCurrentStepCompleted(skipped: false)
+        advanceToNextStepOrComplete()
     }
 
     func skip() {
+        reportCurrentStepCompleted(skipped: true)
         if isLastStep {
             complete()
         } else {
@@ -270,6 +368,7 @@ final class OnboardingViewModel: ObservableObject {
     /// Marks onboarding as complete without triggering the completion callback.
     /// Used when the window is closed externally (e.g., user clicks the close button).
     func skipWithoutAnimation() {
+        reportAbandonedIfNeeded()
         settingsStore.applyDefaultPersonaIfLLMConfigured()
         settingsStore.isOnboardingCompleted = true
     }
@@ -285,6 +384,14 @@ final class OnboardingViewModel: ObservableObject {
         advance()
     }
 
+    func skipIncompleteLLMConfiguration() {
+        guard currentStep == .llm else { return }
+        showIncompleteLLMConfigurationAlert = false
+        saveCurrentStepSettings()
+        reportCurrentStepCompleted(skipped: true)
+        advanceToNextStepOrComplete()
+    }
+
     func selectOllama() {
         llmProvider = .ollama
         llmConnectionTestState = .idle
@@ -293,6 +400,15 @@ final class OnboardingViewModel: ObservableObject {
     func selectSTTProvider(_ provider: STTProvider) {
         sttProvider = provider
         sttConnectionTestState = .idle
+        if provider == .localModel {
+            prepareSelectedLocalSTTModelInBackground()
+        }
+    }
+
+    func selectLocalSTTModel(_ model: LocalSTTModel) {
+        localSTTModel = model
+        guard sttProvider == .localModel else { return }
+        prepareSelectedLocalSTTModelInBackground()
     }
 
     func selectLLMRemoteProvider(_ provider: LLMRemoteProvider) {
@@ -306,6 +422,14 @@ final class OnboardingViewModel: ObservableObject {
 
     func testSTTConnection() {
         sttTestTask?.cancel()
+
+        if sttProvider != .localModel, !AuthState.shared.canUseCloudASR {
+            sttConnectionTestState = .notice(
+                message: TypefluxCloudASRDirectiveError().localizedDescription
+            )
+            return
+        }
+
         sttConnectionTestState = .testing
 
         let provider = sttProvider
@@ -325,6 +449,8 @@ final class OnboardingViewModel: ObservableObject {
         let language = appLanguage
         let groqKey = groqSTTAPIKey
         let groqModel = groqSTTModel
+        let sonioxKey = sonioxAPIKey
+        let sonioxModelValue = sonioxModel
         let freeModel = freeSTTModel
 
         sttTestTask = Task {
@@ -337,13 +463,13 @@ final class OnboardingViewModel: ObservableObject {
                         preview = try await WhisperAPITranscriber.testConnection(
                             baseURL: baseURL,
                             model: model,
-                            apiKey: apiKey,
+                            apiKey: apiKey
                         )
                     case .multimodalLLM:
                         preview = try await MultimodalLLMTranscriber.testConnection(
                             baseURL: multimodalBaseURL,
                             model: multimodalModel,
-                            apiKey: multimodalAPIKey,
+                            apiKey: multimodalAPIKey
                         )
                     case .aliCloud:
                         preview = try await AliCloudRealtimeTranscriber.testConnection(apiKey: aliKey)
@@ -351,14 +477,14 @@ final class OnboardingViewModel: ObservableObject {
                         preview = try await DoubaoRealtimeTranscriber.testConnection(
                             appID: doubaoID,
                             accessToken: doubaoToken,
-                            resourceID: doubaoResource,
+                            resourceID: doubaoResource
                         )
                     case .googleCloud:
                         preview = try await GoogleCloudSpeechTranscriber.testConnection(
                             projectID: googleProjectID,
                             apiKey: googleAPIKey,
                             model: googleModel,
-                            appLanguage: language,
+                            appLanguage: language
                         )
                     case .groq:
                         let effectiveModel = groqModel.isEmpty
@@ -366,7 +492,12 @@ final class OnboardingViewModel: ObservableObject {
                         preview = try await WhisperAPITranscriber.testConnection(
                             baseURL: "https://api.groq.com/openai/v1",
                             model: effectiveModel,
-                            apiKey: groqKey,
+                            apiKey: groqKey
+                        )
+                    case .soniox:
+                        preview = try await SonioxTranscriber.testConnection(
+                            apiKey: sonioxKey,
+                            model: sonioxModelValue
                         )
                     case .freeModel:
                         preview = try await FreeSTTTranscriber.testConnection(modelName: freeModel)
@@ -406,7 +537,7 @@ final class OnboardingViewModel: ObservableObject {
                             throw NSError(
                                 domain: "LLMTest",
                                 code: 1,
-                                userInfo: [NSLocalizedDescriptionKey: "Invalid Ollama URL."],
+                                userInfo: [NSLocalizedDescriptionKey: "Invalid Ollama URL."]
                             )
                         }
                         let url = base.appendingPathComponent("api/chat")
@@ -420,7 +551,7 @@ final class OnboardingViewModel: ObservableObject {
                             "model": ollamaModel,
                             "stream": false,
                             "messages": [["role": "user", "content": "Reply with exactly: ok"]],
-                            "options": ["num_predict": 10],
+                            "options": ["num_predict": 10]
                         ])
                         let (data, response) = try await URLSession.shared.data(for: req)
                         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
@@ -436,14 +567,14 @@ final class OnboardingViewModel: ObservableObject {
                             provider: remoteProvider,
                             baseURL: baseURL,
                             model: model,
-                            apiKey: apiKey,
+                            apiKey: apiKey
                         )
                         return try await RemoteLLMClient.previewConnection(
                             provider: connection.provider,
                             baseURL: connection.baseURL,
                             model: connection.model,
                             apiKey: connection.apiKey,
-                            additionalHeaders: connection.headers(for: .modelSetup),
+                            additionalHeaders: connection.headers(for: .modelSetup)
                         )
                     }
                 }
@@ -451,7 +582,7 @@ final class OnboardingViewModel: ObservableObject {
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
                 llmConnectionTestState = .success(
                     totalMs: ms,
-                    preview: String(preview.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)),
+                    preview: String(preview.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
                 )
             } catch {
                 guard !Task.isCancelled else { return }
@@ -471,10 +602,15 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func refreshGlobeKeyState() {
+        auxiliaryHotkey = settingsStore.auxiliaryHotkey
+        auxiliaryPersonaName = settingsStore.auxiliaryPersona.name
         isGlobeKeyReady = globeKeyReader.isReadyForHotkey
     }
 
     func useExternalKeyboardShortcutReplacement(_ replacement: ExternalKeyboardShortcutReplacement) {
+        guard updateAuxiliaryForReplacement(
+            activation: replacement.activationHotkey, ask: replacement.askHotkey
+        ) else { return }
         activationHotkey = replacement.activationHotkey
         askHotkey = replacement.askHotkey
         externalKeyboardShortcutReplacement = replacement
@@ -483,7 +619,27 @@ final class OnboardingViewModel: ObservableObject {
         showShortcutReplacementAppliedAlert = true
     }
 
+    private func updateAuxiliaryForReplacement(activation: HotkeyBinding, ask: HotkeyBinding) -> Bool {
+        let previous = settingsStore.auxiliaryHotkey
+        let standardBindings = [63, 54, 61].map { HotkeyBinding.auxiliaryChord(baseKeyCode: $0) }
+        let followsPreset = previous.map { value in standardBindings.contains { $0.conflicts(with: value) } } ?? false
+        let next = followsPreset ? HotkeyBinding.auxiliaryChord(baseKeyCode: activation.keyCode) : previous
+        let existing = [settingsStore.personaHotkey, settingsStore.historyHotkey].compactMap { $0 }
+        let conflicts = existing.contains { $0.conflicts(with: activation) || $0.conflicts(with: ask) }
+            || next.map { candidate in
+                ([activation, ask] + existing).contains { $0.conflicts(with: candidate) }
+            } == true
+        guard !conflicts else {
+            shortcutReplacementConflict = true
+            return false
+        }
+        settingsStore.auxiliaryHotkey = next
+        auxiliaryHotkey = next
+        return true
+    }
+
     func restoreDefaultFNShortcuts() {
+        guard updateAuxiliaryForReplacement(activation: .defaultActivation, ask: .defaultAsk) else { return }
         activationHotkey = .defaultActivation
         askHotkey = .defaultAsk
         externalKeyboardShortcutReplacement = nil
@@ -493,7 +649,7 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     static let keyboardSystemSettingsURL = URL(
-        string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension",
+        string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
     )!
 
     func openKeyboardSystemSettings() {
@@ -509,6 +665,7 @@ final class OnboardingViewModel: ObservableObject {
         Task {
             await PrivacyGuard.requestPermission(id)
             refreshPermissions()
+            permissionStatusAnalyticsMonitor?.observe(permissions)
             requestingPermissions.remove(id)
             if willShowInAppDialog {
                 NSApp.activate(ignoringOtherApps: true)
@@ -543,6 +700,7 @@ final class OnboardingViewModel: ObservableObject {
                 settingsStore.whisperModel = whisperModel
             case .localModel:
                 settingsStore.localSTTModel = localSTTModel
+                applySelectedLocalSTTDefaults()
             case .multimodalLLM:
                 settingsStore.multimodalLLMBaseURL = multimodalLLMBaseURL
                 settingsStore.multimodalLLMAPIKey = multimodalLLMAPIKey
@@ -560,6 +718,9 @@ final class OnboardingViewModel: ObservableObject {
             case .groq:
                 settingsStore.groqSTTAPIKey = groqSTTAPIKey
                 settingsStore.groqSTTModel = groqSTTModel
+            case .soniox:
+                settingsStore.sonioxAPIKey = sonioxAPIKey
+                settingsStore.sonioxModel = sonioxModel
             case .appleSpeech, .typefluxOfficial:
                 break
             }
@@ -595,9 +756,124 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     private func complete() {
+        guard !didReportTerminalEvent else { return }
+        didReportTerminalEvent = true
+        let duration = max(0, Int(now().timeIntervalSince(onboardingStartedAt)))
+        analyticsReporter.report(
+            eventName: "onboarding_completed",
+            properties: [
+                "duration_seconds": "\(duration)",
+                "stt_provider": sttProvider.rawValue,
+                "llm_provider": llmProvider.rawValue
+            ]
+        )
         settingsStore.applyDefaultPersonaIfLLMConfigured()
         settingsStore.isOnboardingCompleted = true
         onComplete()
+    }
+
+    private func reportCurrentStepCompleted(skipped: Bool) {
+        analyticsReporter.report(
+            eventName: "onboarding_step_completed",
+            properties: [
+                "step": currentStep.analyticsName,
+                "skipped": "\(skipped)"
+            ]
+        )
+    }
+
+    private func reportAbandonedIfNeeded() {
+        guard !didReportTerminalEvent else { return }
+        didReportTerminalEvent = true
+        analyticsReporter.report(
+            eventName: "onboarding_abandoned",
+            properties: ["last_step": currentStep.analyticsName]
+        )
+    }
+
+    private func advanceToNextStepOrComplete() {
+        if isLastStep {
+            complete()
+        } else {
+            let nextStep = adjacentStep(offset: 1) ?? (visibleSteps.last ?? .shortcuts)
+            stepDirection = 1
+            withAnimation(.easeInOut(duration: 0.22)) {
+                currentStep = nextStep
+            }
+        }
+    }
+
+    private func prepareSelectedLocalSTTModelInBackground() {
+        guard let localModelManager else { return }
+
+        applySelectedLocalSTTDefaults()
+        let targetModel = localSTTModel
+        let configuration = localSTTConfiguration(for: targetModel)
+
+        if localModelManager.isModelAvailable(targetModel) {
+            LocalModelDownloadProgressCenter.shared.clear()
+            return
+        }
+
+        if localSTTPreparationModel == targetModel, localSTTPreparationTask != nil {
+            return
+        }
+
+        localSTTPreparationTask?.cancel()
+        localSTTPreparationModel = targetModel
+        LocalModelDownloadProgressCenter.shared.reportDownloading(model: targetModel, progress: 0.02)
+        localSTTPreparationTask = Task { [weak self, localModelManager, notificationService] in
+            do {
+                try await localModelManager.prepareModel(configuration: configuration) { update in
+                    LocalModelDownloadProgressCenter.shared.reportDownloading(
+                        model: targetModel,
+                        progress: update.progress
+                    )
+                }
+                guard !Task.isCancelled else { return }
+                LocalModelDownloadProgressCenter.shared.clear()
+                await notificationService.sendLocalNotification(
+                    title: L("notification.localModelReady.title"),
+                    body: L("notification.localModelReady.body"),
+                    identifier: "ai.gulu.app.typeflux.local-model-ready"
+                )
+            } catch {
+                guard !Task.isCancelled else {
+                    LocalModelDownloadProgressCenter.shared.clear()
+                    return
+                }
+                NetworkDebugLogger.logError(context: "Onboarding local STT model download failed", error: error)
+                LocalModelDownloadProgressCenter.shared.reportFailed(
+                    model: targetModel,
+                    message: error.localizedDescription
+                )
+            }
+            await MainActor.run {
+                guard self?.localSTTPreparationModel == targetModel else { return }
+                self?.localSTTPreparationModel = nil
+                self?.localSTTPreparationTask = nil
+            }
+        }
+    }
+
+    private func applySelectedLocalSTTDefaults() {
+        settingsStore.localSTTModel = localSTTModel
+        settingsStore.localSTTModelIdentifier = localSTTModel.defaultModelIdentifier
+        settingsStore.localSTTDownloadSource = localSTTModel.recommendedDownloadSource
+        settingsStore.localSTTAutoSetup = true
+    }
+
+    private func localSTTConfiguration(for model: LocalSTTModel) -> LocalSTTConfiguration {
+        LocalSTTConfiguration(
+            model: model,
+            modelIdentifier: model.defaultModelIdentifier,
+            downloadSource: model.recommendedDownloadSource,
+            autoSetup: true
+        )
+    }
+
+    private func hasText(_ value: String) -> Bool {
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func adjacentStep(offset: Int) -> Step? {
@@ -616,7 +892,7 @@ final class OnboardingViewModel: ObservableObject {
 
     private static func detectExternalKeyboardShortcutReplacement(
         activationHotkey: HotkeyBinding,
-        askHotkey: HotkeyBinding?,
+        askHotkey: HotkeyBinding?
     ) -> ExternalKeyboardShortcutReplacement? {
         ExternalKeyboardShortcutReplacement.allCases.first { replacement in
             activationHotkey.signature == replacement.activationHotkey.signature

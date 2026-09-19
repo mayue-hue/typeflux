@@ -14,7 +14,7 @@ final class LiveTranscriptionPreviewerTests: XCTestCase {
             settingsStore: settingsStore,
             localBackendFactory: { localBackend },
             openAIBackendFactory: { openAIBackend },
-            appleBackendFactory: { appleBackend },
+            appleBackendFactory: { appleBackend }
         )
 
         try await previewer.start(onTextUpdate: { _ in })
@@ -27,7 +27,7 @@ final class LiveTranscriptionPreviewerTests: XCTestCase {
         XCTAssertEqual(appleStartCount, 0)
     }
 
-    func testStartUsesLocalBackendForTypefluxCloudWhenLocalOptimizationIsEnabled() async throws {
+    func testStartDoesNotUseLocalBackendForTypefluxCloudWhenLocalOptimizationIsEnabled() async throws {
         let settingsStore = SettingsStore()
         settingsStore.sttProvider = .typefluxOfficial
         settingsStore.localOptimizationEnabled = true
@@ -39,7 +39,31 @@ final class LiveTranscriptionPreviewerTests: XCTestCase {
             settingsStore: settingsStore,
             localBackendFactory: { localBackend },
             openAIBackendFactory: { openAIBackend },
+            appleBackendFactory: { appleBackend }
+        )
+
+        try await previewer.start(onTextUpdate: { _ in })
+
+        let localStartCount = await localBackend.startCount()
+        let openAIStartCount = await openAIBackend.startCount()
+        let appleStartCount = await appleBackend.startCount()
+        XCTAssertEqual(localStartCount, 0)
+        XCTAssertEqual(openAIStartCount + appleStartCount, 1)
+    }
+
+    func testStartUsesLocalBackendForUnpaidRemoteProvider() async throws {
+        let settingsStore = SettingsStore()
+        settingsStore.sttProvider = .whisperAPI
+
+        let localBackend = MockLivePreviewBackend()
+        let openAIBackend = MockLivePreviewBackend()
+        let appleBackend = MockLivePreviewBackend()
+        let previewer = LiveTranscriptionPreviewer(
+            settingsStore: settingsStore,
+            localBackendFactory: { localBackend },
+            openAIBackendFactory: { openAIBackend },
             appleBackendFactory: { appleBackend },
+            canUseCloudASR: { false }
         )
 
         try await previewer.start(onTextUpdate: { _ in })
@@ -63,7 +87,7 @@ final class LiveTranscriptionPreviewerTests: XCTestCase {
         let previewer = LiveTranscriptionPreviewer(
             settingsStore: settingsStore,
             openAIBackendFactory: { backend },
-            appleBackendFactory: { backend },
+            appleBackendFactory: { backend }
         )
 
         let buffer = try makeTestBuffer(sampleCount: 4)
@@ -90,7 +114,7 @@ final class LiveTranscriptionPreviewerTests: XCTestCase {
             updateReceived.fulfill()
         }
 
-        let buffer = try makeTestBuffer(sampleCount: 40_000)
+        let buffer = try makeTestBuffer(sampleCount: 40000)
         await backend.append(buffer)
 
         await fulfillment(of: [updateReceived], timeout: 1.0)
@@ -104,7 +128,7 @@ final class LiveTranscriptionPreviewerTests: XCTestCase {
             commonFormat: .pcmFormatFloat32,
             sampleRate: 16000,
             channels: 1,
-            interleaved: false,
+            interleaved: false
         ) else {
             throw XCTSkip("Unable to create audio format")
         }

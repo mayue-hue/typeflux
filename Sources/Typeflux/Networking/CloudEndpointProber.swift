@@ -20,17 +20,17 @@ enum CloudEndpointProbeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid endpoint URL."
+            "Invalid endpoint URL."
         case .timedOut:
-            return "Probe timed out."
-        case .transport(let error):
-            return "Probe transport error: \(error.localizedDescription)"
-        case .httpStatus(let code):
-            return "Probe returned HTTP \(code)."
-        case .decoding(let error):
-            return "Probe response could not be decoded: \(error.localizedDescription)"
+            "Probe timed out."
+        case let .transport(error):
+            "Probe transport error: \(error.localizedDescription)"
+        case let .httpStatus(code):
+            "Probe returned HTTP \(code)."
+        case let .decoding(error):
+            "Probe response could not be decoded: \(error.localizedDescription)"
         case .nonceMismatch:
-            return "Probe response did not echo the expected nonce."
+            "Probe response did not echo the expected nonce."
         }
     }
 }
@@ -44,9 +44,14 @@ protocol CloudEndpointProbing: Sendable {
 /// Production prober that hits `<baseURL>/api/v1/ping?nonce=<nonce>` over HTTPS.
 struct HTTPCloudEndpointProber: CloudEndpointProbing {
     private let session: URLSession
+    private let accessTokenProvider: @Sendable () -> String?
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = .shared,
+        accessTokenProvider: @escaping @Sendable () -> String? = { nil }
+    ) {
         self.session = session
+        self.accessTokenProvider = accessTokenProvider
     }
 
     func probe(baseURL: URL, nonce: String, timeout: TimeInterval) async throws -> CloudEndpointProbeResult {
@@ -65,6 +70,9 @@ struct HTTPCloudEndpointProber: CloudEndpointProbing {
         request.timeoutInterval = timeout
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
         TypefluxCloudRequestHeaders.applyClientInfo(to: &request)
+        if let accessToken = accessTokenProvider() {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
 
         let start = ContinuousClock.now
 
@@ -83,7 +91,7 @@ struct HTTPCloudEndpointProber: CloudEndpointProbing {
         guard let http = response as? HTTPURLResponse else {
             throw CloudEndpointProbeError.invalidURL
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             throw CloudEndpointProbeError.httpStatus(http.statusCode)
         }
 
@@ -114,6 +122,89 @@ struct HTTPCloudEndpointProber: CloudEndpointProbing {
         let attoAsMs = Double(components.attoseconds) / 1_000_000_000_000_000.0
         return secondsAsMs + attoAsMs
     }
+}
+
+/// Probes a realtime ASR server through its public health endpoint.
+struct HTTPHealthEndpointProber: CloudEndpointProbing {
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func probe(baseURL: URL, nonce _: String, timeout: TimeInterval) async throws -> CloudEndpointProbeResult {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw CloudEndpointProbeError.invalidURL
+        }
+        let trimmedPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = trimmedPath.isEmpty ? "/api/v1/healthz" : "/" + trimmedPath + "/api/v1/healthz"
+        components.query = nil
+        guard let url = components.url else {
+            throw CloudEndpointProbeError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        TypefluxCloudRequestHeaders.applyClientInfo(to: &request)
+
+        let start = ContinuousClock.now
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError where error.code == .timedOut {
+            throw CloudEndpointProbeError.timedOut
+        } catch {
+            throw CloudEndpointProbeError.transport(error)
+        }
+        let elapsed = ContinuousClock.now - start
+
+        guard let http = response as? HTTPURLResponse else {
+            throw CloudEndpointProbeError.invalidURL
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw CloudEndpointProbeError.httpStatus(http.statusCode)
+        }
+
+        let envelope: HealthEnvelope
+        do {
+            envelope = try JSONDecoder().decode(HealthEnvelope.self, from: data)
+        } catch {
+            throw CloudEndpointProbeError.decoding(error)
+        }
+        guard envelope.code == "OK", envelope.data?.ok == true else {
+            throw CloudEndpointProbeError.decoding(HealthResponseError.unhealthy)
+        }
+
+        return CloudEndpointProbeResult(
+            latencyMs: durationToMilliseconds(elapsed),
+            serverID: nil,
+            serverVersion: nil,
+            nonceMatches: true
+        )
+    }
+
+    private func durationToMilliseconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        let secondsAsMs = Double(components.seconds) * 1000.0
+        let attoAsMs = Double(components.attoseconds) / 1_000_000_000_000_000.0
+        return secondsAsMs + attoAsMs
+    }
+}
+
+private enum HealthResponseError: Error {
+    case unhealthy
+}
+
+private struct HealthEnvelope: Decodable {
+    struct Payload: Decodable {
+        let ok: Bool
+    }
+
+    let code: String
+    let data: Payload?
 }
 
 private struct PingEnvelope: Decodable {

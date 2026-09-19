@@ -8,8 +8,65 @@ final class AppCoordinator {
     private var workflowController: WorkflowController?
     private var onboardingWindowController: OnboardingWindowController?
     private let cloudEndpointProbeScheduler = CloudEndpointProbeScheduler()
+    private let asrPublicConfigRefreshScheduler = TypefluxASRPublicConfigRefreshScheduler()
+    private var authAnalyticsObserver: NSObjectProtocol?
+    private var authLogoutObserver: NSObjectProtocol?
+    private var authSubscriptionObserver: NSObjectProtocol?
+    private var permissionAnalyticsTimer: Timer?
 
+    // swiftlint:disable:next function_body_length
     func start() {
+        di.analyticsReporter.reportFirstOpenIfNeeded()
+        di.analyticsReporter.report(
+            eventName: "app_launch",
+            properties: ["launch_type": LaunchAtLoginManager.isEnabled ? "login_item" : "manual"]
+        )
+        di.permissionStatusAnalyticsMonitor.observeCurrentStatuses()
+        permissionAnalyticsTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.di.permissionStatusAnalyticsMonitor.observeCurrentStatuses()
+            }
+        }
+        authAnalyticsObserver = NotificationCenter.default.addObserver(
+            forName: .authDidLogin,
+            object: nil,
+            queue: .main
+        ) { [weak reporter = di.analyticsReporter] _ in
+            reporter?.report(eventName: "app_login", properties: [:])
+            Task {
+                await CloudEndpointRegistry.shared.probeAll()
+                await TypefluxOfficialASRRouteCache.shared.invalidate()
+                if let token = await MainActor.run(body: {
+                    AuthState.shared.canUseCloudASR ? AuthState.shared.accessToken : nil
+                }) {
+                    await TypefluxOfficialASRRouteCache.shared.prefetch(accessToken: token)
+                }
+            }
+        }
+        authLogoutObserver = NotificationCenter.default.addObserver(
+            forName: .authDidLogout,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                await CloudEndpointRegistry.shared.probeAll()
+                await TypefluxOfficialASRRouteCache.shared.invalidate()
+            }
+        }
+        authSubscriptionObserver = NotificationCenter.default.addObserver(
+            forName: .authSubscriptionDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                await TypefluxOfficialASRRouteCache.shared.invalidate()
+                if let token = await MainActor.run(body: {
+                    AuthState.shared.canUseCloudASR ? AuthState.shared.accessToken : nil
+                }) {
+                    await TypefluxOfficialASRRouteCache.shared.prefetch(accessToken: token)
+                }
+            }
+        }
         let settingsStore = di.settingsStore
         let localModelManager = di.localModelManager
         let workflowController = WorkflowController(
@@ -41,14 +98,21 @@ final class AppCoordinator {
                             }
                             return LocalModelTranscriber(
                                 settingsStore: settingsStore,
-                                modelManager: localModelManager,
+                                modelManager: localModelManager
                             )
-                        },
+                        }
                     )
                 },
                 openAIBackendFactory: { OpenAIRealtimePreviewBackend(settingsStore: settingsStore) },
                 appleBackendFactory: { AppleSpeechPreviewBackend() },
+                canUseCloudASR: {
+                    await MainActor.run { AuthState.shared.canUseCloudASR }
+                }
             ),
+            localModelManager: localModelManager,
+            notificationService: di.notificationService,
+            outputPostProcessor: di.outputPostProcessor,
+            analyticsReporter: di.analyticsReporter
         )
         self.workflowController = workflowController
 
@@ -57,7 +121,8 @@ final class AppCoordinator {
             settingsStore: di.settingsStore,
             historyStore: di.historyStore,
             agentJobStore: di.agentJobStore,
-            autoModelDownloadService: di.autoModelDownloadService,
+            modelManager: di.ollamaModelManager,
+            localModelManager: di.localModelManager,
             notificationService: di.notificationService,
             onRetryHistory: { [weak self] record in
                 self?.workflowController?.retry(record: record)
@@ -70,7 +135,7 @@ final class AppCoordinator {
             },
             onOpenAgentJob: { [weak self] jobID in
                 self?.di.agentJobsWindowController.showJob(id: jobID)
-            },
+            }
         )
         statusBarController?.start()
         self.workflowController?.start()
@@ -81,9 +146,20 @@ final class AppCoordinator {
         di.bundledModelAutoSetup.applyIfNeeded()
         di.autoModelDownloadService.triggerIfNeeded()
         AutoUpdater.shared.startAutoCheck(settingsStore: di.settingsStore)
-        UsageStatsStore.shared.backfillIfNeeded(from: di.historyStore)
+        UsageStatsStore.shared.backfillIfNeeded(from: di.historyStore) { [weak self] in
+            guard let self else { return }
+            di.usageDailySummaryReporter.reportIfNeeded(snapshot: .current(from: UsageStatsStore.shared))
+        }
         cloudEndpointProbeScheduler.start()
-        Task { await AuthState.shared.refreshTokenIfNeeded() }
+        asrPublicConfigRefreshScheduler.start()
+        Task {
+            await AuthState.shared.refreshTokenIfNeeded()
+            if let token = await MainActor.run(body: {
+                AuthState.shared.canUseCloudASR ? AuthState.shared.accessToken : nil
+            }) {
+                await TypefluxOfficialASRRouteCache.shared.prefetch(accessToken: token)
+            }
+        }
 
         if !di.settingsStore.isOnboardingCompleted {
             presentOnboarding()
@@ -93,7 +169,17 @@ final class AppCoordinator {
     }
 
     func stop() {
+        if let authAnalyticsObserver { NotificationCenter.default.removeObserver(authAnalyticsObserver) }
+        if let authLogoutObserver { NotificationCenter.default.removeObserver(authLogoutObserver) }
+        if let authSubscriptionObserver { NotificationCenter.default.removeObserver(authSubscriptionObserver) }
+        authAnalyticsObserver = nil
+        authLogoutObserver = nil
+        authSubscriptionObserver = nil
+        permissionAnalyticsTimer?.invalidate()
+        permissionAnalyticsTimer = nil
         cloudEndpointProbeScheduler.stop()
+        asrPublicConfigRefreshScheduler.stop()
+        Task { await TypefluxOfficialASRRouteCache.shared.invalidate() }
         workflowController?.stop()
         statusBarController?.stop()
     }
@@ -101,7 +187,13 @@ final class AppCoordinator {
     private func presentOnboarding() {
         let controller = OnboardingWindowController()
         onboardingWindowController = controller
-        controller.show(settingsStore: di.settingsStore) { [weak self] in
+        controller.show(
+            settingsStore: di.settingsStore,
+            localModelManager: di.localModelManager,
+            notificationService: di.notificationService,
+            analyticsReporter: di.analyticsReporter,
+            permissionStatusAnalyticsMonitor: di.permissionStatusAnalyticsMonitor
+        ) { [weak self] in
             self?.onboardingWindowController = nil
             self?.presentPermissionGuidanceIfNeeded()
         }
@@ -127,10 +219,12 @@ final class AppCoordinator {
             settingsStore: di.settingsStore,
             historyStore: di.historyStore,
             initialSection: .settings,
+            modelManager: di.ollamaModelManager,
+            localModelManager: di.localModelManager,
             notificationService: di.notificationService,
             onRetryHistory: { [weak self] record in
                 self?.workflowController?.retry(record: record)
-            },
+            }
         )
     }
 }

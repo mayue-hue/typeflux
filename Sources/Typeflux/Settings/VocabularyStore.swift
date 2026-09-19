@@ -42,7 +42,7 @@ struct VocabularyEntry: Codable, Identifiable, Equatable {
         term: String,
         source: VocabularySource,
         createdAt: Date = Date(),
-        occurrenceCount: Int = 1,
+        occurrenceCount: Int = 1
     ) {
         self.id = id
         self.term = term
@@ -88,20 +88,23 @@ enum VocabularyImportError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unsupportedFormat:
-            return "Unsupported vocabulary file format."
+            "Unsupported vocabulary file format."
         }
     }
 }
 
 enum VocabularyStore {
-    private static let key = "vocabulary.entries"
+    private static let legacyKey = "vocabulary.entries"
+    private static var key: String { "\(legacyKey).\(CloudDataLocalScope.key)" }
     /// Maximum number of terms returned to speech recognition as hints. Beyond this
     /// point most ASR backends either truncate silently or waste prompt budget, so
     /// we cap the list and let ranking decide who stays.
-    static let activeTermLimit = 100
+    static let activeTermLimit = 500
 
     static func load() -> [VocabularyEntry] {
-        guard let data = UserDefaults.standard.data(forKey: key) else {
+        let storageKey = key
+        migrateLegacyGuestDataIfNeeded(storageKey: storageKey)
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else {
             return []
         }
 
@@ -115,33 +118,43 @@ enum VocabularyStore {
     }
 
     static func save(_ entries: [VocabularyEntry]) {
+        let storageKey = key
+        migrateLegacyGuestDataIfNeeded(storageKey: storageKey)
         let deduplicatedEntries = deduplicated(entries)
 
         do {
             let data = try JSONEncoder().encode(deduplicatedEntries)
-            UserDefaults.standard.set(data, forKey: key)
+            UserDefaults.standard.set(data, forKey: storageKey)
             NotificationCenter.default.post(
                 name: .vocabularyStoreDidChange,
                 object: nil,
-                userInfo: ["entries": deduplicatedEntries],
+                userInfo: ["entries": deduplicatedEntries]
             )
         } catch {
             ErrorLogStore.shared.log("Vocabulary save failed: \(error.localizedDescription)")
         }
     }
 
+    private static func migrateLegacyGuestDataIfNeeded(storageKey: String) {
+        guard storageKey == "\(legacyKey).guest",
+              UserDefaults.standard.object(forKey: storageKey) == nil,
+              let legacy = UserDefaults.standard.data(forKey: legacyKey)
+        else { return }
+        UserDefaults.standard.set(legacy, forKey: storageKey)
+    }
+
     static func exportData() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(
-            rankedEntries().map { VocabularyTransferItem(term: $0.term, source: $0.source) },
+            rankedEntries().map { VocabularyTransferItem(term: $0.term, source: $0.source) }
         )
     }
 
     @discardableResult
     static func importEntries(
         from data: Data,
-        defaultSource: VocabularySource = .manual,
+        defaultSource: VocabularySource = .manual
     ) throws -> VocabularyBatchImportResult {
         let items = try previewImportItems(from: data, defaultSource: defaultSource)
         return try importItems(items)
@@ -149,10 +162,10 @@ enum VocabularyStore {
 
     static func previewImportItems(
         from data: Data,
-        defaultSource: VocabularySource = .manual,
+        defaultSource: VocabularySource = .manual
     ) throws -> [VocabularyTransferItem] {
-        newImportItems(
-            deduplicatedImportItems(try decodeImportedItems(from: data, defaultSource: defaultSource)),
+        try newImportItems(
+            deduplicatedImportItems(decodeImportedItems(from: data, defaultSource: defaultSource))
         )
     }
 
@@ -164,7 +177,7 @@ enum VocabularyStore {
     @discardableResult
     static func importTerms(
         _ terms: [String],
-        source: VocabularySource = .manual,
+        source: VocabularySource = .manual
     ) -> VocabularyBatchImportResult {
         let importedItems = terms.map {
             VocabularyTransferItem(term: $0, source: source)
@@ -189,7 +202,7 @@ enum VocabularyStore {
                 term: existing.term,
                 source: existing.source,
                 createdAt: existing.createdAt,
-                occurrenceCount: existing.occurrenceCount + 1,
+                occurrenceCount: existing.occurrenceCount + 1
             )
             save(entries)
             return entries
@@ -197,7 +210,7 @@ enum VocabularyStore {
 
         entries.insert(
             VocabularyEntry(term: normalized, source: source, occurrenceCount: 1),
-            at: 0,
+            at: 0
         )
         save(entries)
         return entries
@@ -216,7 +229,8 @@ enum VocabularyStore {
 
         var entries = load()
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return entries }
-        guard !entries.contains(where: { $0.id != id && normalize($0.term).lowercased() == normalized.lowercased() }) else {
+        guard !entries.contains(where: { $0.id != id && normalize($0.term).lowercased() == normalized.lowercased() })
+        else {
             return entries
         }
 
@@ -226,7 +240,7 @@ enum VocabularyStore {
             term: normalized,
             source: existing.source,
             createdAt: existing.createdAt,
-            occurrenceCount: existing.occurrenceCount,
+            occurrenceCount: existing.occurrenceCount
         )
         save(entries)
         return entries
@@ -255,7 +269,7 @@ enum VocabularyStore {
                 term: existing.term,
                 source: existing.source,
                 createdAt: existing.createdAt,
-                occurrenceCount: existing.occurrenceCount + 1,
+                occurrenceCount: existing.occurrenceCount + 1
             )
             bumped.append(existing.term)
         }
@@ -315,7 +329,7 @@ enum VocabularyStore {
             return VocabularyBatchImportResult(
                 entries: entries,
                 addedCount: addedCount,
-                updatedCount: 0,
+                updatedCount: 0
             )
         }
 
@@ -330,9 +344,9 @@ enum VocabularyStore {
                 entries.insert(
                     VocabularyEntry(
                         term: normalizedTerm,
-                        source: importedItem.source,
+                        source: importedItem.source
                     ),
-                    at: 0,
+                    at: 0
                 )
                 addedCount += 1
             }
@@ -342,13 +356,13 @@ enum VocabularyStore {
         return VocabularyBatchImportResult(
             entries: load(),
             addedCount: addedCount,
-            updatedCount: 0,
+            updatedCount: 0
         )
     }
 
     private static func decodeImportedItems(
         from data: Data,
-        defaultSource: VocabularySource,
+        defaultSource: VocabularySource
     ) throws -> [VocabularyTransferItem] {
         let decoder = JSONDecoder()
         if let entries = try? decoder.decode([VocabularyTransferItem].self, from: data) {
@@ -360,8 +374,7 @@ enum VocabularyStore {
         }
 
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let terms = object["terms"] as? [String]
-        {
+           let terms = object["terms"] as? [String] {
             return terms.map { VocabularyTransferItem(term: $0, source: defaultSource) }
         }
 
@@ -395,11 +408,11 @@ enum VocabularyStore {
                 let existing = deduplicated[index]
                 deduplicated[index] = VocabularyTransferItem(
                     term: preferredSurface(existing: existing.term, imported: normalizedTerm),
-                    source: mergedSource(existing: existing.source, imported: item.source),
+                    source: mergedSource(existing: existing.source, imported: item.source)
                 )
             } else {
                 deduplicated.append(
-                    VocabularyTransferItem(term: normalizedTerm, source: item.source),
+                    VocabularyTransferItem(term: normalizedTerm, source: item.source)
                 )
                 indexByNormalizedTerm[key] = deduplicated.endIndex - 1
             }
@@ -423,7 +436,7 @@ enum VocabularyStore {
     /// automatic/other existing source.
     private static func mergedSource(
         existing: VocabularySource,
-        imported: VocabularySource,
+        imported: VocabularySource
     ) -> VocabularySource {
         if existing == .manual || imported == .manual {
             return .manual
@@ -449,7 +462,7 @@ enum VocabularyStore {
     private static func preferredSurface(existing: String, imported: String) -> String {
         let existingHasDecoratedCharacters = existing.hasVocabularyDecoration
         let importedHasDecoratedCharacters = imported.hasVocabularyDecoration
-        if importedHasDecoratedCharacters && !existingHasDecoratedCharacters {
+        if importedHasDecoratedCharacters, !existingHasDecoratedCharacters {
             return imported
         }
         return existing

@@ -2,14 +2,13 @@ import Foundation
 
 extension Notification.Name {
     static let autoModelDownloadStateDidChange = Notification.Name(
-        "AutoModelDownloadService.stateDidChange",
+        "AutoModelDownloadService.stateDidChange"
     )
 }
 
 // MARK: - Download Status
 
 enum AutoModelDownloadStatus: Equatable {
-    case disabled
     case notStarted
     case downloading(progress: Double)
     case completed
@@ -19,10 +18,6 @@ enum AutoModelDownloadStatus: Equatable {
 // MARK: - Persistent State
 
 private struct AutoModelState: Codable {
-    var isCompleted: Bool = false
-    var completedStoragePath: String?
-    var completedModelType: String?
-    var completedModelIdentifier: String?
     var attemptCount: Int = 0
     var lastAttemptDate: Date?
     var nextRetryDate: Date?
@@ -34,27 +29,28 @@ private struct AutoModelState: Codable {
 ///
 /// - All Macs (both Apple Silicon and Intel) use SenseVoice (sensevoice-small).
 ///
-/// The service maintains its own state independently of the user's local model settings,
-/// so it never overwrites the user's manually configured model record.
+/// Availability is determined by LocalModelManager's prepared model record and file
+/// validation. The service keeps only retry bookkeeping in UserDefaults, avoiding a
+/// second source of truth that can disagree with the Models settings page.
 ///
 /// Retry strategy:
-/// - On every app launch: retry immediately if not completed.
+/// - On every app launch: retry immediately if unavailable.
 /// - Within a session after failure: exponential backoff (1 min → 3 min → 9 min … capped at 3 h).
 final class AutoModelDownloadService {
-
     // MARK: - Threading
-    // All mutable state is protected by stateLock.
-    // UI notifications are always dispatched to the main queue.
+
+    /// All mutable state is protected by stateLock.
+    /// UI notifications are always dispatched to the main queue.
     private let stateLock = NSLock()
 
     // MARK: - Public observable state (read on any thread; assigned under stateLock, notified on main)
+
     private var _status: AutoModelDownloadStatus = .notStarted
     var status: AutoModelDownloadStatus {
         stateLock.withLock { _status }
     }
 
-    /// True when the auto model is ready to use for transcription.
-    /// Only ever transitions false → true.
+    /// True when the baseline model was ready at the last validation.
     var isModelReady: Bool {
         stateLock.withLock { _readyStoragePath != nil }
     }
@@ -70,6 +66,7 @@ final class AutoModelDownloadService {
 
     private var downloadTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
+    private var isDownloadInFlight = false
 
     private static let stateDefaultsKey = "stt.autoModelDownload.state"
     private static let maxBackoffInterval: TimeInterval = 3 * 60 * 60 // 3 hours
@@ -77,49 +74,31 @@ final class AutoModelDownloadService {
     init(
         modelManager: LocalModelManager,
         settingsStore: SettingsStore,
-        notificationService: LocalNotificationSending = NoopLocalNotificationService(),
+        notificationService: LocalNotificationSending = NoopLocalNotificationService()
     ) {
         self.modelManager = modelManager
         self.settingsStore = settingsStore
         self.notificationService = notificationService
-        NotificationCenter.default.addObserver(
-            forName: .localOptimizationDidEnable,
-            object: nil,
-            queue: .main,
-        ) { [weak self] _ in
-            self?.triggerIfNeeded()
-        }
     }
 
     // MARK: - Public API
 
-    /// Call once on app start. Starts a download if the model is not yet ready.
+    /// Call on app start and whenever baseline availability needs to be reconciled.
+    /// SenseVoice is a system fallback, so installation is independent of the local
+    /// optimization routing preference.
     func triggerIfNeeded() {
-        guard settingsStore.localOptimizationEnabled else {
-            setStatus(.disabled)
-            return
-        }
-
         let config = Self.recommendedConfiguration()
 
         if let prepared = modelManager.preparedModelInfo(for: config) {
             markReady(config: config, storagePath: prepared.storagePath)
             return
         }
+        guard !stateLock.withLock({ isDownloadInFlight }) else { return }
 
-        // If already downloaded in a previous session, mark ready immediately.
-        let state = loadState()
-        if state.isCompleted,
-           let path = state.completedStoragePath,
-           state.completedModelType == config.model.rawValue,
-           state.completedModelIdentifier == config.modelIdentifier,
-           modelManager.isStoragePathReady(path, for: config.model) {
-            markReady(config: config, storagePath: path)
-            return
-        }
-
-        // Always attempt download on launch (regardless of retry timer).
-        startDownload()
+        clearReady()
+        // Always attempt repair on launch/use. LocalModelManager reuses complete files
+        // already on disk and writes the canonical prepared record before returning.
+        startDownloadIfNeeded()
     }
 
     /// Creates a ready-to-use transcriber, or nil if the model is not yet available.
@@ -130,7 +109,15 @@ final class AutoModelDownloadService {
         let path = _readyStoragePath
         stateLock.unlock()
 
-        guard let config, let path else { return nil }
+        guard let config, let path else {
+            triggerIfNeeded()
+            return nil
+        }
+        guard modelManager.isStoragePathReady(path, for: config.model) else {
+            clearReady()
+            startDownloadIfNeeded()
+            return nil
+        }
 
         switch config.model {
         case .whisperLocal, .whisperLocalLarge:
@@ -150,68 +137,89 @@ final class AutoModelDownloadService {
     // MARK: - Device Detection
 
     static func recommendedConfiguration() -> LocalSTTConfiguration {
-        return LocalSTTConfiguration(
+        LocalSTTConfiguration(
             model: .senseVoiceSmall,
             modelIdentifier: LocalSTTModel.senseVoiceSmall.defaultModelIdentifier,
             downloadSource: .huggingFace,
-            autoSetup: true,
+            autoSetup: true
         )
     }
 
     // MARK: - Download
 
-    private func startDownload() {
+    private func startDownloadIfNeeded() {
+        let shouldStart = stateLock.withLock { () -> Bool in
+            guard !isDownloadInFlight else { return false }
+            isDownloadInFlight = true
+            return true
+        }
+        guard shouldStart else { return }
+
         retryTask?.cancel()
         retryTask = nil
-        downloadTask?.cancel()
         downloadTask = Task { [weak self] in
             await self?.performDownload()
         }
     }
 
     private func performDownload() async {
+        defer {
+            stateLock.withLock {
+                isDownloadInFlight = false
+                downloadTask = nil
+            }
+        }
+
         let config = Self.recommendedConfiguration()
         setStatus(.downloading(progress: 0))
+        LocalModelDownloadProgressCenter.shared.reportDownloading(model: config.model, progress: 0)
 
         var state = loadState()
         state.attemptCount += 1
         state.lastAttemptDate = Date()
-        state.completedModelType = config.model.rawValue
-        state.completedModelIdentifier = config.modelIdentifier
         saveState(state)
 
         do {
-            let storagePath = try await modelManager.downloadModelFilesOnly(
-                configuration: config,
-            ) { [weak self] update in
+            try await modelManager.prepareModel(configuration: config) { [weak self] update in
                 self?.setStatus(.downloading(progress: update.progress))
-            }
-
-            guard modelManager.isStoragePathReady(storagePath, for: config.model) else {
-                throw NSError(
-                    domain: "AutoModelDownloadService",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Model files not usable after download"],
+                LocalModelDownloadProgressCenter.shared.reportDownloading(
+                    model: config.model,
+                    progress: update.progress
                 )
             }
 
-            markReady(config: config, storagePath: storagePath)
+            guard let prepared = modelManager.preparedModelInfo(for: config) else {
+                throw NSError(
+                    domain: "AutoModelDownloadService",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Model is not usable after preparation"]
+                )
+            }
+
+            markReady(config: config, storagePath: prepared.storagePath)
 
             var completedState = loadState()
-            completedState.isCompleted = true
-            completedState.completedStoragePath = storagePath
+            completedState.attemptCount = 0
             completedState.nextRetryDate = nil
             saveState(completedState)
+            LocalModelDownloadProgressCenter.shared.clear()
             await notifyLocalModelReady()
 
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                LocalModelDownloadProgressCenter.shared.clear()
+                return
+            }
             NetworkDebugLogger.logError(context: "Auto model download failed", error: error)
             setStatus(.failed)
+            LocalModelDownloadProgressCenter.shared.reportFailed(
+                model: config.model,
+                message: error.localizedDescription
+            )
 
             var failedState = loadState()
             failedState.nextRetryDate = Date().addingTimeInterval(
-                Self.backoffInterval(for: failedState.attemptCount),
+                Self.backoffInterval(for: failedState.attemptCount)
             )
             saveState(failedState)
 
@@ -223,7 +231,7 @@ final class AutoModelDownloadService {
         await notificationService.sendLocalNotification(
             title: L("notification.localModelReady.title"),
             body: L("notification.localModelReady.body"),
-            identifier: "ai.gulu.app.typeflux.local-model-ready",
+            identifier: "ai.gulu.app.typeflux.local-model-ready"
         )
     }
 
@@ -233,7 +241,21 @@ final class AutoModelDownloadService {
             _readyStoragePath = storagePath
             _status = .completed
         }
+        LocalModelDownloadProgressCenter.shared.clear()
         notifyStateChanged()
+    }
+
+    private func clearReady() {
+        let needsNotify = stateLock.withLock { () -> Bool in
+            let needsNotify = _readyStoragePath != nil || _status == .completed
+            _readyConfig = nil
+            _readyStoragePath = nil
+            _status = .notStarted
+            return needsNotify
+        }
+        if needsNotify {
+            notifyStateChanged()
+        }
     }
 
     private func setStatus(_ newStatus: AutoModelDownloadStatus) {
@@ -259,7 +281,7 @@ final class AutoModelDownloadService {
         retryTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            self?.startDownload()
+            self?.startDownloadIfNeeded()
         }
     }
 

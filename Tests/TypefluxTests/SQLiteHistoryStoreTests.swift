@@ -26,14 +26,14 @@ final class SQLiteHistoryStoreTests: XCTestCase {
         date: Date = Date(),
         transcriptText: String? = nil,
         mode: HistoryRecord.Mode = .dictation,
-        audioFilePath: String? = nil,
+        audioFilePath: String? = nil
     ) -> HistoryRecord {
         HistoryRecord(
             id: id,
             date: date,
             mode: mode,
             audioFilePath: audioFilePath,
-            transcriptText: transcriptText,
+            transcriptText: transcriptText
         )
     }
 
@@ -77,6 +77,58 @@ final class SQLiteHistoryStoreTests: XCTestCase {
         let list = store.list()
         XCTAssertEqual(list.count, 1)
         XCTAssertEqual(list.first?.transcriptText, "updated")
+    }
+
+    func testSaveFetchAndExportPreserveProcessingDiagnostics() throws {
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+        let race = ASRRaceDiagnostics(
+            startedAt: startedAt,
+            selectedAt: startedAt.addingTimeInterval(3),
+            priorityWindowMilliseconds: 3_000,
+            decisionDurationMilliseconds: 3_000,
+            selectedSource: .local,
+            selectionReason: .localAtPriorityDeadline,
+            cloudPriorityWindowExceeded: true,
+            cloudAttempt: ASRAttemptDiagnostics(outcome: .cancelled, durationMilliseconds: 3_000),
+            localAttempt: ASRAttemptDiagnostics(
+                outcome: .succeeded,
+                durationMilliseconds: 800,
+                completedAt: startedAt.addingTimeInterval(0.8)
+            )
+        )
+        let llmOutcome = LLMProcessingOutcomeDiagnostics(
+            startedAt: startedAt.addingTimeInterval(3),
+            completedAt: startedAt.addingTimeInterval(6),
+            timeoutMilliseconds: 3_000,
+            outcome: .timedOutFallback,
+            usedTranscriptFallback: true,
+            baseTimeoutMilliseconds: 3_000,
+            estimatedInputUnits: 253,
+            firstOutputTimeoutMilliseconds: 4_000,
+            stallTimeoutMilliseconds: 10_000,
+            timeoutKind: .total
+        )
+        var record = makeRecord(transcriptText: "diagnostic transcript")
+        record.pipelineTiming = HistoryPipelineTiming(asrRace: race, llmOutcome: llmOutcome)
+
+        store.save(record: record)
+        flush()
+
+        let fetched = try XCTUnwrap(store.record(id: record.id))
+        XCTAssertEqual(fetched.pipelineTiming?.asrRace, race)
+        XCTAssertEqual(fetched.pipelineTiming?.llmOutcome, llmOutcome)
+        XCTAssertEqual(fetched.pipelineStats?.asrRace, race)
+        XCTAssertEqual(fetched.pipelineStats?.llmOutcome, llmOutcome)
+
+        let exportURL = try store.exportMarkdown()
+        let markdown = try String(contentsOf: exportURL, encoding: .utf8)
+        XCTAssertTrue(markdown.contains("ASR race selected: local"))
+        XCTAssertTrue(markdown.contains("Cloud: 3000 ms (cancelled)"))
+        XCTAssertTrue(markdown.contains("LLM outcome: timedOutFallback"))
+        XCTAssertTrue(markdown.contains("Base timeout: 3000 ms"))
+        XCTAssertTrue(markdown.contains("Estimated input units: 253"))
+        XCTAssertTrue(markdown.contains("Timeout kind: total"))
+        XCTAssertTrue(markdown.contains("Used transcript fallback: true"))
     }
 
     // MARK: - list
@@ -227,7 +279,7 @@ final class SQLiteHistoryStoreTests: XCTestCase {
     func testExportMarkdownGeneratesFile() throws {
         store.save(record: makeRecord(
             transcriptText: "hello world",
-            mode: .dictation,
+            mode: .dictation
         ))
         flush()
 

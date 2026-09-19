@@ -75,7 +75,12 @@ final class LLMRouterTests: XCTestCase {
 
     func testStreamRewriteRoutesToCorrectProvider() {
         settings.llmProvider = .openAICompatible
-        let request = LLMRewriteRequest(mode: .rewriteTranscript, sourceText: "test", spokenInstruction: nil, personaPrompt: nil)
+        let request = LLMRewriteRequest(
+            mode: .rewriteTranscript,
+            sourceText: "test",
+            spokenInstruction: nil,
+            personaPrompt: nil
+        )
         _ = router.streamRewrite(request: request)
         XCTAssertNotNil(openAISpy.lastStreamRewriteRequest)
         XCTAssertNil(ollamaSpy.lastStreamRewriteRequest)

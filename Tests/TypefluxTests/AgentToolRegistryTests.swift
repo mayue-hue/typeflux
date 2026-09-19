@@ -17,7 +17,7 @@ final class AgentToolRegistryTests: XCTestCase {
         let tools: [any AgentTool] = [
             AnswerTextTool(),
             EditTextTool(),
-            GetClipboardTool(clipboardService: clipboard),
+            GetClipboardTool(clipboardService: clipboard)
         ]
         await registry.registerAll(tools)
         let defs = await registry.definitions

@@ -17,7 +17,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"exists": true, "next": "login", "tip": "account exists"}
         """
-        let response = try JSONDecoder().decode(EnterEmailResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(EnterEmailResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertTrue(response.exists)
         XCTAssertEqual(response.next, "login")
         XCTAssertEqual(response.tip, "account exists")
@@ -27,7 +27,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"exists": false, "next": "register"}
         """
-        let response = try JSONDecoder().decode(EnterEmailResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(EnterEmailResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertFalse(response.exists)
         XCTAssertEqual(response.next, "register")
         XCTAssertNil(response.tip)
@@ -58,7 +58,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"sent": true}
         """
-        let response = try JSONDecoder().decode(RegisterResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(RegisterResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertTrue(response.sent)
     }
 
@@ -78,7 +78,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"activated": true}
         """
-        let response = try JSONDecoder().decode(ActivateResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(ActivateResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertTrue(response.activated)
     }
 
@@ -94,7 +94,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"sent": true}
         """
-        let response = try JSONDecoder().decode(ResendActivationResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(ResendActivationResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertTrue(response.sent)
     }
 
@@ -114,9 +114,9 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"access_token": "jwt.token.here", "expires_at": 1712867400}
         """
-        let response = try JSONDecoder().decode(LoginResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(LoginResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertEqual(response.accessToken, "jwt.token.here")
-        XCTAssertEqual(response.expiresAt, 1712867400)
+        XCTAssertEqual(response.expiresAt, 1_712_867_400)
         XCTAssertNil(response.refreshToken)
     }
 
@@ -124,9 +124,29 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"access_token": "jwt.token.here", "expires_at": 1712867400, "refresh_token": "rt_abc123"}
         """
-        let response = try JSONDecoder().decode(LoginResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(LoginResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertEqual(response.accessToken, "jwt.token.here")
-        XCTAssertEqual(response.expiresAt, 1712867400)
+        XCTAssertEqual(response.expiresAt, 1_712_867_400)
+        XCTAssertEqual(response.refreshToken, "rt_abc123")
+    }
+
+    func testLoginResponseDecodingAcceptsCamelCaseRefreshToken() throws {
+        let json = """
+        {"accessToken": "jwt.token.here", "expiresAt": 1712867400, "refreshToken": "rt_abc123"}
+        """
+        let response = try JSONDecoder().decode(LoginResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
+        XCTAssertEqual(response.accessToken, "jwt.token.here")
+        XCTAssertEqual(response.expiresAt, 1_712_867_400)
+        XCTAssertEqual(response.refreshToken, "rt_abc123")
+    }
+
+    func testLoginResponseDecodingAcceptsExpiresIn() throws {
+        let json = """
+        {"access_token": "jwt.token.here", "expires_in": 3600, "refresh_token": "rt_abc123"}
+        """
+        let response = try JSONDecoder().decode(LoginResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
+        XCTAssertEqual(response.accessToken, "jwt.token.here")
+        XCTAssertEqual(response.expiresAt, 3600)
         XCTAssertEqual(response.refreshToken, "rt_abc123")
     }
 
@@ -154,7 +174,7 @@ final class AuthModelsTests: XCTestCase {
         let data = try JSONEncoder().encode(request)
         let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertEqual(dict?["refresh_token"] as? String, "rt_mytoken123")
-        XCTAssertNil(dict?["refreshToken"])  // must use snake_case key
+        XCTAssertNil(dict?["refreshToken"]) // must use snake_case key
     }
 
     // MARK: - LogoutRequest
@@ -164,7 +184,7 @@ final class AuthModelsTests: XCTestCase {
         let data = try JSONEncoder().encode(request)
         let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertEqual(dict?["refresh_token"] as? String, "rt_logoutme")
-        XCTAssertNil(dict?["refreshToken"])  // must use snake_case key
+        XCTAssertNil(dict?["refreshToken"]) // must use snake_case key
     }
 
     // MARK: - LogoutResponse
@@ -173,7 +193,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"logged_out": true}
         """
-        let response = try JSONDecoder().decode(LogoutResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(LogoutResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertTrue(response.loggedOut)
     }
 
@@ -181,7 +201,7 @@ final class AuthModelsTests: XCTestCase {
         let json = """
         {"logged_out": false}
         """
-        let response = try JSONDecoder().decode(LogoutResponse.self, from: json.data(using: .utf8)!)
+        let response = try JSONDecoder().decode(LogoutResponse.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertFalse(response.loggedOut)
     }
 
@@ -199,7 +219,7 @@ final class AuthModelsTests: XCTestCase {
             "updated_at": "2024-04-09T12:00:00Z"
         }
         """
-        let profile = try JSONDecoder().decode(UserProfile.self, from: json.data(using: .utf8)!)
+        let profile = try JSONDecoder().decode(UserProfile.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertEqual(profile.id, "user-uuid-123")
         XCTAssertEqual(profile.email, "user@test.com")
         XCTAssertEqual(profile.name, "John Doe")
@@ -220,7 +240,7 @@ final class AuthModelsTests: XCTestCase {
             "updated_at": "2024-04-09T12:00:00Z"
         }
         """
-        let profile = try JSONDecoder().decode(UserProfile.self, from: json.data(using: .utf8)!)
+        let profile = try JSONDecoder().decode(UserProfile.self, from: XCTUnwrap(json.data(using: .utf8)))
         XCTAssertNil(profile.name)
         XCTAssertEqual(profile.resolvedDisplayName, "user@test.com")
     }
@@ -272,7 +292,7 @@ final class AuthModelsTests: XCTestCase {
         """
         let envelope = try JSONDecoder().decode(
             APIResponse<LoginResponse>.self,
-            from: json.data(using: .utf8)!,
+            from: XCTUnwrap(json.data(using: .utf8))
         )
         XCTAssertEqual(envelope.code, "OK")
         XCTAssertNil(envelope.message)
@@ -285,7 +305,7 @@ final class AuthModelsTests: XCTestCase {
         """
         let envelope = try JSONDecoder().decode(
             APIResponse<LoginResponse>.self,
-            from: json.data(using: .utf8)!,
+            from: XCTUnwrap(json.data(using: .utf8))
         )
         XCTAssertEqual(envelope.data?.refreshToken, "rt_xyz")
     }
@@ -296,7 +316,7 @@ final class AuthModelsTests: XCTestCase {
         """
         let envelope = try JSONDecoder().decode(
             APIResponse<LoginResponse>.self,
-            from: json.data(using: .utf8)!,
+            from: XCTUnwrap(json.data(using: .utf8))
         )
         XCTAssertEqual(envelope.code, "AUTH_INVALID_CREDENTIALS")
         XCTAssertEqual(envelope.message, "wrong password")
@@ -337,7 +357,10 @@ final class AuthModelsTests: XCTestCase {
         AppLocalization.shared.setLanguage(.english)
         defer { AppLocalization.shared.setLanguage(originalLanguage) }
 
-        let error = AuthError.serverError(code: "AUTH_REFRESH_TOKEN_INVALID", message: "invalid or expired refresh token")
+        let error = AuthError.serverError(
+            code: "AUTH_REFRESH_TOKEN_INVALID",
+            message: "invalid or expired refresh token"
+        )
         XCTAssertEqual(error.authErrorCode, "AUTH_REFRESH_TOKEN_INVALID")
         XCTAssertEqual(error.errorDescription, "Session expired. Please sign in again.")
     }

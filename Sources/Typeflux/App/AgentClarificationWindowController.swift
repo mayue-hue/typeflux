@@ -48,7 +48,7 @@ final class AgentClarificationWindowController: NSObject {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             guard let self, let window else { return }
             model.appearanceMode = self.settingsStore.appearanceMode
@@ -120,7 +120,7 @@ final class AgentClarificationWindowController: NSObject {
             contentRect: NSRect(x: 0, y: 0, width: Metrics.windowWidth, height: Metrics.windowHeight),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
-            defer: false,
+            defer: false
         )
 
         win.title = L("agent.clarification.windowTitle")
@@ -137,7 +137,7 @@ final class AgentClarificationWindowController: NSObject {
         applyAppearance(to: win)
 
         hostingView = hosting
-        self.window = win
+        window = win
     }
 
     private func applyAppearance(to window: NSWindow) {
@@ -176,7 +176,7 @@ private struct AgentClarificationWindowView: View {
             maxWidth: .infinity,
             minHeight: AgentClarificationWindowController.Metrics.minWindowHeight,
             idealHeight: AgentClarificationWindowController.Metrics.windowHeight,
-            maxHeight: .infinity,
+            maxHeight: .infinity
         )
     }
 
@@ -244,7 +244,7 @@ private struct AgentClarificationWindowView: View {
 
             MarkdownWebView(
                 markdown: model.modelResponse,
-                appearanceMode: model.appearanceMode,
+                appearanceMode: model.appearanceMode
             )
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -253,16 +253,16 @@ private struct AgentClarificationWindowView: View {
         .background(
             RoundedRectangle(
                 cornerRadius: AgentClarificationWindowController.Metrics.contentCardCornerRadius,
-                style: .continuous,
+                style: .continuous
             )
-            .fill(StudioTheme.surface),
+            .fill(StudioTheme.surface)
         )
         .overlay(
             RoundedRectangle(
                 cornerRadius: AgentClarificationWindowController.Metrics.contentCardCornerRadius,
-                style: .continuous,
+                style: .continuous
             )
-            .stroke(StudioTheme.border.opacity(0.85), lineWidth: 1),
+            .stroke(StudioTheme.border.opacity(0.85), lineWidth: 1)
         )
     }
 
@@ -300,22 +300,22 @@ private struct AgentClarificationWindowView: View {
     private var hintText: String {
         switch model.recordingState {
         case .waitingForReply:
-            return L("agent.clarification.hotkeyHint")
+            L("agent.clarification.hotkeyHint")
         case .recording:
-            return L("agent.clarification.recordingHint")
+            L("agent.clarification.recordingHint")
         case .transcribing:
-            return L("agent.clarification.transcribingHint")
+            L("agent.clarification.transcribingHint")
         }
     }
 
     private var hintColor: Color {
         switch model.recordingState {
         case .waitingForReply:
-            return StudioTheme.textSecondary
+            StudioTheme.textSecondary
         case .recording:
-            return .red
+            .red
         case .transcribing:
-            return StudioTheme.textSecondary
+            StudioTheme.textSecondary
         }
     }
 }

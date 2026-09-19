@@ -136,7 +136,7 @@ final class SQLiteAgentJobStore: AgentJobStore, @unchecked Sendable {
         let newColumns = [
             ("total_prompt_tokens", "INTEGER"),
             ("total_completion_tokens", "INTEGER"),
-            ("total_tokens", "INTEGER"),
+            ("total_tokens", "INTEGER")
         ]
         for (column, type) in newColumns where !existingColumns.contains(column) {
             try? execute(sql: "ALTER TABLE agent_jobs ADD COLUMN \(column) \(type);")
@@ -215,7 +215,7 @@ final class SQLiteAgentJobStore: AgentJobStore, @unchecked Sendable {
             bind: { statement in
                 sqlite3_bind_int64(statement, 1, sqlite3_int64(limit))
                 sqlite3_bind_int64(statement, 2, sqlite3_int64(offset))
-            },
+            }
         )
     }
 
@@ -231,13 +231,13 @@ final class SQLiteAgentJobStore: AgentJobStore, @unchecked Sendable {
             """,
             bind: { statement in
                 self.bind(id.uuidString, at: 1, in: statement)
-            },
+            }
         ).first
     }
 
     private func fetchJobs(
         sql: String,
-        bind: ((OpaquePointer?) -> Void)? = nil,
+        bind: ((OpaquePointer?) -> Void)? = nil
     ) throws -> [AgentJob] {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -298,7 +298,7 @@ final class SQLiteAgentJobStore: AgentJobStore, @unchecked Sendable {
             return LLMTokenUsage(
                 promptTokens: prompt,
                 completionTokens: completion,
-                totalTokens: total,
+                totalTokens: total
             )
         }()
 
@@ -315,7 +315,7 @@ final class SQLiteAgentJobStore: AgentJobStore, @unchecked Sendable {
             steps: decodeSteps(from: string(at: 9, in: statement)),
             totalDurationMs: totalDurationMs,
             outcomeType: string(at: 11, in: statement),
-            totalTokenUsage: totalTokenUsage,
+            totalTokenUsage: totalTokenUsage
         )
     }
 
@@ -375,7 +375,7 @@ final class SQLiteAgentJobStore: AgentJobStore, @unchecked Sendable {
         let detail = db.flatMap { sqlite3_errmsg($0) }.map { String(cString: $0) } ?? "unknown"
         let code = db.map { sqlite3_errcode($0) } ?? SQLITE_ERROR
         return NSError(domain: "SQLiteAgentJobStore", code: Int(code), userInfo: [
-            NSLocalizedDescriptionKey: "\(message): \(detail)",
+            NSLocalizedDescriptionKey: "\(message): \(detail)"
         ])
     }
 }

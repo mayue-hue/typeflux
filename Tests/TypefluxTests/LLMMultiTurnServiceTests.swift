@@ -105,7 +105,7 @@ final class LLMMultiTurnServiceTests: XCTestCase {
             .user("user input"),
             .assistant(AgentAssistantMessage(text: "let me check", toolCalls: [tc])),
             .toolResult(AgentToolResult(toolCallId: "tc1", content: "clipboard data", isError: false)),
-            .assistant(AgentAssistantMessage(text: "Here is the result", toolCalls: [])),
+            .assistant(AgentAssistantMessage(text: "Here is the result", toolCalls: []))
         ]
 
         let formatted = AgentMessage.toOpenAIMessages(messages)
@@ -123,7 +123,7 @@ final class LLMMultiTurnServiceTests: XCTestCase {
     func testAnthropicMessagesUseContentBlocks() {
         let messages: [AgentMessage] = [
             .system("sys"),
-            .user("Hello"),
+            .user("Hello")
         ]
         let formatted = AgentMessage.toAnthropicMessages(messages)
         // system should be excluded
@@ -138,7 +138,7 @@ final class LLMMultiTurnServiceTests: XCTestCase {
     func testGeminiContentsUseModelRole() {
         let messages: [AgentMessage] = [
             .user("Hello"),
-            .assistant(AgentAssistantMessage(text: "Hi", toolCalls: [])),
+            .assistant(AgentAssistantMessage(text: "Hi", toolCalls: []))
         ]
         let contents = AgentMessage.toGeminiContents(messages)
         XCTAssertEqual(contents.count, 2)

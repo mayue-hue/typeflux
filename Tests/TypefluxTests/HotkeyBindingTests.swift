@@ -41,7 +41,7 @@ final class HotkeyBindingTests: XCTestCase {
     func testIsRightCommandTrigger() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightCommandKeyCode,
-            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue)
         )
         XCTAssertTrue(binding.isRightCommandTrigger)
     }
@@ -49,7 +49,7 @@ final class HotkeyBindingTests: XCTestCase {
     func testIsNotRightCommandTriggerWrongKeyCode() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightCommandKeyCode + 1,
-            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue)
         )
         XCTAssertFalse(binding.isRightCommandTrigger)
     }
@@ -59,7 +59,7 @@ final class HotkeyBindingTests: XCTestCase {
     func testIsRightOptionTrigger() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightOptionKeyCode,
-            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue)
         )
         XCTAssertTrue(binding.isRightOptionTrigger)
     }
@@ -67,7 +67,7 @@ final class HotkeyBindingTests: XCTestCase {
     func testIsNotRightOptionTriggerWrongKeyCode() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightOptionKeyCode + 1,
-            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue)
         )
         XCTAssertFalse(binding.isRightOptionTrigger)
     }
@@ -100,7 +100,7 @@ final class HotkeyBindingTests: XCTestCase {
     func testModifierOnlyForRightCommand() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightCommandKeyCode,
-            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue)
         )
         XCTAssertTrue(binding.isModifierOnlyTrigger)
     }
@@ -108,7 +108,7 @@ final class HotkeyBindingTests: XCTestCase {
     func testModifierOnlyForRightOption() {
         let binding = HotkeyBinding(
             keyCode: HotkeyBinding.rightOptionKeyCode,
-            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue),
+            modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue)
         )
         XCTAssertTrue(binding.isModifierOnlyTrigger)
     }

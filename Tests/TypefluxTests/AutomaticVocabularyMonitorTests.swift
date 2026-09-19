@@ -8,31 +8,31 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 1000)
         var state = AutomaticVocabularyMonitor.makeObservationState(
             baselineText: "hello world",
-            startedAt: start,
+            startedAt: start
         )
 
         XCTAssertTrue(
             AutomaticVocabularyMonitor.observe(
                 text: "hello Doubao",
                 at: start.addingTimeInterval(1),
-                state: &state,
-            ),
+                state: &state
+            )
         )
 
         XCTAssertFalse(
             AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                 state: state,
                 now: start.addingTimeInterval(3),
-                idleSettleDelay: 8,
-            ),
+                idleSettleDelay: 8
+            )
         )
 
         XCTAssertTrue(
             AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                 state: state,
                 now: start.addingTimeInterval(9.1),
-                idleSettleDelay: 8,
-            ),
+                idleSettleDelay: 8
+            )
         )
     }
 
@@ -40,18 +40,18 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 2000)
         var state = AutomaticVocabularyMonitor.makeObservationState(
             baselineText: "hello world",
-            startedAt: start,
+            startedAt: start
         )
 
         _ = AutomaticVocabularyMonitor.observe(
             text: "hello Dou",
             at: start.addingTimeInterval(1),
-            state: &state,
+            state: &state
         )
         _ = AutomaticVocabularyMonitor.observe(
             text: "hello Doubao",
             at: start.addingTimeInterval(5),
-            state: &state,
+            state: &state
         )
 
         // 5 + 8 = 13, we're only at 12 → not yet
@@ -59,16 +59,16 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
             AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                 state: state,
                 now: start.addingTimeInterval(12),
-                idleSettleDelay: 8,
-            ),
+                idleSettleDelay: 8
+            )
         )
 
         XCTAssertTrue(
             AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                 state: state,
                 now: start.addingTimeInterval(13.1),
-                idleSettleDelay: 8,
-            ),
+                idleSettleDelay: 8
+            )
         )
     }
 
@@ -76,14 +76,14 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 3000)
         let state = AutomaticVocabularyMonitor.makeObservationState(
             baselineText: "hello world",
-            startedAt: start,
+            startedAt: start
         )
         XCTAssertFalse(
             AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                 state: state,
                 now: start.addingTimeInterval(60),
-                idleSettleDelay: 8,
-            ),
+                idleSettleDelay: 8
+            )
         )
     }
 
@@ -91,26 +91,26 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 4000)
         var state = AutomaticVocabularyMonitor.makeObservationState(
             baselineText: "hello world",
-            startedAt: start,
+            startedAt: start
         )
 
         _ = AutomaticVocabularyMonitor.observe(
             text: "hello Doubao",
             at: start.addingTimeInterval(1),
-            state: &state,
+            state: &state
         )
         _ = AutomaticVocabularyMonitor.observe(
             text: "hello world",
             at: start.addingTimeInterval(2),
-            state: &state,
+            state: &state
         )
 
         XCTAssertFalse(
             AutomaticVocabularyMonitor.shouldTriggerAnalysis(
                 state: state,
                 now: start.addingTimeInterval(20),
-                idleSettleDelay: 8,
-            ),
+                idleSettleDelay: 8
+            )
         )
     }
 
@@ -119,7 +119,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeExtractsNewLatinToken() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "Please review the prddraft text",
-            to: "Please review the PRDPlus text",
+            to: "Please review the PRDPlus text"
         )
 
         XCTAssertEqual(change?.candidateTerms, ["PRDPlus"])
@@ -128,7 +128,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeExpandsIntraWordReplacementToWholeToken() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "Please open Redmi docs",
-            to: "Please open Readme docs",
+            to: "Please open Readme docs"
         )
 
         XCTAssertEqual(change?.oldFragment, "Redmi")
@@ -139,7 +139,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeExpandsInsertedSuffixToWholeToken() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "I meant Readm",
-            to: "I meant Readme",
+            to: "I meant Readme"
         )
 
         XCTAssertEqual(change?.oldFragment, "Readm")
@@ -150,7 +150,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeExtractsNewHanToken() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "我在写豆包语音",
-            to: "我在写豆包 SeedASR",
+            to: "我在写豆包 SeedASR"
         )
 
         XCTAssertEqual(change?.candidateTerms, ["SeedASR"])
@@ -159,7 +159,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeReturnsNilWhenTextsAreIdentical() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "identical text",
-            to: "identical text",
+            to: "identical text"
         )
         XCTAssertNil(change)
     }
@@ -167,7 +167,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeHandlesMultipleTokenChanges() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "Please check the APIRef documentation",
-            to: "Please check the OpenAI APIRef documentation",
+            to: "Please check the OpenAI APIRef documentation"
         )
         XCTAssertNotNil(change)
         XCTAssertEqual(change?.candidateTerms, ["OpenAI"])
@@ -176,7 +176,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
     func testDetectChangeExtractsCaseOnlyAcronymCorrection() {
         let change = AutomaticVocabularyMonitor.detectChange(
             from: "Please check the gpt api response",
-            to: "Please check the GPT API response",
+            to: "Please check the GPT API response"
         )
 
         XCTAssertEqual(change?.oldFragment, "gpt api")
@@ -190,13 +190,13 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let change = AutomaticVocabularyChange(
             oldFragment: "",
             newFragment: "hello world",
-            candidateTerms: ["hello", "world"],
+            candidateTerms: ["hello", "world"]
         )
         XCTAssertTrue(
             AutomaticVocabularyMonitor.changeIsJustInitialInsertion(
                 change: change,
-                insertedText: "hello world",
-            ),
+                insertedText: "hello world"
+            )
         )
     }
 
@@ -207,13 +207,13 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let change = AutomaticVocabularyChange(
             oldFragment: "Doubao",
             newFragment: "Doubao SeedASR",
-            candidateTerms: ["SeedASR"],
+            candidateTerms: ["SeedASR"]
         )
         XCTAssertFalse(
             AutomaticVocabularyMonitor.changeIsJustInitialInsertion(
                 change: change,
-                insertedText: "Doubao",
-            ),
+                insertedText: "Doubao"
+            )
         )
     }
 
@@ -221,13 +221,13 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let change = AutomaticVocabularyChange(
             oldFragment: "prddraft",
             newFragment: "PRDPlus",
-            candidateTerms: ["PRDPlus"],
+            candidateTerms: ["PRDPlus"]
         )
         XCTAssertFalse(
             AutomaticVocabularyMonitor.changeIsJustInitialInsertion(
                 change: change,
-                insertedText: "please review the prddraft text",
-            ),
+                insertedText: "please review the prddraft text"
+            )
         )
     }
 
@@ -237,13 +237,13 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let change = AutomaticVocabularyChange(
             oldFragment: "",
             newFragment: "SeedASR Doubao",
-            candidateTerms: ["SeedASR", "Doubao"],
+            candidateTerms: ["SeedASR", "Doubao"]
         )
         XCTAssertTrue(
             AutomaticVocabularyMonitor.changeIsJustInitialInsertion(
                 change: change,
-                insertedText: "please check SeedASR and Doubao",
-            ),
+                insertedText: "please check SeedASR and Doubao"
+            )
         )
     }
 
@@ -251,13 +251,13 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let change = AutomaticVocabularyChange(
             oldFragment: "gpt api",
             newFragment: "GPT API",
-            candidateTerms: ["GPT", "API"],
+            candidateTerms: ["GPT", "API"]
         )
         XCTAssertFalse(
             AutomaticVocabularyMonitor.changeIsJustInitialInsertion(
                 change: change,
-                insertedText: "please check the gpt api response",
-            ),
+                insertedText: "please check the gpt api response"
+            )
         )
     }
 
@@ -268,10 +268,10 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
             AutomaticVocabularyMonitor.editRatio(
                 inserted: "hello world",
                 baseline: "hello world",
-                final: "hello world",
+                final: "hello world"
             ),
             0,
-            accuracy: 0.001,
+            accuracy: 0.001
         )
     }
 
@@ -280,10 +280,10 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
             AutomaticVocabularyMonitor.editRatio(
                 inserted: "HELLO",
                 baseline: "HELLO",
-                final: "hello",
+                final: "hello"
             ),
             0,
-            accuracy: 0.001,
+            accuracy: 0.001
         )
     }
 
@@ -293,7 +293,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let ratio = AutomaticVocabularyMonitor.editRatio(
             inserted: "please review the prddraft text",
             baseline: "please review the prddraft text",
-            final: "please review the PRDPlus text",
+            final: "please review the PRDPlus text"
         )
         XCTAssertLessThan(ratio, 0.35)
     }
@@ -302,7 +302,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let ratio = AutomaticVocabularyMonitor.editRatio(
             inserted: "hello world",
             baseline: "hello world",
-            final: "this is a completely different sentence written by the user",
+            final: "this is a completely different sentence written by the user"
         )
         XCTAssertGreaterThan(ratio, 1.0)
     }
@@ -314,10 +314,10 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
             AutomaticVocabularyMonitor.editRatio(
                 inserted: "hello world",
                 baseline: longBaseline,
-                final: longFinal,
+                final: longFinal
             ),
             1,
-            accuracy: 0.001,
+            accuracy: 0.001
         )
     }
 
@@ -328,7 +328,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let ratio = AutomaticVocabularyMonitor.editRatio(
             inserted: "hello world",
             baseline: prefix + " hello world",
-            final: prefix + " hello World!",
+            final: prefix + " hello World!"
         )
         XCTAssertLessThan(ratio, 0.4)
     }
@@ -339,8 +339,8 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
                 inserted: "please review the prddraft text",
                 baseline: "please review the prddraft text",
                 final: "please review the PRDPlus text",
-                ratioLimit: 0.6,
-            ),
+                ratioLimit: 0.6
+            )
         )
     }
 
@@ -350,8 +350,8 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
                 inserted: "hello world",
                 baseline: "hello world",
                 final: "this is a completely different sentence written by the user",
-                ratioLimit: 0.6,
-            ),
+                ratioLimit: 0.6
+            )
         )
     }
 
@@ -363,8 +363,8 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
                 inserted: "hello world",
                 baseline: longBaseline,
                 final: longFinal,
-                ratioLimit: 0.6,
-            ),
+                ratioLimit: 0.6
+            )
         )
     }
 
@@ -374,8 +374,8 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
                 inserted: "今天下午我们开会讨论了新产品的发布计划和市场策略",
                 baseline: "今天下午我们开会讨论了新产品的发布计划和市场策略",
                 final: "今天下午我们开会复盘了新产品的发布计划和市场策略",
-                ratioLimit: 0.6,
-            ),
+                ratioLimit: 0.6
+            )
         )
     }
 
@@ -383,7 +383,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
 
     func testParseAcceptedTermsSupportsJSONObject() {
         let terms = AutomaticVocabularyMonitor.parseAcceptedTerms(
-            from: #"{"terms":["SeedASR","Qwen3-ASR","SeedASR"]}"#,
+            from: #"{"terms":["SeedASR","Qwen3-ASR","SeedASR"]}"#
         )
 
         XCTAssertEqual(terms, ["SeedASR", "Qwen3-ASR"])
@@ -395,7 +395,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
             ```json
             {"terms":["mylxsw","cc-src-learning"]}
             ```
-            """,
+            """
         )
 
         XCTAssertEqual(terms, ["mylxsw", "cc-src-learning"])
@@ -403,7 +403,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
 
     func testParseAcceptedTermsRejectsShortEnglishTerms() {
         let terms = AutomaticVocabularyMonitor.parseAcceptedTerms(
-            from: #"{"terms":["A","AI","UI","GPT","GPT4"]}"#,
+            from: #"{"terms":["A","AI","UI","GPT","GPT4"]}"#
         )
         // A (1), AI (2), UI (2) rejected; GPT (3) and GPT4 (4) both pass under the
         // relaxed 3-char minimum for English/Latin acronyms.
@@ -412,14 +412,14 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
 
     func testParseAcceptedTermsRejectsPureDigits() {
         let terms = AutomaticVocabularyMonitor.parseAcceptedTerms(
-            from: #"{"terms":["123","12345","Rust"]}"#,
+            from: #"{"terms":["123","12345","Rust"]}"#
         )
         XCTAssertEqual(terms, ["Rust"])
     }
 
     func testParseAcceptedTermsAcceptsShortHanTerms() {
         let terms = AutomaticVocabularyMonitor.parseAcceptedTerms(
-            from: #"{"terms":["向量","推理","数","向量数据库"]}"#,
+            from: #"{"terms":["向量","推理","数","向量数据库"]}"#
         )
         XCTAssertEqual(terms, ["向量", "推理", "向量数据库"])
     }
@@ -440,7 +440,7 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 5000)
         let state = AutomaticVocabularyMonitor.makeObservationState(
             baselineText: "initial text",
-            startedAt: start,
+            startedAt: start
         )
         XCTAssertEqual(state.baselineText, "initial text")
         XCTAssertEqual(state.latestObservedText, "initial text")
@@ -452,12 +452,12 @@ final class AutomaticVocabularyMonitorTests: XCTestCase {
         let start = Date(timeIntervalSince1970: 6000)
         var state = AutomaticVocabularyMonitor.makeObservationState(
             baselineText: "same text",
-            startedAt: start,
+            startedAt: start
         )
         let changed = AutomaticVocabularyMonitor.observe(
             text: "same text",
             at: start.addingTimeInterval(1),
-            state: &state,
+            state: &state
         )
         XCTAssertFalse(changed)
     }

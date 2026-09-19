@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import AppKit
 import SwiftUI
 
@@ -37,39 +38,39 @@ final class AskAnswerWindowController: NSObject {
     fileprivate enum Palette {
         static let windowBackground = StudioTheme.dynamic(
             light: NSColor(calibratedRed: 0.968, green: 0.976, blue: 0.990, alpha: 0.96),
-            dark: NSColor(calibratedRed: 0.060, green: 0.068, blue: 0.084, alpha: 0.94),
+            dark: NSColor(calibratedRed: 0.060, green: 0.068, blue: 0.084, alpha: 0.94)
         )
         static let windowBackgroundLower = StudioTheme.dynamic(
             light: NSColor(calibratedRed: 0.992, green: 0.996, blue: 1.000, alpha: 0.94),
-            dark: NSColor(calibratedRed: 0.078, green: 0.084, blue: 0.105, alpha: 0.92),
+            dark: NSColor(calibratedRed: 0.078, green: 0.084, blue: 0.105, alpha: 0.92)
         )
         static let promptSurface = StudioTheme.dynamic(
             light: NSColor(calibratedRed: 0.925, green: 0.938, blue: 1.000, alpha: 0.92),
-            dark: NSColor(calibratedRed: 0.125, green: 0.130, blue: 0.180, alpha: 0.95),
+            dark: NSColor(calibratedRed: 0.125, green: 0.130, blue: 0.180, alpha: 0.95)
         )
         static let answerSurface = StudioTheme.dynamic(
             light: NSColor(calibratedWhite: 1.0, alpha: 0.98),
-            dark: NSColor(calibratedRed: 0.105, green: 0.112, blue: 0.145, alpha: 0.95),
+            dark: NSColor(calibratedRed: 0.105, green: 0.112, blue: 0.145, alpha: 0.95)
         )
         static let cardHighlight = StudioTheme.dynamic(
             light: NSColor(calibratedWhite: 1.0, alpha: 0.74),
-            dark: NSColor(calibratedWhite: 1.0, alpha: 0.055),
+            dark: NSColor(calibratedWhite: 1.0, alpha: 0.055)
         )
         static let border = StudioTheme.dynamic(
             light: NSColor(calibratedRed: 0.48, green: 0.56, blue: 0.72, alpha: 0.14),
-            dark: NSColor(calibratedWhite: 1.0, alpha: 0.13),
+            dark: NSColor(calibratedWhite: 1.0, alpha: 0.13)
         )
         static let questionAccent = StudioTheme.dynamic(
             light: NSColor(calibratedRed: 0.36, green: 0.34, blue: 0.94, alpha: 1),
-            dark: NSColor(calibratedRed: 0.64, green: 0.52, blue: 1.0, alpha: 1),
+            dark: NSColor(calibratedRed: 0.64, green: 0.52, blue: 1.0, alpha: 1)
         )
         static let answerAccent = StudioTheme.dynamic(
             light: NSColor(calibratedRed: 0.17, green: 0.78, blue: 0.54, alpha: 1),
-            dark: NSColor(calibratedRed: 0.30, green: 0.82, blue: 0.55, alpha: 1),
+            dark: NSColor(calibratedRed: 0.30, green: 0.82, blue: 0.55, alpha: 1)
         )
         static let composerSurface = StudioTheme.dynamic(
             light: NSColor(calibratedWhite: 1.0, alpha: 0.58),
-            dark: NSColor(calibratedRed: 0.105, green: 0.110, blue: 0.136, alpha: 0.58),
+            dark: NSColor(calibratedRed: 0.105, green: 0.110, blue: 0.136, alpha: 0.58)
         )
     }
 
@@ -96,19 +97,21 @@ final class AskAnswerWindowController: NSObject {
 
     private let clipboard: ClipboardService
     private let settingsStore: SettingsStore
+    private let outputPostProcessor: OutputPostProcessing
 
     private var sessions: [ObjectIdentifier: WindowSession] = [:]
     private var appearanceObserver: NSObjectProtocol?
 
-    init(clipboard: ClipboardService, settingsStore: SettingsStore) {
+    init(clipboard: ClipboardService, settingsStore: SettingsStore, outputPostProcessor: OutputPostProcessing) {
         self.clipboard = clipboard
         self.settingsStore = settingsStore
+        self.outputPostProcessor = outputPostProcessor
         super.init()
 
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             guard let self else { return }
             for session in sessions.values {
@@ -125,6 +128,7 @@ final class AskAnswerWindowController: NSObject {
         }
     }
 
+    // swiftlint:disable:next function_body_length
     func show(title: String, question: String, selectedText: String?, answerMarkdown: String) {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
@@ -152,7 +156,13 @@ final class AskAnswerWindowController: NSObject {
             self?.clipboard.write(text: promptText)
         }
         model.onAnswerCopyRequested = { [weak self] in
-            self?.clipboard.write(text: trimmedAnswer)
+            guard let self else { return }
+            Task {
+                let processedAnswer = await self.outputPostProcessor.process(trimmedAnswer)
+                await MainActor.run {
+                    self.clipboard.write(text: processedAnswer)
+                }
+            }
         }
 
         NetworkDebugLogger.logMessage(
@@ -163,7 +173,7 @@ final class AskAnswerWindowController: NSObject {
             Selected Text Length: \(trimmedSelectedText.count)
             Answer Markdown Length: \(trimmedAnswer.count)
             Answer Markdown Preview: \(String(trimmedAnswer.prefix(160)))
-            """,
+            """
         )
 
         let session = makeWindowSession(model: model)
@@ -176,8 +186,8 @@ final class AskAnswerWindowController: NSObject {
         NetworkDebugLogger.logMessage(
             String(
                 format: "[Ask Timing] answer window presented in %.1fms",
-                Date().timeIntervalSince(presentationStartedAt) * 1_000,
-            ),
+                Date().timeIntervalSince(presentationStartedAt) * 1000
+            )
         )
         _ = title
     }
@@ -202,7 +212,7 @@ final class AskAnswerWindowController: NSObject {
             contentRect: NSRect(x: 0, y: 0, width: Metrics.windowWidth, height: Metrics.windowHeight),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
-            defer: false,
+            defer: false
         )
 
         window.title = L("workflow.ask.answerTitle")
@@ -296,7 +306,7 @@ private struct AskAnswerWindowView: View {
             maxWidth: .infinity,
             minHeight: AskAnswerWindowController.Metrics.minWindowHeight,
             idealHeight: AskAnswerWindowController.Metrics.windowHeight,
-            maxHeight: .infinity,
+            maxHeight: .infinity
         )
         .background(Color.clear)
         .ignoresSafeArea(.container, edges: .top)
@@ -310,19 +320,19 @@ private struct AskAnswerWindowView: View {
             LinearGradient(
                 colors: [
                     AskAnswerWindowController.Palette.windowBackground,
-                    AskAnswerWindowController.Palette.windowBackgroundLower,
+                    AskAnswerWindowController.Palette.windowBackgroundLower
                 ],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing,
+                endPoint: .bottomTrailing
             )
 
             LinearGradient(
                 colors: [
                     StudioTheme.windowHighlight.opacity(0.36),
-                    Color.clear,
+                    Color.clear
                 ],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing,
+                endPoint: .bottomTrailing
             )
         }
     }
@@ -343,9 +353,9 @@ private struct AskAnswerWindowView: View {
 
             ZStack(alignment: .bottomTrailing) {
                 MarkdownSwiftUIView(markdown: model.answerMarkdown)
-                .padding(.top, AskAnswerWindowController.Metrics.answerContentTopPadding)
-                .padding(.bottom, 28)
-                .frame(maxWidth: .infinity)
+                    .padding(.top, AskAnswerWindowController.Metrics.answerContentTopPadding)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: .infinity)
 
                 copyButton(isVisible: isAnswerHovered) {
                     model.onAnswerCopyRequested?()
@@ -354,14 +364,14 @@ private struct AskAnswerWindowView: View {
             .padding(AskAnswerWindowController.Metrics.contentCardPadding)
             .frame(
                 maxWidth: AskAnswerWindowController.Metrics.answerMaxWidth,
-                alignment: .topLeading,
+                alignment: .topLeading
             )
             .background(cardBackground(fill: AskAnswerWindowController.Palette.answerSurface))
             .overlay(cardBorder)
             .shadow(color: Color.black.opacity(0.07), radius: 18, x: 0, y: 10)
             .contentShape(RoundedRectangle(
                 cornerRadius: AskAnswerWindowController.Metrics.contentCardCornerRadius,
-                style: .continuous,
+                style: .continuous
             ))
             .onHover { isAnswerHovered = $0 }
 
@@ -402,7 +412,7 @@ private struct AskAnswerWindowView: View {
                     .foregroundStyle(StudioTheme.textTertiary.opacity(0.76))
                     .frame(
                         width: AskAnswerWindowController.Metrics.composerButtonSize,
-                        height: AskAnswerWindowController.Metrics.composerButtonSize,
+                        height: AskAnswerWindowController.Metrics.composerButtonSize
                     )
                     .background(Circle().fill(StudioTheme.textTertiary.opacity(0.10)))
             }
@@ -414,21 +424,21 @@ private struct AskAnswerWindowView: View {
         .frame(
             maxWidth: .infinity,
             minHeight: AskAnswerWindowController.Metrics.composerHeight,
-            maxHeight: AskAnswerWindowController.Metrics.composerHeight,
+            maxHeight: AskAnswerWindowController.Metrics.composerHeight
         )
         .background(
             RoundedRectangle(
                 cornerRadius: AskAnswerWindowController.Metrics.composerCornerRadius,
-                style: .continuous,
+                style: .continuous
             )
-            .fill(AskAnswerWindowController.Palette.composerSurface),
+            .fill(AskAnswerWindowController.Palette.composerSurface)
         )
         .overlay(
             RoundedRectangle(
                 cornerRadius: AskAnswerWindowController.Metrics.composerCornerRadius,
-                style: .continuous,
+                style: .continuous
             )
-            .stroke(AskAnswerWindowController.Palette.border, lineWidth: 1),
+            .stroke(AskAnswerWindowController.Palette.border, lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.025), radius: 8, x: 0, y: 3)
         .opacity(0.72)
@@ -440,23 +450,23 @@ private struct AskAnswerWindowView: View {
     private func cardBackground(fill: Color) -> some View {
         RoundedRectangle(
             cornerRadius: AskAnswerWindowController.Metrics.contentCardCornerRadius,
-            style: .continuous,
+            style: .continuous
         )
         .fill(fill)
         .overlay(alignment: .top) {
             RoundedRectangle(
                 cornerRadius: AskAnswerWindowController.Metrics.contentCardCornerRadius,
-                style: .continuous,
+                style: .continuous
             )
             .fill(
                 LinearGradient(
                     colors: [
                         AskAnswerWindowController.Palette.cardHighlight,
-                        Color.clear,
+                        Color.clear
                     ],
                     startPoint: .top,
-                    endPoint: .bottom,
-                ),
+                    endPoint: .bottom
+                )
             )
         }
     }
@@ -464,7 +474,7 @@ private struct AskAnswerWindowView: View {
     private var cardBorder: some View {
         RoundedRectangle(
             cornerRadius: AskAnswerWindowController.Metrics.contentCardCornerRadius,
-            style: .continuous,
+            style: .continuous
         )
         .stroke(AskAnswerWindowController.Palette.border, lineWidth: 1)
     }
@@ -476,7 +486,7 @@ private struct AskAnswerWindowView: View {
                 .foregroundStyle(StudioTheme.textTertiary)
                 .frame(
                     width: AskAnswerWindowController.Metrics.headerButtonSize,
-                    height: AskAnswerWindowController.Metrics.headerButtonSize,
+                    height: AskAnswerWindowController.Metrics.headerButtonSize
                 )
         }
         .buttonStyle(.plain)
@@ -503,14 +513,14 @@ private struct AskAnswerWindowView: View {
         .frame(
             maxWidth: AskAnswerWindowController.Metrics.promptBubbleMaxWidth,
             minHeight: AskAnswerWindowController.Metrics.promptBubbleMinHeight,
-            alignment: .center,
+            alignment: .center
         )
         .background(promptBubbleBackground)
         .overlay(promptBubbleBorder)
         .shadow(color: AskAnswerWindowController.Palette.questionAccent.opacity(0.10), radius: 14, x: 0, y: 8)
         .contentShape(RoundedRectangle(
             cornerRadius: AskAnswerWindowController.Metrics.promptBubbleCornerRadius,
-            style: .continuous,
+            style: .continuous
         ))
         .onTapGesture {
             guard !model.selectedText.isEmpty else { return }
@@ -552,11 +562,11 @@ private struct AskAnswerWindowView: View {
                     LinearGradient(
                         colors: [
                             AskAnswerWindowController.Palette.questionAccent.opacity(0.12),
-                            AskAnswerWindowController.Palette.questionAccent.opacity(0.25),
+                            AskAnswerWindowController.Palette.questionAccent.opacity(0.25)
                         ],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing,
-                    ),
+                        endPoint: .bottomTrailing
+                    )
                 )
                 .shadow(color: AskAnswerWindowController.Palette.questionAccent.opacity(0.18), radius: 12, x: 0, y: 7)
 
@@ -566,7 +576,7 @@ private struct AskAnswerWindowView: View {
         }
         .frame(
             width: AskAnswerWindowController.Metrics.avatarSize,
-            height: AskAnswerWindowController.Metrics.avatarSize,
+            height: AskAnswerWindowController.Metrics.avatarSize
         )
     }
 
@@ -575,36 +585,36 @@ private struct AskAnswerWindowView: View {
             size: AskAnswerWindowController.Metrics.avatarSize,
             symbolSize: 18,
             backgroundShape: .circle,
-            showsBorder: false,
+            showsBorder: false
         )
         .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
         .frame(
             width: AskAnswerWindowController.Metrics.avatarSize,
-            height: AskAnswerWindowController.Metrics.avatarSize,
+            height: AskAnswerWindowController.Metrics.avatarSize
         )
     }
 
     private var promptBubbleBackground: some View {
         RoundedRectangle(
             cornerRadius: AskAnswerWindowController.Metrics.promptBubbleCornerRadius,
-            style: .continuous,
+            style: .continuous
         )
         .fill(
             LinearGradient(
                 colors: [
                     AskAnswerWindowController.Palette.promptSurface,
-                    AskAnswerWindowController.Palette.promptSurface.opacity(0.78),
+                    AskAnswerWindowController.Palette.promptSurface.opacity(0.78)
                 ],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing,
-            ),
+                endPoint: .bottomTrailing
+            )
         )
     }
 
     private var promptBubbleBorder: some View {
         RoundedRectangle(
             cornerRadius: AskAnswerWindowController.Metrics.promptBubbleCornerRadius,
-            style: .continuous,
+            style: .continuous
         )
         .stroke(AskAnswerWindowController.Palette.questionAccent.opacity(0.13), lineWidth: 1)
     }

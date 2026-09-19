@@ -55,14 +55,14 @@ struct GoogleOAuthService {
     static func signIn(clientID: String, clientSecret: String? = nil) async throws -> String {
         let authorization = makeAuthorizationRequest(
             clientID: clientID,
-            scopes: ["openid", "email", "profile"],
+            scopes: ["openid", "email", "profile"]
         )
 
         logger.debug("[Google OAuth] auth URL: \(authorization.url.absoluteString, privacy: .public)")
         let code = try await openAuthSession(
             url: authorization.url,
             scheme: authorization.callbackScheme,
-            expectedState: authorization.state,
+            expectedState: authorization.state
         )
         logger.debug("[Google OAuth] received code (first 12 chars): \(String(code.prefix(12)), privacy: .public)...")
         let response = try await exchangeAuthorizationCode(
@@ -86,21 +86,21 @@ struct GoogleOAuthService {
             clientID: clientID,
             scopes: ["https://www.googleapis.com/auth/cloud-platform"],
             accessType: "offline",
-            prompt: "consent",
+            prompt: "consent"
         )
 
         logger.debug("[Google OAuth] cloud-platform auth URL: \(authorization.url.absoluteString, privacy: .public)")
         let code = try await openAuthSession(
             url: authorization.url,
             scheme: authorization.callbackScheme,
-            expectedState: authorization.state,
+            expectedState: authorization.state
         )
         let response = try await exchangeAuthorizationCode(
             code: code,
             codeVerifier: authorization.codeVerifier,
             clientID: clientID,
             clientSecret: clientSecret,
-            redirectURI: "\(authorization.callbackScheme):/",
+            redirectURI: "\(authorization.callbackScheme):/"
         )
         guard let accessToken = response.accessToken,
               let expiresIn = response.expiresIn
@@ -111,7 +111,7 @@ struct GoogleOAuthService {
         return GoogleCloudSpeechOAuthToken(
             accessToken: accessToken,
             refreshToken: response.refreshToken,
-            expiresAt: Int(Date().timeIntervalSince1970) + expiresIn,
+            expiresAt: Int(Date().timeIntervalSince1970) + expiresIn
         )
     }
 
@@ -123,7 +123,7 @@ struct GoogleOAuthService {
         var params: [String: String] = [
             "client_id": clientID,
             "grant_type": "refresh_token",
-            "refresh_token": refreshToken,
+            "refresh_token": refreshToken
         ]
         if let clientSecret, !clientSecret.isEmpty {
             params["client_secret"] = clientSecret
@@ -139,7 +139,7 @@ struct GoogleOAuthService {
         return GoogleCloudSpeechOAuthToken(
             accessToken: accessToken,
             refreshToken: response.refreshToken ?? refreshToken,
-            expiresAt: Int(Date().timeIntervalSince1970) + expiresIn,
+            expiresAt: Int(Date().timeIntervalSince1970) + expiresIn
         )
     }
 
@@ -163,7 +163,7 @@ struct GoogleOAuthService {
             URLQueryItem(name: "scope", value: scopes.joined(separator: " ")),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "state", value: state)
         ]
         if let accessType {
             queryItems.append(URLQueryItem(name: "access_type", value: accessType))
@@ -179,7 +179,7 @@ struct GoogleOAuthService {
             url: components.url!,
             callbackScheme: scheme,
             state: state,
-            codeVerifier: codeVerifier,
+            codeVerifier: codeVerifier
         )
     }
 
@@ -244,7 +244,7 @@ struct GoogleOAuthService {
             "client_id": clientID,
             "redirect_uri": redirectURI,
             "grant_type": "authorization_code",
-            "code_verifier": codeVerifier,
+            "code_verifier": codeVerifier
         ]
         if let secret = clientSecret, !secret.isEmpty {
             params["client_secret"] = secret
@@ -275,10 +275,25 @@ struct GoogleOAuthService {
         let statusCode = (urlResponse as? HTTPURLResponse)?.statusCode ?? -1
         let rawResponse = String(data: data, encoding: .utf8) ?? "<non-utf8>"
         let redactedResponse = rawResponse
-            .replacingOccurrences(of: #""access_token"\s*:\s*"[^"]+""#, with: "\"access_token\":\"***\"", options: .regularExpression)
-            .replacingOccurrences(of: #""refresh_token"\s*:\s*"[^"]+""#, with: "\"refresh_token\":\"***\"", options: .regularExpression)
-            .replacingOccurrences(of: #""id_token"\s*:\s*"[^"]+""#, with: "\"id_token\":\"***\"", options: .regularExpression)
-        logger.debug("[Google OAuth] token response [\(statusCode, privacy: .public)]: \(redactedResponse, privacy: .public)")
+            .replacingOccurrences(
+                of: #""access_token"\s*:\s*"[^"]+""#,
+                with: "\"access_token\":\"***\"",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #""refresh_token"\s*:\s*"[^"]+""#,
+                with: "\"refresh_token\":\"***\"",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #""id_token"\s*:\s*"[^"]+""#,
+                with: "\"id_token\":\"***\"",
+                options: .regularExpression
+            )
+        logger
+            .debug(
+                "[Google OAuth] token response [\(statusCode, privacy: .public)]: \(redactedResponse, privacy: .public)"
+            )
 
         let response = try JSONDecoder().decode(TokenExchangeResponse.self, from: data)
         if let error = response.error {
@@ -331,7 +346,7 @@ enum GoogleAuthError: LocalizedError {
             "Failed to retrieve Google ID token."
         case .missingAccessToken:
             "Failed to retrieve Google access token."
-        case .tokenExchangeFailed(let reason):
+        case let .tokenExchangeFailed(reason):
             "Google token exchange failed: \(reason)"
         }
     }

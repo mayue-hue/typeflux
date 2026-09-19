@@ -58,7 +58,7 @@ final class AgentMessageProviderFormatTests: XCTestCase {
             .system("sys"),
             .user("user input"),
             .assistant(AgentAssistantMessage(text: nil, toolCalls: [tc])),
-            .toolResult(AgentToolResult(toolCallId: "tc1", content: "result", isError: false)),
+            .toolResult(AgentToolResult(toolCallId: "tc1", content: "result", isError: false))
         ]
         let formatted = AgentMessage.toOpenAIMessages(messages)
         XCTAssertEqual(formatted.count, 4)
@@ -73,7 +73,7 @@ final class AgentMessageProviderFormatTests: XCTestCase {
     func testAnthropicSystemExtracted() {
         let messages: [AgentMessage] = [
             .system("You are helpful."),
-            .user("Hello!"),
+            .user("Hello!")
         ]
         let system = AgentMessage.extractAnthropicSystemPrompt(messages)
         XCTAssertEqual(system, "You are helpful.")
@@ -82,7 +82,7 @@ final class AgentMessageProviderFormatTests: XCTestCase {
     func testAnthropicSystemExcludedFromMessages() {
         let messages: [AgentMessage] = [
             .system("sys"),
-            .user("Hello!"),
+            .user("Hello!")
         ]
         let formatted = AgentMessage.toAnthropicMessages(messages)
         XCTAssertEqual(formatted.count, 1)
@@ -135,7 +135,7 @@ final class AgentMessageProviderFormatTests: XCTestCase {
     func testGeminiSystemExcludedFromContents() {
         let messages: [AgentMessage] = [
             .system("sys"),
-            .user("Hello!"),
+            .user("Hello!")
         ]
         let contents = AgentMessage.toGeminiContents(messages)
         XCTAssertEqual(contents.count, 1)
@@ -185,7 +185,7 @@ extension AgentMessageProviderFormatTests {
         let messages: [AgentMessage] = [
             .system("Rule 1."),
             .user("hello"),
-            .system("Rule 2."),
+            .system("Rule 2.")
         ]
         let result = AgentMessage.extractAnthropicSystemPrompt(messages)
         XCTAssertEqual(result, "Rule 1.\n\nRule 2.")

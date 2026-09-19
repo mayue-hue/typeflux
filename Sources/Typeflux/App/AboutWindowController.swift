@@ -22,7 +22,7 @@ final class AboutWindowController: NSObject {
         languageObserver = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let window = self.window else { return }
@@ -33,7 +33,7 @@ final class AboutWindowController: NSObject {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearanceModeDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let window = self.window else { return }
@@ -61,7 +61,7 @@ final class AboutWindowController: NSObject {
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
-            defer: false,
+            defer: false
         )
         window.title = L("window.about")
         window.titleVisibility = .hidden

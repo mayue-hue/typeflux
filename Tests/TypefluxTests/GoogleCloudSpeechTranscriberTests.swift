@@ -1,6 +1,6 @@
 import GRPC
-import XCTest
 @testable import Typeflux
+import XCTest
 
 final class GoogleCloudSpeechTranscriberTests: XCTestCase {
     func testConfigurationTrimsCredentialsAndBuildsUnderscoreRecognizer() throws {
@@ -8,7 +8,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "  demo-project  ",
             apiKey: "  test-key  ",
             model: "  latest_long  ",
-            appLanguage: .english,
+            appLanguage: .english
         )
 
         XCTAssertEqual(configuration.projectID, "demo-project")
@@ -21,7 +21,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
         XCTAssertEqual(configuration.recognizer, "projects/demo-project/locations/global/recognizers/_")
         XCTAssertEqual(
             configuration.routingMetadataValue,
-            "recognizer=projects%2Fdemo-project%2Flocations%2Fglobal%2Frecognizers%2F_",
+            "recognizer=projects%2Fdemo-project%2Flocations%2Fglobal%2Frecognizers%2F_"
         )
     }
 
@@ -30,7 +30,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "test-key",
             model: " ",
-            appLanguage: .simplifiedChinese,
+            appLanguage: .simplifiedChinese
         )
 
         XCTAssertEqual(configuration.model, GoogleCloudSpeechDefaults.model)
@@ -45,7 +45,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "test-key",
             model: " chirp_3 ",
-            appLanguage: .english,
+            appLanguage: .english
         )
 
         XCTAssertEqual(configuration.model, "chirp_3")
@@ -54,7 +54,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
         XCTAssertEqual(configuration.recognizer, "projects/demo-project/locations/us/recognizers/_")
         XCTAssertEqual(
             configuration.routingMetadataValue,
-            "recognizer=projects%2Fdemo-project%2Flocations%2Fus%2Frecognizers%2F_",
+            "recognizer=projects%2Fdemo-project%2Flocations%2Fus%2Frecognizers%2F_"
         )
     }
 
@@ -63,13 +63,13 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "test-key",
             model: "chirp",
-            appLanguage: .simplifiedChinese,
+            appLanguage: .simplifiedChinese
         )
         let chirp2 = try GoogleCloudSpeechConfiguration(
             projectID: "demo-project",
             apiKey: "test-key",
             model: "chirp_2",
-            appLanguage: .simplifiedChinese,
+            appLanguage: .simplifiedChinese
         )
 
         XCTAssertEqual(chirp.location, "global")
@@ -81,7 +81,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
     func testSuggestedModelsExcludeUnavailableChirpModels() {
         XCTAssertEqual(
             GoogleCloudSpeechDefaults.suggestedModels,
-            ["chirp_3", "long", "short", "latest_long", "latest_short"],
+            ["chirp_3", "long", "short", "latest_long", "latest_short"]
         )
         XCTAssertFalse(GoogleCloudSpeechDefaults.suggestedModels.contains("chirp"))
         XCTAssertFalse(GoogleCloudSpeechDefaults.suggestedModels.contains("chirp_2"))
@@ -92,7 +92,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "AIzaExampleCredential",
             model: "chirp_3",
-            appLanguage: .english,
+            appLanguage: .english
         )
 
         XCTAssertEqual(configuration.credential, .apiKey("AIzaExampleCredential"))
@@ -103,7 +103,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "  Bearer ya29.example-token  ",
             model: "chirp_3",
-            appLanguage: .english,
+            appLanguage: .english
         )
 
         XCTAssertEqual(configuration.credentialValue, "Bearer ya29.example-token")
@@ -123,24 +123,24 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "test-key",
             model: "chirp_3",
-            appLanguage: .simplifiedChinese,
+            appLanguage: .simplifiedChinese
         )
         let traditional = try GoogleCloudSpeechConfiguration(
             projectID: "demo-project",
             apiKey: "test-key",
             model: "chirp_3",
-            appLanguage: .traditionalChinese,
+            appLanguage: .traditionalChinese
         )
 
         XCTAssertEqual(simplified.languageCode, "cmn-Hans-CN")
         XCTAssertEqual(traditional.languageCode, "cmn-Hant-TW")
         XCTAssertEqual(
             GoogleCloudSpeechConfiguration.googleLanguageCode(for: .simplifiedChinese, model: "long"),
-            "cmn-Hans-CN",
+            "cmn-Hans-CN"
         )
         XCTAssertEqual(
             GoogleCloudSpeechConfiguration.googleLanguageCode(for: .traditionalChinese, model: "short"),
-            "cmn-Hant-TW",
+            "cmn-Hant-TW"
         )
     }
 
@@ -149,15 +149,15 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "AIzaExampleCredential",
             model: "chirp_3",
-            appLanguage: .english,
+            appLanguage: .english
         )
 
         let message = GoogleCloudSpeechStreamingSession.rpcErrorMessage(
             GRPCStatus(
                 code: .permissionDenied,
-                message: "Permission 'speech.recognizers.recognize' denied on resource.",
+                message: "Permission 'speech.recognizers.recognize' denied on resource."
             ),
-            configuration: configuration,
+            configuration: configuration
         )
 
         XCTAssertTrue(message.contains("OAuth access token"))
@@ -170,12 +170,12 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "ya29.example-token",
             model: "chirp_3",
-            appLanguage: .english,
+            appLanguage: .english
         )
 
         let message = GoogleCloudSpeechStreamingSession.rpcErrorMessage(
             GRPCStatus(code: .permissionDenied, message: "principal missing permission"),
-            configuration: configuration,
+            configuration: configuration
         )
 
         XCTAssertFalse(message.contains("Application Default Credentials instead of an API key"))
@@ -188,7 +188,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "",
             apiKey: "test-key",
             model: "long",
-            appLanguage: .english,
+            appLanguage: .english
         )) { error in
             XCTAssertEqual(error.localizedDescription, GoogleCloudSpeechError.missingProjectID.localizedDescription)
         }
@@ -197,7 +197,7 @@ final class GoogleCloudSpeechTranscriberTests: XCTestCase {
             projectID: "demo-project",
             apiKey: "",
             model: "long",
-            appLanguage: .english,
+            appLanguage: .english
         )) { error in
             XCTAssertEqual(error.localizedDescription, GoogleCloudSpeechError.missingAPIKey.localizedDescription)
         }

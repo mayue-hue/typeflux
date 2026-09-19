@@ -7,6 +7,7 @@ final class StatusBarController: NSObject {
         static let agentTasks = 9001
         static let transcriptionHistory = 9002
         static let personas = 9003
+        static let textTransformation = 9004
     }
 
     private enum MenuValue {
@@ -28,7 +29,8 @@ final class StatusBarController: NSObject {
     private let settingsStore: SettingsStore
     private let historyStore: HistoryStore
     private let agentJobStore: AgentJobStore
-    private let autoModelDownloadService: AutoModelDownloadService?
+    private let modelManager: OllamaModelManaging
+    private let localModelManager: LocalSTTModelManaging
     private let notificationService: LocalNotificationSending
     private let onRetryHistory: (HistoryRecord) -> Void
     private let onOpenOnboarding: () -> Void
@@ -44,7 +46,7 @@ final class StatusBarController: NSObject {
     private var historyObserver: NSObjectProtocol?
     private var personaSelectionObserver: NSObjectProtocol?
     private var autoUpdateStateObserver: NSObjectProtocol?
-    private var autoModelDownloadObserver: NSObjectProtocol?
+    private var localModelDownloadProgressObserver: NSObjectProtocol?
     private var runningJobDurationTimer: Timer?
     private var runningAgentJobs: [AgentJob] = []
 
@@ -53,18 +55,20 @@ final class StatusBarController: NSObject {
         settingsStore: SettingsStore,
         historyStore: HistoryStore,
         agentJobStore: AgentJobStore,
-        autoModelDownloadService: AutoModelDownloadService? = nil,
+        modelManager: OllamaModelManaging = OllamaLocalModelManager(),
+        localModelManager: LocalSTTModelManaging = LocalModelManager(),
         notificationService: LocalNotificationSending = NoopLocalNotificationService(),
         onRetryHistory: @escaping (HistoryRecord) -> Void = { _ in },
         onOpenOnboarding: @escaping () -> Void = {},
         onOpenAgentJobs: @escaping () -> Void = {},
-        onOpenAgentJob: @escaping (UUID) -> Void = { _ in },
+        onOpenAgentJob: @escaping (UUID) -> Void = { _ in }
     ) {
         self.appState = appState
         self.settingsStore = settingsStore
         self.historyStore = historyStore
         self.agentJobStore = agentJobStore
-        self.autoModelDownloadService = autoModelDownloadService
+        self.modelManager = modelManager
+        self.localModelManager = localModelManager
         self.notificationService = notificationService
         self.onRetryHistory = onRetryHistory
         self.onOpenOnboarding = onOpenOnboarding
@@ -80,7 +84,7 @@ final class StatusBarController: NSObject {
         languageObserver = NotificationCenter.default.addObserver(
             forName: .appLanguageDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.rebuildMenu()
@@ -89,7 +93,7 @@ final class StatusBarController: NSObject {
         agentJobObserver = NotificationCenter.default.addObserver(
             forName: .agentJobStoreDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshRunningAgentJobs()
@@ -98,7 +102,7 @@ final class StatusBarController: NSObject {
         agentSettingsObserver = NotificationCenter.default.addObserver(
             forName: .agentConfigurationDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshRunningAgentJobs()
@@ -108,7 +112,7 @@ final class StatusBarController: NSObject {
         historyObserver = NotificationCenter.default.addObserver(
             forName: .historyStoreDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.rebuildMenu()
@@ -117,7 +121,7 @@ final class StatusBarController: NSObject {
         personaSelectionObserver = NotificationCenter.default.addObserver(
             forName: .personaSelectionDidChange,
             object: settingsStore,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.rebuildMenu()
@@ -126,16 +130,16 @@ final class StatusBarController: NSObject {
         autoUpdateStateObserver = NotificationCenter.default.addObserver(
             forName: .autoUpdateStateDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.rebuildMenu()
             }
         }
-        autoModelDownloadObserver = NotificationCenter.default.addObserver(
-            forName: .autoModelDownloadStateDidChange,
+        localModelDownloadProgressObserver = NotificationCenter.default.addObserver(
+            forName: .localModelDownloadProgressDidChange,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.rebuildMenu()
@@ -182,10 +186,10 @@ final class StatusBarController: NSObject {
             NotificationCenter.default.removeObserver(autoUpdateStateObserver)
         }
         autoUpdateStateObserver = nil
-        if let autoModelDownloadObserver {
-            NotificationCenter.default.removeObserver(autoModelDownloadObserver)
+        if let localModelDownloadProgressObserver {
+            NotificationCenter.default.removeObserver(localModelDownloadProgressObserver)
         }
-        autoModelDownloadObserver = nil
+        localModelDownloadProgressObserver = nil
         stopRunningJobDurationTimer()
         cancellables.removeAll()
     }
@@ -207,7 +211,7 @@ final class StatusBarController: NSObject {
         button.title = ""
         let image = NSImage(
             systemSymbolName: StudioTheme.Symbol.brand,
-            accessibilityDescription: accessibilityTitle,
+            accessibilityDescription: accessibilityTitle
         )?.withSymbolConfiguration(symbolConfig)
         image?.size = IconLayout.imageSize
         image?.isTemplate = true
@@ -228,6 +232,12 @@ final class StatusBarController: NSObject {
         historyItem.tag = MenuTag.transcriptionHistory
         historyItem.submenu = buildTranscriptionHistoryMenu()
         menu.addItem(historyItem)
+        if settingsStore.isTextTransformationAvailable {
+            let textTransformationItem = NSMenuItem(title: L("menu.textTransformation"), action: nil, keyEquivalent: "")
+            textTransformationItem.tag = MenuTag.textTransformation
+            textTransformationItem.submenu = buildTextTransformationMenu()
+            menu.addItem(textTransformationItem)
+        }
         let personasItem = NSMenuItem(title: L("menu.personas"), action: nil, keyEquivalent: "")
         personasItem.tag = MenuTag.personas
         personasItem.submenu = buildPersonasMenu()
@@ -245,7 +255,7 @@ final class StatusBarController: NSObject {
         menu.addItem(appearanceItem)
         menu.addItem(makeSettingsItem())
         menu.addItem(makeUpdateMenuItem())
-        if let downloadItem = makeAutoModelDownloadMenuItem() {
+        if let downloadItem = makeLocalModelDownloadMenuItem() {
             menu.addItem(downloadItem)
         }
         menu.addItem(NSMenuItem.separator())
@@ -279,14 +289,14 @@ final class StatusBarController: NSObject {
     private func populateTranscriptionHistoryMenu(_ menu: NSMenu) {
         let records = StatusBarMenuSupport.recentTranscriptionRecords(
             from: historyStore.list(limit: MenuLayout.recentHistoryLimit * 3, offset: 0, searchQuery: nil),
-            limit: MenuLayout.recentHistoryLimit,
+            limit: MenuLayout.recentHistoryLimit
         )
 
         if records.isEmpty {
             let emptyItem = NSMenuItem(
                 title: L("menu.transcriptionHistory.empty"),
                 action: nil,
-                keyEquivalent: "",
+                keyEquivalent: ""
             )
             emptyItem.isEnabled = false
             menu.addItem(emptyItem)
@@ -295,7 +305,7 @@ final class StatusBarController: NSObject {
                 let item = NSMenuItem(
                     title: StatusBarMenuSupport.recentHistoryTitle(for: record),
                     action: #selector(copyRecentHistoryResult(_:)),
-                    keyEquivalent: "",
+                    keyEquivalent: ""
                 )
                 item.target = self
                 item.representedObject = record.finalText
@@ -305,6 +315,51 @@ final class StatusBarController: NSObject {
 
         menu.addItem(NSMenuItem.separator())
         menu.addItem(makeItem(title: L("menu.transcriptionHistory.viewAll"), action: #selector(openHistory)))
+    }
+
+    private func buildTextTransformationMenu() -> NSMenu {
+        let menu = NSMenu(title: L("menu.textTransformation"))
+        menu.delegate = self
+        populateTextTransformationMenu(menu)
+        return menu
+    }
+
+    private func populateTextTransformationMenu(_ menu: NSMenu) {
+        guard settingsStore.isTextTransformationAvailable else { return }
+
+        let isEnabled = settingsStore.isOutputOpenCCEffectiveEnabled
+        let activeConfig = settingsStore.outputOpenCCConfig
+
+        let enableItem = NSMenuItem(
+            title: L("menu.textTransformation.enable"),
+            action: #selector(toggleTextTransformation(_:)),
+            keyEquivalent: ""
+        )
+        enableItem.target = self
+        enableItem.state = isEnabled ? .on : .off
+        menu.addItem(enableItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let rules = [
+            (label: L("settings.output.opencc.config.s2twp"), value: "s2twp"),
+            (label: L("settings.output.opencc.config.s2tw"), value: "s2tw"),
+            (label: L("settings.output.opencc.config.s2hk"), value: "s2hk"),
+            (label: L("settings.output.opencc.config.t2s"), value: "t2s")
+        ]
+
+        for rule in rules {
+            let item = NSMenuItem(
+                title: rule.label,
+                action: #selector(selectTextTransformationRule(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = rule.value
+            item.state = (isEnabled && rule.value == activeConfig) ? .on : .off
+            item.isEnabled = isEnabled
+            menu.addItem(item)
+        }
     }
 
     private func buildPersonasMenu() -> NSMenu {
@@ -321,7 +376,7 @@ final class StatusBarController: NSObject {
         let noPersonaItem = NSMenuItem(
             title: L("persona.none.title"),
             action: #selector(selectPersonaFromMenu(_:)),
-            keyEquivalent: "",
+            keyEquivalent: ""
         )
         noPersonaItem.target = self
         noPersonaItem.representedObject = MenuValue.noPersona
@@ -332,7 +387,7 @@ final class StatusBarController: NSObject {
             let item = NSMenuItem(
                 title: persona.name,
                 action: #selector(selectPersonaFromMenu(_:)),
-                keyEquivalent: "",
+                keyEquivalent: ""
             )
             item.target = self
             item.representedObject = persona.id.uuidString
@@ -357,7 +412,7 @@ final class StatusBarController: NSObject {
                 let item = NSMenuItem(
                     title: agentTaskMenuTitle(for: job),
                     action: #selector(openAgentJob(_:)),
-                    keyEquivalent: "",
+                    keyEquivalent: ""
                 )
                 item.target = self
                 item.representedObject = job.id.uuidString
@@ -379,14 +434,14 @@ final class StatusBarController: NSObject {
     }
 
     /// Returns a menu item showing local model download progress, or nil when there is nothing to display.
-    private func makeAutoModelDownloadMenuItem() -> NSMenuItem? {
-        guard let service = autoModelDownloadService else { return nil }
-        if case .downloading(let progress) = service.status {
-            let percent = Int(progress * 100)
+    private func makeLocalModelDownloadMenuItem() -> NSMenuItem? {
+        if let title = StatusBarMenuSupport.localModelDownloadTitle(
+            for: LocalModelDownloadProgressCenter.shared.status
+        ) {
             let item = NSMenuItem(
-                title: L("menu.downloadingLocalModel", percent),
+                title: title,
                 action: nil,
-                keyEquivalent: "",
+                keyEquivalent: ""
             )
             item.isEnabled = false
             return item
@@ -428,8 +483,10 @@ final class StatusBarController: NSObject {
                 settingsStore: settingsStore,
                 historyStore: historyStore,
                 initialSection: section,
+                modelManager: modelManager,
+                localModelManager: localModelManager,
                 notificationService: notificationService,
-                onRetryHistory: onRetryHistory,
+                onRetryHistory: onRetryHistory
             )
         }
     }
@@ -451,8 +508,10 @@ final class StatusBarController: NSObject {
             settingsStore: settingsStore,
             historyStore: historyStore,
             initialSection: .history,
+            modelManager: modelManager,
+            localModelManager: localModelManager,
             notificationService: notificationService,
-            onRetryHistory: onRetryHistory,
+            onRetryHistory: onRetryHistory
         )
     }
 
@@ -520,6 +579,19 @@ final class StatusBarController: NSObject {
 
         guard let personaID = UUID(uuidString: rawValue) else { return }
         settingsStore.applyPersonaSelection(personaID)
+        rebuildMenu()
+    }
+
+    @objc private func toggleTextTransformation(_: NSMenuItem) {
+        guard settingsStore.isTextTransformationAvailable else { return }
+        settingsStore.outputOpenCCEnabled.toggle()
+        rebuildMenu()
+    }
+
+    @objc private func selectTextTransformationRule(_ sender: NSMenuItem) {
+        guard settingsStore.isTextTransformationAvailable else { return }
+        guard let rule = sender.representedObject as? String else { return }
+        settingsStore.outputOpenCCConfig = rule
         rebuildMenu()
     }
 
@@ -619,6 +691,11 @@ extension StatusBarController: NSMenuDelegate {
             menu.removeAllItems()
             populatePersonasMenu(menu)
         }
+
+        if menu.title == L("menu.textTransformation") {
+            menu.removeAllItems()
+            populateTextTransformationMenu(menu)
+        }
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -630,6 +707,18 @@ extension StatusBarController: NSMenuDelegate {
 enum StatusBarMenuSupport {
     private static let titleTextLimit = 42
 
+    static func localModelDownloadTitle(for status: LocalModelDownloadProgressStatus) -> String? {
+        switch status {
+        case .idle:
+            return nil
+        case let .downloading(model, progress):
+            let percent = Int((progress * 100).rounded())
+            return L("menu.downloadingLocalModelNamed", model.displayName, percent)
+        case let .failed(model, _):
+            return L("menu.localModelDownloadFailedNamed", model.displayName)
+        }
+    }
+
     static func recentTranscriptionRecords(from records: [HistoryRecord], limit: Int = 10) -> [HistoryRecord] {
         records
             .filter { record in
@@ -640,7 +729,7 @@ enum StatusBarMenuSupport {
             }
             .sorted { $0.date > $1.date }
             .prefix(limit)
-            .map { $0 }
+            .map(\.self)
     }
 
     static func recentHistoryTitle(for record: HistoryRecord) -> String {

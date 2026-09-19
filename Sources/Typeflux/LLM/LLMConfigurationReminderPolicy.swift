@@ -12,10 +12,7 @@ struct LLMConfigurationReminderPolicy {
     var now: () -> Date = Date.init
 
     func presentation(for status: LLMConfigurationStatus) -> Presentation {
-        guard case .notConfigured(.cloudNotLoggedIn) = status,
-              settingsStore.llmProvider == .openAICompatible,
-              settingsStore.llmRemoteProvider == .typefluxCloud
-        else {
+        guard case .notConfigured(.cloudNotLoggedIn) = status else {
             return .actionDialog
         }
 

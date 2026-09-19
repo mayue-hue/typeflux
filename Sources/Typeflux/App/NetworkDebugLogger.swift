@@ -55,7 +55,7 @@ enum NetworkDebugLogger {
     static func logWebSocketEvent(
         provider: String,
         phase: String,
-        details: String? = nil,
+        details: String? = nil
     ) {
         let suffix = details.map { " | \($0)" } ?? ""
         logger.info("[WebSocket] \(provider, privacy: .public) | \(phase, privacy: .public)\(suffix, privacy: .public)")
@@ -78,8 +78,7 @@ enum NetworkDebugLogger {
         if
             let object = try? JSONSerialization.jsonObject(with: data),
             let pretty = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted]),
-            let string = String(data: pretty, encoding: .utf8)
-        {
+            let string = String(data: pretty, encoding: .utf8) {
             return string
         }
 
@@ -113,7 +112,7 @@ enum NetworkDebugLogger {
 
         if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
             components.append(
-                "underlying=\(underlying.domain)(\(underlying.code)): \(underlying.localizedDescription)",
+                "underlying=\(underlying.domain)(\(underlying.code)): \(underlying.localizedDescription)"
             )
         }
 

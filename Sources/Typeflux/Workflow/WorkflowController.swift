@@ -3,13 +3,24 @@ import AppKit
 import Foundation
 import os
 
+struct RecordingStartupContext: Sendable, Equatable {
+    let hotkeyDetectedAt: Date
+    let recordingWorkflowStartedAt: Date
+}
+
 final class WorkflowController {
     let logger = Logger(subsystem: "ai.gulu.app.typeflux", category: "WorkflowController")
     static let recordingTimeoutNanoseconds: UInt64 = 600_000_000_000 // 10 minutes
-    static let processingTimeoutNanoseconds: UInt64 = 120_000_000_000 // 2 minutes
-    static let tapToLockThreshold: TimeInterval = 0.22
+    /// Last-resort protection while transcription finishes after recording.
+    /// The watchdog is rearmed with a source-length budget when LLM rewriting starts.
+    static let processingWatchdogTimeoutSeconds: TimeInterval = 30
     static let minimumRecordingDuration: TimeInterval = 0.35
-    static let selectionRestoreDelayMicroseconds: useconds_t = 120_000
+    static let recordingTailCaptureDuration: Duration = .milliseconds(200)
+    static let shortAudioRetryDuration: TimeInterval = 1.5
+    /// Ambiguous short releases stay recoverable by switching to locked recording.
+    /// Keep this above `minimumRecordingDuration` so a release is never classified
+    /// as hold-to-talk and then immediately rejected as too short.
+    static let tapToLockThreshold: TimeInterval = 1.0
     static let automaticVocabularyObservationWindow: TimeInterval = 30
     static let automaticVocabularyPollInterval: Duration = .seconds(1)
     // Bumped from 600ms to 900ms so the paste fallback path has time for focus and
@@ -21,20 +32,44 @@ final class WorkflowController {
     // frequently report non-editable roles on the first AX query after insertion.
     static let automaticVocabularyInitialSnapshotRetryCount = 3
     static let automaticVocabularyInitialSnapshotRetryDelay: Duration = .milliseconds(400)
-    // Dropped from 8s to 4s so real editing sessions have a realistic chance to
-    // complete before the next dictation arrives.
+    /// Dropped from 8s to 4s so real editing sessions have a realistic chance to
+    /// complete before the next dictation arrives.
     static let automaticVocabularyIdleSettleDelay: TimeInterval = 4
     // Raised from 0.6 to 0.8 so short dictations with a delete+retype edit are
     // still considered for analysis.
     static let automaticVocabularyEditRatioLimit: Double = 0.8
     static let localModelPreheatDebounce: Duration = .milliseconds(180)
+    static let recordingHintAutoHideDelay: TimeInterval = 3.0
     static let audioStartupMaxAttemptCount = 3
+    // Bluetooth routes can need several seconds to publish a stable input format.
+    // At the 250ms retry interval this allows about 2.75 seconds to settle.
+    static let audioReconfigurationStartupMaxAttemptCount = 12
     static let audioStartupRetryDelay: Duration = .milliseconds(250)
-    static let llmTimeoutAfterTranscriptionSeconds: TimeInterval = 30
-    var llmTimeoutAfterTranscription: TimeInterval = WorkflowController.llmTimeoutAfterTranscriptionSeconds
+    static let llmTimeoutAfterTranscriptionSeconds: TimeInterval = 3
+    static let paidCreditExhaustedPromptSuppressionInterval: TimeInterval = 60 * 60
+    private var llmTimeoutAfterTranscriptionOverride: TimeInterval?
+    var llmTimeoutAfterTranscription: TimeInterval {
+        get { llmTimeoutAfterTranscriptionOverride ?? settingsStore.voiceProcessingTimeout.seconds }
+        set { llmTimeoutAfterTranscriptionOverride = max(0, newValue) }
+    }
+
+    func llmRewriteTimeoutBudget(for sourceText: String) -> LLMRewriteTimeoutBudget {
+        if let llmTimeoutAfterTranscriptionOverride {
+            return .fixed(llmTimeoutAfterTranscriptionOverride)
+        }
+        return LLMRewriteTimeoutPolicy.budget(
+            sourceText: sourceText,
+            baseSeconds: settingsStore.voiceProcessingTimeout.seconds
+        )
+    }
+
     struct LLMRequestTimeoutError: LocalizedError {
+        let timeoutSeconds: TimeInterval
+        let kind: LLMRewriteTimeoutKind
+
         var errorDescription: String? {
-            "Persona rewrite timed out after \(Int(WorkflowController.llmTimeoutAfterTranscriptionSeconds)) seconds, inserting transcript as fallback"
+            "Persona rewrite timed out after \(Int(timeoutSeconds)) seconds " +
+                "(\(kind.rawValue)), inserting transcript as fallback"
         }
     }
 
@@ -59,14 +94,34 @@ final class WorkflowController {
 
     enum ApplyOutcome {
         case inserted
+        case pasted
+        case unconfirmed
+        case cancelled
         case presentedInDialog
+        case copiedToClipboard
+
+        var wasInserted: Bool { self == .inserted || self == .pasted }
+
+        var historyStatus: HistoryRecord.StepStatus {
+            switch self {
+            case .inserted, .pasted, .copiedToClipboard: .succeeded
+            case .cancelled, .unconfirmed: .skipped
+            case .presentedInDialog: .failed
+            }
+        }
 
         var message: String {
             switch self {
-            case .inserted:
+            case .inserted, .pasted:
                 L("workflow.apply.inserted")
+            case .unconfirmed:
+                L("workflow.apply.dispatchedUnverified")
+            case .cancelled:
+                L("workflow.cancel.newRecording")
             case .presentedInDialog:
                 L("workflow.apply.presentedInDialog")
+            case .copiedToClipboard:
+                L("workflow.apply.copiedToClipboard")
             }
         }
     }
@@ -89,20 +144,32 @@ final class WorkflowController {
     let agentClarificationWindowController: AgentClarificationWindowController
     let soundEffectPlayer: SoundEffectPlayer
     let liveTranscriptionPreviewer: (any LiveTranscriptionPreviewing)?
+    let localModelManager: (any LocalSTTModelManaging)?
+    let notificationService: LocalNotificationSending
+    let localModelDownloadAlertPresenter: any LocalModelDownloadAlertPresenting
+    let outputPostProcessor: OutputPostProcessing
+    let analyticsReporter: AnalyticsEventReporting
     let sleep: @Sendable (Duration) async -> Void
+    let monotonicNow: () -> TimeInterval
 
     var currentSelectedText: String?
     var isRecording = false
     var isAudioRecorderStarted = false
     var isAudioRecorderStarting = false
+    var recordingAudioReadiness: RecordingAudioReadiness?
     var shouldFinishRecordingAfterAudioStart = false
     var pendingRecordingStartID: UUID?
     var suppressActivationTapUntil: Date?
+    var recordingUsesAuxiliary = false
+    var recordingPersonaSnapshot: DictationPersonaSnapshot?
+    var recordingGestureDecision: RecordingGestureDecision?
     var recordingMode: RecordingMode = .holdToTalk
     var recordingIntent: RecordingIntent = .dictation
-    var hotkeyPressedAt: Date?
+    var hotkeyPressedAt: TimeInterval?
+    var audioRecorderStartedAt: TimeInterval?
+    var recordingStartupContext: RecordingStartupContext?
     var recordingTimeoutTask: Task<Void, Never>?
-    var processingTimeoutTask: Task<Void, Never>?
+    var processingWatchdogTask: Task<Void, Never>?
     var selectionTask: Task<TextSelectionSnapshot, Never>?
     var inputContextTask: Task<InputContextSnapshot?, Never>?
     var processingTask: Task<Void, Never>?
@@ -117,14 +184,26 @@ final class WorkflowController {
     var activeProcessingRecordID: UUID?
     var lastRetryableFailureRecord: HistoryRecord?
     var lastDialogResultText: String?
+    var latestRecordingPreviewText = ""
     var shouldPreserveLLMConfigurationNotice = false
     var localModelPreheatTask: Task<Void, Never>?
     var lastLocalModelPreheatConfiguration: LocalSTTConfiguration?
     var localModelPreheatObserver: NSObjectProtocol?
+    var localModelPreparationTask: Task<Void, Never>?
+    var localModelPreparationConfiguration: LocalSTTConfiguration?
+    var localModelDownloadAlertTask: Task<Void, Never>?
+    var suppressNextActivationTapAfterLocalModelDownloadAlert = false
     var isPersonaPickerPresented = false
     var personaPickerItems: [PersonaPickerEntry] = []
     var personaPickerSelectedIndex = 0
     var personaPickerMode: PersonaPickerMode = .switchDefault
+    var isHistoryPickerPresented = false
+    var historyPickerItems: [HistoryPickerEntry] = []
+    var historyPickerSelectedIndex = 0
+    var lastPaidCreditExhaustedPromptPresentedAt: Date?
+    let analyticsLock = NSLock()
+    var pendingDictationAnalyticsContext: DictationAnalyticsContext?
+    var dictationAnalyticsContexts: [UUID: DictationAnalyticsContext] = [:]
 
     // Clarification mode: set when the agent workflow is paused waiting for a user voice reply.
     var pendingClarificationContinuation: CheckedContinuation<String, Error>?
@@ -134,6 +213,14 @@ final class WorkflowController {
         let id: UUID?
         let title: String
         let subtitle: String
+    }
+
+    struct HistoryPickerEntry {
+        let id: UUID
+        let title: String
+        let subtitle: String
+        let text: String
+        let record: HistoryRecord
     }
 
     struct PersonaSelectionContext {
@@ -166,9 +253,16 @@ final class WorkflowController {
         agentClarificationWindowController: AgentClarificationWindowController,
         soundEffectPlayer: SoundEffectPlayer,
         liveTranscriptionPreviewer: (any LiveTranscriptionPreviewing)? = nil,
+        localModelManager: (any LocalSTTModelManaging)? = nil,
+        notificationService: LocalNotificationSending = NoopLocalNotificationService(),
+        localModelDownloadAlertPresenter: any LocalModelDownloadAlertPresenting =
+            SystemLocalModelDownloadAlertPresenter(),
+        outputPostProcessor: OutputPostProcessing,
+        analyticsReporter: AnalyticsEventReporting = NoopAnalyticsEventReporter.shared,
         sleep: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
+        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.appState = appState
         self.settingsStore = settingsStore
@@ -188,7 +282,13 @@ final class WorkflowController {
         self.agentClarificationWindowController = agentClarificationWindowController
         self.soundEffectPlayer = soundEffectPlayer
         self.liveTranscriptionPreviewer = liveTranscriptionPreviewer
+        self.localModelManager = localModelManager
+        self.notificationService = notificationService
+        self.localModelDownloadAlertPresenter = localModelDownloadAlertPresenter
+        self.outputPostProcessor = outputPostProcessor
+        self.analyticsReporter = analyticsReporter
         self.sleep = sleep
+        self.monotonicNow = monotonicNow
         self.overlayController.setRecordingActionHandlers(
             onCancel: { [weak self] in
                 guard let self else { return }
@@ -198,23 +298,28 @@ final class WorkflowController {
                     cancelCurrentProcessing(resetUI: true, reason: L("workflow.cancel.userCancelled"))
                 }
             },
-            onConfirm: { [weak self] in self?.confirmLockedRecording() },
+            onConfirm: { [weak self] in self?.confirmLockedRecording() }
         )
         self.overlayController.setResultDialogHandler(
-            onCopy: { [weak self] in self?.copyLastResultFromDialog() },
+            onCopy: { [weak self] in self?.copyLastResultFromDialog() }
         )
         self.overlayController.setFailureRetryHandler(
             onRetry: { [weak self] in
                 guard let self, let record = lastRetryableFailureRecord else { return }
                 retry(record: record)
-            },
+            }
         )
         self.overlayController.setPersonaPickerHandlers(
-            onMoveUp: { [weak self] in self?.movePersonaSelection(delta: -1) },
-            onMoveDown: { [weak self] in self?.movePersonaSelection(delta: 1) },
-            onSelect: { [weak self] index in self?.selectPersonaSelection(at: index) },
-            onConfirm: { [weak self] in self?.confirmPersonaSelection() },
-            onCancel: { [weak self] in self?.dismissPersonaPicker() },
+            onMoveUp: { [weak self] in self?.moveOverlayPickerSelection(delta: -1) },
+            onMoveDown: { [weak self] in self?.moveOverlayPickerSelection(delta: 1) },
+            onSelect: { [weak self] index in self?.selectOverlayPickerSelection(at: index) },
+            onConfirm: { [weak self] in self?.confirmOverlayPickerSelection() },
+            onCancel: { [weak self] in self?.dismissOverlayPicker() }
+        )
+        self.overlayController.setHistoryPickerActionHandlers(
+            onCopy: { [weak self] index in self?.copyHistorySelection(at: index) },
+            onInsert: { [weak self] index in self?.insertHistorySelection(at: index) },
+            onRetry: { [weak self] index in self?.retryHistorySelection(at: index) }
         )
         self.agentClarificationWindowController.onDismiss = { [weak self] in
             self?.dismissClarification()
@@ -230,38 +335,76 @@ final class WorkflowController {
             Selected Text Length: \(selectedText?.count ?? 0)
             Answer Markdown Length: \(answerMarkdown.count)
             Answer Markdown Preview: \(String(answerMarkdown.prefix(160)))
-            """,
+            """
         )
         overlayController.dismissImmediately()
         askAnswerWindowController.show(
             title: L("workflow.ask.answerTitle"),
             question: question,
             selectedText: selectedText,
-            answerMarkdown: answerMarkdown,
+            answerMarkdown: answerMarkdown
         )
     }
 
     func start() {
-        hotkeyService.onActivationTap = { [weak self] in
-            self?.handleActivationTap()
+        hotkeyService.recordingStopEnabled = { [weak self] in
+            guard let self else { return false }
+            return isRecording && recordingGestureDecision == nil
         }
-        hotkeyService.onActivationPressBegan = { [weak self] in
-            self?.handlePressBegan(intent: .dictation, startLocked: false)
+        hotkeyService.onRecordingStop = { [weak self] in
+            self?.finishRecordingFromCurrentMode()
         }
-        hotkeyService.onActivationPressEnded = { [weak self] in
-            self?.handlePressEnded()
+        hotkeyService.onAuxiliaryPressBegan = { [weak self] context in
+            guard let self else { return }
+            handlePressBegan(
+                intent: .dictation,
+                startLocked: settingsStore.auxiliaryHotkey?.pressCount == 2,
+                hotkeyDetectedAt: context.detectedAt,
+                hotkeyUptime: context.uptime,
+                auxiliary: true
+            )
+        }
+        hotkeyService.onAuxiliaryPromoted = { [weak self] context in
+            self?.promoteRecordingToAuxiliary(context: context)
+        }
+        hotkeyService.onAuxiliaryPressEnded = { [weak self] context in
+            guard let self, recordingUsesAuxiliary,
+                  settingsStore.auxiliaryHotkey?.pressCount != 2 else { return }
+            handlePressEnded(hotkeyUptime: context.uptime)
+        }
+        hotkeyService.onActivationTap = { [weak self] context in
+            self?.handleActivationTap(hotkeyDetectedAt: context.detectedAt, hotkeyUptime: context.uptime)
+        }
+        hotkeyService.onActivationPressBegan = { [weak self] context in
+            self?.handlePressBegan(
+                intent: .dictation,
+                startLocked: false,
+                hotkeyDetectedAt: context.detectedAt,
+                hotkeyUptime: context.uptime
+            )
+        }
+        hotkeyService.onActivationPressEnded = { [weak self] context in
+            self?.handlePressEnded(hotkeyUptime: context.uptime)
         }
         hotkeyService.onActivationCancelled = { [weak self] in
             self?.cancelRecording()
         }
-        hotkeyService.onAskPressBegan = { [weak self] in
-            self?.handlePressBegan(intent: .askSelection, startLocked: true)
+        hotkeyService.onAskPressBegan = { [weak self] context in
+            self?.handlePressBegan(
+                intent: .askSelection,
+                startLocked: true,
+                hotkeyDetectedAt: context.detectedAt,
+                hotkeyUptime: context.uptime
+            )
         }
         hotkeyService.onAskPressEnded = { [weak self] in
             self?.handleAskPressEnded()
         }
         hotkeyService.onPersonaPickerRequested = { [weak self] in
             self?.handlePersonaPickerRequested()
+        }
+        hotkeyService.onHistoryRequested = { [weak self] in
+            self?.handleHistoryPickerRequested()
         }
         hotkeyService.onError = { [weak self] message in
             guard let self else { return }
@@ -275,6 +418,9 @@ final class WorkflowController {
         }
 
         hotkeyService.start()
+        Task { @MainActor [weak self] in
+            self?.overlayController.prepareRecordingPresentation()
+        }
 
         // Pre-warm the local STT model on startup, and re-warm whenever
         // the user switches provider or model in Settings.
@@ -282,7 +428,7 @@ final class WorkflowController {
         localModelPreheatObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
-            queue: .main,
+            queue: .main
         ) { [weak self] _ in
             self?.preheatLocalModelIfNeeded()
         }
@@ -319,6 +465,7 @@ final class WorkflowController {
     func stop() {
         hotkeyService.stop()
         dismissPersonaPicker()
+        dismissHistoryPicker()
         askAnswerWindowController.dismiss()
         agentClarificationWindowController.dismiss()
         cancelRecording()
@@ -328,6 +475,12 @@ final class WorkflowController {
         localModelPreheatTask?.cancel()
         localModelPreheatTask = nil
         lastLocalModelPreheatConfiguration = nil
+        localModelPreparationTask?.cancel()
+        localModelPreparationTask = nil
+        localModelPreparationConfiguration = nil
+        localModelDownloadAlertTask?.cancel()
+        localModelDownloadAlertTask = nil
+        suppressNextActivationTapAfterLocalModelDownloadAlert = false
         if let obs = localModelPreheatObserver {
             NotificationCenter.default.removeObserver(obs)
             localModelPreheatObserver = nil
@@ -339,15 +492,16 @@ final class WorkflowController {
         cancelCurrentProcessing(resetUI: false, reason: L("workflow.cancel.retry"))
 
         let sessionID = beginProcessingSession()
-        startProcessingTimeout(sessionID: sessionID)
+        let fallbackWaitSeconds = settingsStore.voiceProcessingTimeout.seconds
+        startProcessingWatchdog(sessionID: sessionID)
         processingTask = Task { [weak self] in
             guard let self else { return }
             await MainActor.run {
                 self.appState.setStatus(.processing)
-                self.overlayController.showProcessing()
+                self.overlayController.showProcessing(timeout: fallbackWaitSeconds)
             }
             await reprocess(record: record, sessionID: sessionID)
-            cancelProcessingTimeout()
+            cancelProcessingWatchdog()
             await MainActor.run {
                 if self.processingSessionID == sessionID {
                     self.processingTask = nil
@@ -360,11 +514,18 @@ final class WorkflowController {
     /// Force cancel any ongoing recording
     func cancelRecording() {
         guard isRecording else { return }
+        recordingAudioReadiness?.cancel()
+        discardPendingDictationAnalytics()
+        recordingGestureDecision?.resolve()
+        recordingGestureDecision = nil
         isRecording = false
         let shouldStopAudioRecorder = isAudioRecorderStarted
         isAudioRecorderStarted = false
-        isAudioRecorderStarting = false
+        // An in-flight driver start still owns the recorder until it returns.
+        // Keep new presses out while its eventual success is being stopped.
         shouldFinishRecordingAfterAudioStart = false
+        audioRecorderStartedAt = nil
+        recordingStartupContext = nil
         pendingRecordingStartID = nil
         suppressActivationTapUntil = nil
         recordingMode = .holdToTalk
@@ -375,6 +536,7 @@ final class WorkflowController {
         if shouldStopAudioRecorder {
             _ = try? audioRecorder.stop()
         }
+        latestRecordingPreviewText = ""
         activeRealtimeAudioBufferPump?.cancel()
         activeRealtimeAudioBufferPump = nil
         Task {
@@ -396,11 +558,7 @@ final class WorkflowController {
 
     func shouldUseLiveTranscriptionPreview() -> Bool {
         guard liveTranscriptionPreviewer != nil else { return false }
-        if settingsStore.sttProvider == .localModel {
-            return true
-        }
-        return settingsStore.sttProvider == .typefluxOfficial
-            && settingsStore.localOptimizationEnabled
+        return settingsStore.sttProvider == .localModel
     }
 
     func startLiveTranscriptionPreviewIfNeeded(_ previewer: (any LiveTranscriptionPreviewing)?) {
@@ -412,8 +570,9 @@ final class WorkflowController {
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { return }
                     Task { @MainActor [weak self] in
-                        guard let self, self.isRecording else { return }
-                        self.overlayController.updateRecordingPreviewText(trimmed)
+                        guard let self, isRecording else { return }
+                        latestRecordingPreviewText = trimmed
+                        overlayController.updateRecordingPreviewText(trimmed)
                     }
                 }
             } catch {
@@ -423,78 +582,106 @@ final class WorkflowController {
         }
     }
 
-    func startProcessingTimeout(sessionID: UUID) {
-        processingTimeoutTask?.cancel()
-        processingTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.processingTimeoutNanoseconds)
+    func startProcessingWatchdog(
+        sessionID: UUID,
+        timeoutSeconds: TimeInterval = WorkflowController.processingWatchdogTimeoutSeconds
+    ) {
+        let timeoutNanoseconds = UInt64(max(0, timeoutSeconds) * 1_000_000_000)
+        processingWatchdogTask?.cancel()
+        processingWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: timeoutNanoseconds)
             guard !Task.isCancelled else { return }
-            NSLog("[Workflow] Processing timeout after 120 seconds")
-            self?.handleProcessingTimeout(sessionID: sessionID)
+            NSLog("[Workflow] Processing watchdog fired after %llu seconds", timeoutNanoseconds / 1_000_000_000)
+            await self?.handleProcessingWatchdog(sessionID: sessionID, timeoutSeconds: timeoutSeconds)
         }
     }
 
-    func cancelProcessingTimeout() {
-        processingTimeoutTask?.cancel()
-        processingTimeoutTask = nil
+    func cancelProcessingWatchdog() {
+        processingWatchdogTask?.cancel()
+        processingWatchdogTask = nil
     }
 
-    func handleProcessingTimeout(sessionID: UUID) {
+    func handleProcessingWatchdog(sessionID: UUID, timeoutSeconds: TimeInterval) async {
         guard processingSessionID == sessionID else { return }
         let recordID = activeProcessingRecordID
-        cancelCurrentProcessing(resetUI: false, reason: L("workflow.timeout.reason"))
-        var timeoutRecord: HistoryRecord? = nil
-        if let recordID {
-            timeoutRecord = historyStore.record(id: recordID)
+        let timeoutRecord = recordID.flatMap { historyStore.record(id: $0) }
+        if let timeoutRecord {
+            reportDictationTerminal(
+                record: timeoutRecord,
+                forcedFailure: (stage: "processing", kind: "processing_timeout")
+            )
         }
-        Task { @MainActor in
+        let timeoutSeconds = Int(timeoutSeconds)
+        cancelCurrentProcessing(resetUI: false, reason: L("workflow.timeout.reason", timeoutSeconds))
+        await MainActor.run {
             self.lastRetryableFailureRecord = timeoutRecord
             self.soundEffectPlayer.play(.error)
             self.appState.setStatus(.failed(message: L("workflow.timeout.status")))
-            self.overlayController.showTimeoutFailure()
+            self.overlayController.showTimeoutFailure(timeoutSeconds: timeoutSeconds)
         }
     }
 
-    func handleActivationTap() {
+    func handleActivationTap(hotkeyDetectedAt: Date = Date(), hotkeyUptime: TimeInterval? = nil) {
+        extendRecordingGestureDecision(releasedAt: hotkeyUptime ?? monotonicNow())
+        if suppressNextActivationTapAfterLocalModelDownloadAlert {
+            suppressNextActivationTapAfterLocalModelDownloadAlert = false
+            RecordingStartupLatencyTrace.shared.mark("workflow.activation_tap_suppressed.local_model_download")
+            return
+        }
         if let suppressActivationTapUntil, Date() < suppressActivationTapUntil {
             self.suppressActivationTapUntil = nil
             RecordingStartupLatencyTrace.shared.mark("workflow.activation_tap_suppressed")
             return
         }
         suppressActivationTapUntil = nil
-        handlePressBegan(intent: .dictation, startLocked: true)
+        if isRecording, recordingMode == .holdToTalk {
+            lockActiveRecording()
+            return
+        }
+        handlePressBegan(
+            intent: .dictation,
+            startLocked: true,
+            hotkeyDetectedAt: hotkeyDetectedAt
+        )
     }
 
-    func handlePressBegan(intent: RecordingIntent, startLocked: Bool) {
+    func handlePressBegan(
+        intent: RecordingIntent,
+        startLocked: Bool,
+        hotkeyDetectedAt: Date = Date(),
+        hotkeyUptime: TimeInterval? = nil,
+        auxiliary: Bool = false
+    ) {
         RecordingStartupLatencyTrace.shared.mark("workflow.press_began.\(intent.traceName)")
         if isPersonaPickerPresented {
             dismissPersonaPicker()
         }
+        if isHistoryPickerPresented {
+            dismissHistoryPicker()
+        }
 
-        if !isRecording, isAudioRecorderStarted {
-            NSLog("[Workflow] Audio recorder is still stopping, ignoring press")
+        if !isRecording, isAudioRecorderStarted || isAudioRecorderStarting {
+            NSLog("[Workflow] Audio recorder is still starting or stopping, ignoring press")
             return
         }
 
         if isRecording {
-            if intent == .askSelection, recordingIntent == .dictation {
+            if intent == .askSelection, recordingIntent == .dictation, recordingGestureDecision != nil {
                 promoteActiveRecordingToAskSelection()
-                return
-            }
-
-            if startLocked, recordingMode == .holdToTalk {
-                lockActiveRecording()
-                return
-            }
-
-            guard recordingMode == .locked else {
-                NSLog("[Workflow] Already recording, ignoring press")
                 return
             }
 
             if !startLocked {
                 suppressActivationTapUntil = Date().addingTimeInterval(Self.tapToLockThreshold + 0.2)
             }
-            confirmLockedRecording()
+            finishRecordingFromCurrentMode()
+            return
+        }
+
+        if showSelectedLocalModelDownloadAlertIfNeeded() {
+            if !startLocked {
+                suppressNextActivationTapAfterLocalModelDownloadAlert = true
+            }
             return
         }
 
@@ -517,7 +704,27 @@ final class WorkflowController {
             dismissClarification()
         }
 
-        hotkeyPressedAt = startLocked ? nil : Date()
+        recordingUsesAuxiliary = auxiliary
+        recordingPersonaSnapshot = nil
+        let activation = auxiliary ? settingsStore.auxiliaryHotkey : settingsStore.activationHotkey
+        let auxiliaryBinding = settingsStore.auxiliaryHotkey
+        let ask = settingsStore.askHotkey
+        if !startLocked, intent == .dictation,
+           let activation, activation.isModifierOnlyTrigger,
+           (ask.map { $0.isModifierDoubleTapTrigger && activation.keyCode == $0.keyCode
+               && activation.modifierFlags == $0.modifierFlags } == true
+               || (!auxiliary && auxiliaryBinding.map {
+                   $0.modifierFlags & activation.modifierFlags == activation.modifierFlags
+               } == true)) {
+            let decision = RecordingGestureDecision()
+            recordingGestureDecision = decision
+            decision.schedule(after: Self.tapToLockThreshold)
+        }
+        hotkeyPressedAt = startLocked ? nil : (hotkeyUptime ?? monotonicNow())
+        recordingStartupContext = RecordingStartupContext(
+            hotkeyDetectedAt: hotkeyDetectedAt,
+            recordingWorkflowStartedAt: Date()
+        )
 
         cancelCurrentProcessing(resetUI: false, reason: L("workflow.cancel.newRecording"))
         isRecording = true
@@ -533,41 +740,98 @@ final class WorkflowController {
         }
     }
 
+    func showSelectedLocalModelDownloadAlertIfNeeded() -> Bool {
+        guard settingsStore.sttProvider == .localModel else { return false }
+
+        let selectedModel = settingsStore.localSTTModel
+        if case let .downloading(model, progress) = LocalModelDownloadProgressCenter.shared.status,
+           model == selectedModel {
+            showLocalModelDownloadAlert(model: model, progress: progress)
+            return true
+        }
+
+        guard let localModelManager, !localModelManager.isModelAvailable(selectedModel) else {
+            return false
+        }
+
+        let configuration = LocalSTTConfiguration(settingsStore: settingsStore)
+        startSelectedLocalModelDownloadIfNeeded(configuration: configuration)
+        showLocalModelDownloadAlert(model: selectedModel, progress: 0.02)
+        return true
+    }
+
+    private func showLocalModelDownloadAlert(model: LocalSTTModel, progress: Double) {
+        guard localModelDownloadAlertTask == nil else { return }
+        localModelDownloadAlertTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.localModelDownloadAlertTask = nil
+            }
+            localModelDownloadAlertPresenter.showDownloadingAlert(
+                model: model,
+                progress: progress
+            )
+        }
+    }
+
+    private func startSelectedLocalModelDownloadIfNeeded(configuration: LocalSTTConfiguration) {
+        guard let localModelManager else { return }
+        if localModelPreparationConfiguration == configuration, localModelPreparationTask != nil {
+            return
+        }
+
+        localModelPreparationTask?.cancel()
+        localModelPreparationConfiguration = configuration
+        LocalModelDownloadProgressCenter.shared.reportDownloading(model: configuration.model, progress: 0.02)
+        localModelPreparationTask = Task { [weak self, localModelManager, notificationService, configuration] in
+            do {
+                try await localModelManager.prepareModel(configuration: configuration) { update in
+                    LocalModelDownloadProgressCenter.shared.reportDownloading(
+                        model: configuration.model,
+                        progress: update.progress
+                    )
+                }
+                guard !Task.isCancelled else { return }
+                LocalModelDownloadProgressCenter.shared.clear()
+                await notificationService.sendLocalNotification(
+                    title: L("notification.localModelReady.title"),
+                    body: L("notification.localModelReady.body"),
+                    identifier: "ai.gulu.app.typeflux.local-model-ready"
+                )
+            } catch {
+                guard !Task.isCancelled else {
+                    LocalModelDownloadProgressCenter.shared.clear()
+                    return
+                }
+                NetworkDebugLogger.logError(context: "Workflow local STT model download failed", error: error)
+                LocalModelDownloadProgressCenter.shared.reportFailed(
+                    model: configuration.model,
+                    message: error.localizedDescription
+                )
+            }
+            await MainActor.run { [weak self, configuration] in
+                guard let self, localModelPreparationConfiguration == configuration else { return }
+                localModelPreparationTask = nil
+                localModelPreparationConfiguration = nil
+            }
+        }
+    }
+
+    func extendRecordingGestureDecision(releasedAt: TimeInterval) {
+        recordingGestureDecision?.schedule(
+            after: releasedAt + HotkeyGestureArbiter.doubleTapMaximumInterval - monotonicNow()
+        )
+    }
+
     private func promoteActiveRecordingToAskSelection() {
-        RecordingStartupLatencyTrace.shared.mark("workflow.promote_to_ask")
+        guard let decision = recordingGestureDecision else { return }
         recordingIntent = .askSelection
         recordingMode = .locked
         hotkeyPressedAt = nil
-        let prePromotionSelectionTask = selectionTask
-        let prePromotionInputContextTask = inputContextTask
-        selectionTask = Task {
-            if let snapshot = await prePromotionSelectionTask?.value,
-               snapshot.hasAskSelectionContext
-            {
-                NetworkDebugLogger.logMessage(
-                    "[Ask Flow] preserved pre-promotion selection capture for Ask Anything recording",
-                )
-                return snapshot
-            }
-            return TextSelectionSnapshot(
-                processName: Self.isTypefluxFrontmostApplication() ? "Typeflux" : nil,
-                bundleIdentifier: Self.isTypefluxFrontmostApplication() ? Bundle.main.bundleIdentifier : nil,
-                source: "ask-promoted-isolated",
-                isEditable: false,
-                isFocusedTarget: false,
-            )
-        }
-        inputContextTask = prePromotionInputContextTask
-        activeRealtimeAudioBufferPump?.cancel()
-        activeRealtimeAudioBufferPump = nil
-        Task {
-            await self.liveTranscriptionPreviewer?.cancel()
-            await self.activeRealtimeTranscriptionSession?.cancel()
-            self.activeRealtimeTranscriptionSession = nil
-        }
+        decision.resolve()
         Task { @MainActor in
-            guard self.isRecording else { return }
-            self.overlayController.showLockedRecording(hintText: L("overlay.ask.guidance"))
+            guard self.isRecording, self.recordingIntent == .askSelection else { return }
+            self.presentReadyRecording()
         }
     }
 
@@ -577,7 +841,7 @@ final class WorkflowController {
         hotkeyPressedAt = nil
         Task { @MainActor in
             guard self.isRecording else { return }
-            self.overlayController.showLockedRecording()
+            self.presentReadyRecording()
         }
     }
 
@@ -600,30 +864,36 @@ final class WorkflowController {
             dismissPersonaPicker()
             return
         }
+        if isHistoryPickerPresented {
+            dismissHistoryPicker()
+        }
 
         let personaHotkeyAppliesToSelection = settingsStore.personaHotkeyAppliesToSelection
         logger.debug(
-            "handlePersonaPickerRequested — personaHotkeyAppliesToSelection=\(personaHotkeyAppliesToSelection)",
+            "handlePersonaPickerRequested — personaHotkeyAppliesToSelection=\(personaHotkeyAppliesToSelection)"
         )
         Task { [weak self] in
             guard let self else { return }
 
             let selectionSnapshot: TextSelectionSnapshot = if settingsStore.personaHotkeyAppliesToSelection {
-                await textInjector.getSelectionSnapshot()
+                await textInjector.selectionSnapshot(for: .explicitSelectionAction)
             } else {
                 TextSelectionSnapshot()
             }
 
-            logger.debug("snapshot: isFocusedTarget=\(selectionSnapshot.isFocusedTarget) isEditable=\(selectionSnapshot.isEditable) hasSelection=\(selectionSnapshot.hasSelection) source=\(selectionSnapshot.source) selectedText=\(selectionSnapshot.selectedText?.prefix(32) ?? "nil")")
+            logger
+                .debug(
+                    "snapshot: isFocusedTarget=\(selectionSnapshot.isFocusedTarget) isEditable=\(selectionSnapshot.isEditable) hasSelection=\(selectionSnapshot.hasSelection) source=\(selectionSnapshot.source) selectedTextLength=\(selectionSnapshot.selectedText?.utf16.count ?? 0)"
+                )
 
-            let selectedText = editingSelectedText(from: selectionSnapshot)
+            let selectedText = selectionContextText(from: selectionSnapshot)
             let frontmostApplicationContext = Self.frontmostApplicationContext()
             let appName = selectionSnapshot.processName ?? frontmostApplicationContext.appName
             let bundleIdentifier = selectionSnapshot.bundleIdentifier ?? frontmostApplicationContext.bundleIdentifier
             let applicationIcon = Self.applicationIcon(
                 appName: appName,
                 bundleIdentifier: bundleIdentifier,
-                frontmostApplicationContext: frontmostApplicationContext,
+                frontmostApplicationContext: frontmostApplicationContext
             )
             let mode: PersonaPickerMode
             let items: [PersonaPickerEntry]
@@ -634,13 +904,19 @@ final class WorkflowController {
                 items = personaPickerEntries(includeNoneOption: false)
             } else if let appBinding = settingsStore.activePersonaAppBinding(
                 appName: appName,
-                bundleIdentifier: bundleIdentifier,
+                bundleIdentifier: bundleIdentifier
             ) {
-                logger.debug("mode=switchApplication appName=\(appName ?? "nil") bundleIdentifier=\(bundleIdentifier ?? "nil")")
+                logger
+                    .debug(
+                        "mode=switchApplication appName=\(appName ?? "nil") bundleIdentifier=\(bundleIdentifier ?? "nil")"
+                    )
                 mode = .switchApplication(appBinding)
                 items = personaPickerEntries(includeNoneOption: true)
             } else {
-                logger.debug("mode=switchDefault  selectedText=\(selectedText ?? "nil")  hotkeyApplies=\(settingsStore.personaHotkeyAppliesToSelection)")
+                logger
+                    .debug(
+                        "mode=switchDefault  selectedText=\(selectedText ?? "nil")  hotkeyApplies=\(settingsStore.personaHotkeyAppliesToSelection)"
+                    )
                 mode = .switchDefault
                 items = personaPickerEntries(includeNoneOption: true)
             }
@@ -666,13 +942,13 @@ final class WorkflowController {
                         OverlayController.PersonaPickerItem(
                             id: $0.id?.uuidString ?? "plain-dictation",
                             title: $0.title,
-                            subtitle: $0.subtitle,
+                            subtitle: $0.subtitle
                         )
                     },
                     selectedIndex: selectedIndex,
                     title: self.personaPickerTitle(for: mode),
                     instructions: self.personaPickerInstructions(for: mode),
-                    icon: self.personaPickerIcon(for: mode, applicationIcon: applicationIcon),
+                    icon: self.personaPickerIcon(for: mode, applicationIcon: applicationIcon)
                 )
             }
         }
@@ -684,13 +960,18 @@ final class WorkflowController {
         let icon: NSImage?
     }
 
-    private static func frontmostApplicationContext() -> FrontmostApplicationContext {
+    struct RecordingHintPresentation: Equatable {
+        let text: String?
+        let autoHideAfter: TimeInterval?
+    }
+
+    private static func frontmostApplicationContext(includeIcon: Bool = true) -> FrontmostApplicationContext {
         let application = NSWorkspace.shared.frontmostApplication
         let isTypeflux = application?.bundleIdentifier == Bundle.main.bundleIdentifier
         return FrontmostApplicationContext(
             appName: isTypeflux ? nil : application?.localizedName,
             bundleIdentifier: isTypeflux ? nil : application?.bundleIdentifier,
-            icon: isTypeflux ? nil : application?.icon,
+            icon: isTypeflux || !includeIcon ? nil : application?.icon
         )
     }
 
@@ -706,30 +987,95 @@ final class WorkflowController {
     private static func applicationIcon(
         appName: String?,
         bundleIdentifier: String?,
-        frontmostApplicationContext: FrontmostApplicationContext,
+        frontmostApplicationContext: FrontmostApplicationContext
     ) -> NSImage? {
-        if PersonaAppBinding.normalize(bundleIdentifier) == PersonaAppBinding.normalize(frontmostApplicationContext.bundleIdentifier)
-            || PersonaAppBinding.normalize(appName) == PersonaAppBinding.normalize(frontmostApplicationContext.appName)
-        {
+        if PersonaAppBinding.normalize(bundleIdentifier) == PersonaAppBinding
+            .normalize(frontmostApplicationContext.bundleIdentifier)
+            || PersonaAppBinding.normalize(appName) == PersonaAppBinding
+            .normalize(frontmostApplicationContext.appName) {
             return frontmostApplicationContext.icon
         }
 
         if let bundleIdentifier,
-           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
-        {
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
             return NSWorkspace.shared.icon(forFile: appURL.path)
         }
 
         return nil
     }
 
+    func recordingHintPresentation(
+        intent: RecordingIntent,
+        recordingMode: RecordingMode,
+        appName: String?,
+        bundleIdentifier: String?
+    ) -> RecordingHintPresentation {
+        if intent == .askSelection {
+            return RecordingHintPresentation(text: L("overlay.ask.guidance"), autoHideAfter: nil)
+        }
+
+        if shouldUseQuickInput(recordingMode: recordingMode, recordingIntent: intent) {
+            return RecordingHintPresentation(
+                text: L("overlay.recording.quickInputHint"),
+                autoHideAfter: Self.recordingHintAutoHideDelay
+            )
+        }
+
+        guard let persona = recordingPersona(
+            appName: appName,
+            bundleIdentifier: bundleIdentifier
+        ) else {
+            return RecordingHintPresentation(text: nil, autoHideAfter: nil)
+        }
+
+        return RecordingHintPresentation(
+            text: L("overlay.recording.personaHint", persona.name),
+            autoHideAfter: Self.recordingHintAutoHideDelay
+        )
+    }
+
+    func shouldOptimizeTypefluxASR(
+        intent: RecordingIntent,
+        recordingMode: RecordingMode,
+        appName: String?,
+        bundleIdentifier: String?
+    ) -> Bool {
+        guard intent == .dictation else { return true }
+        if shouldUseQuickInput(recordingMode: recordingMode, recordingIntent: intent) {
+            return true
+        }
+        guard let persona = recordingPersona(
+            appName: appName,
+            bundleIdentifier: bundleIdentifier
+        ) else {
+            return true
+        }
+        return settingsStore.resolvedPersonaPrompt(for: persona)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+    }
+
+    func currentRecordingHintPresentation() -> RecordingHintPresentation {
+        let frontmostApplicationContext = Self.frontmostApplicationContext(includeIcon: false)
+        return recordingHintPresentation(
+            intent: recordingIntent,
+            recordingMode: recordingMode,
+            appName: frontmostApplicationContext.appName,
+            bundleIdentifier: frontmostApplicationContext.bundleIdentifier
+        )
+    }
+
     func beginRecording(intent: RecordingIntent, startLocked: Bool, startID: UUID? = nil) async {
         if let startID, pendingRecordingStartID != startID {
+            if !isRecording, pendingRecordingStartID == nil {
+                isAudioRecorderStarting = false
+            }
             RecordingStartupLatencyTrace.shared.mark("workflow.begin_recording_cancelled")
             return
         }
         RecordingStartupLatencyTrace.shared.mark("workflow.begin_recording")
-        let effectiveIntent = recordingIntent == .askSelection && intent == .dictation
+        let gestureDecision = recordingGestureDecision
+        var effectiveIntent = recordingIntent == .askSelection && intent == .dictation
             ? RecordingIntent.askSelection
             : intent
         let effectiveStartLocked = recordingMode == .locked || startLocked
@@ -737,113 +1083,183 @@ final class WorkflowController {
         isAudioRecorderStarted = false
         isAudioRecorderStarting = true
         shouldFinishRecordingAfterAudioStart = false
+        audioRecorderStartedAt = nil
         recordingMode = effectiveStartLocked ? .locked : .holdToTalk
         recordingIntent = effectiveIntent
         lastRetryableFailureRecord = nil
-        NSLog("[Workflow] Recording started")
-
-        Task { @MainActor in
-            guard self.isRecording else { return }
-            appState.setStatus(.recording)
-            if effectiveStartLocked {
-                if effectiveIntent == .askSelection {
-                    overlayController.showLockedRecording(hintText: L("overlay.ask.guidance"))
-                } else {
-                    overlayController.showLockedRecording()
-                }
-            } else {
-                overlayController.show()
-            }
-        }
+        latestRecordingPreviewText = ""
+        let readiness = RecordingAudioReadiness()
+        recordingAudioReadiness = readiness
 
         do {
             RecordingStartupLatencyTrace.shared.mark("workflow.audio_start_enter")
             let livePreviewer = liveTranscriptionPreviewer
+            let recordingAudioBufferRelay = (gestureDecision != nil || effectiveIntent != .askSelection)
+                ? RecordingStartupAudioBufferRelay()
+                : nil
+            try await startAudioRecorderWithStartupRetry(
+                levelHandler: { [weak self] level in
+                    self?.overlayController.updateLevel(level)
+                },
+                audioBufferHandler: { buffer in
+                    guard buffer.frameLength > 0 else { return }
+                    recordingAudioBufferRelay?.append(buffer)
+                    readiness.receiveAudio(buffer)
+                }
+            )
+            RecordingStartupLatencyTrace.shared.mark("workflow.audio_start_return")
+            isAudioRecorderStarted = true
+            isAudioRecorderStarting = false
+            audioRecorderStartedAt = monotonicNow()
+            pendingRecordingStartID = nil
+
+            guard isRecording else {
+                recordingAudioBufferRelay?.cancel()
+                audioRecorderStartedAt = nil
+                _ = try? audioRecorder.stop()
+                isAudioRecorderStarted = false
+                Task { await livePreviewer?.cancel() }
+                return
+            }
+
+            // Capture is already running while app metadata and analytics are resolved.
+            // Loading an application icon here used to delay the microphone itself.
+            RecordingStartupLatencyTrace.shared.mark("workflow.context_begin")
+            let frontmostApplicationContext = Self.frontmostApplicationContext(includeIcon: false)
+            beginDictationAnalytics(
+                intent: recordingIntent,
+                mode: recordingMode,
+                targetBundleIdentifier: frontmostApplicationContext.bundleIdentifier
+            )
+            RecordingStartupLatencyTrace.shared.mark("workflow.context_end")
+            readiness.whenReady { [weak self, weak readiness] in
+                Task { @MainActor [weak self, weak readiness] in
+                    guard let self, let readiness,
+                          self.recordingAudioReadiness === readiness,
+                          self.isRecording, self.isAudioRecorderStarted,
+                          !self.shouldFinishRecordingAfterAudioStart else { return }
+                    self.presentReadyRecording()
+                }
+            }
+
+            if shouldFinishRecordingAfterAudioStart {
+                recordingAudioBufferRelay?.cancel()
+                shouldFinishRecordingAfterAudioStart = false
+                finishRecordingFromCurrentMode()
+                return
+            }
+
+            if let gestureDecision {
+                await gestureDecision.wait()
+                guard isRecording, recordingGestureDecision === gestureDecision else {
+                    recordingAudioBufferRelay?.cancel()
+                    return
+                }
+                await MainActor.run {
+                    if self.isRecording, self.recordingGestureDecision === gestureDecision {
+                        self.hotkeyService.settleActivationGesture()
+                    }
+                }
+                guard isRecording, recordingGestureDecision === gestureDecision else {
+                    recordingAudioBufferRelay?.cancel()
+                    return
+                }
+                recordingGestureDecision = nil
+                effectiveIntent = recordingIntent
+            }
+            snapshotRecordingPersona(
+                appName: frontmostApplicationContext.appName,
+                bundleIdentifier: frontmostApplicationContext.bundleIdentifier
+            )
             let canUseRealtimeTranscription = effectiveIntent != .askSelection
             let usesLivePreview = canUseRealtimeTranscription && shouldUseLiveTranscriptionPreview()
+            let optimizeASR = shouldOptimizeTypefluxASR(
+                intent: effectiveIntent,
+                recordingMode: recordingMode,
+                appName: frontmostApplicationContext.appName,
+                bundleIdentifier: frontmostApplicationContext.bundleIdentifier
+            )
+            if !canUseRealtimeTranscription { recordingAudioBufferRelay?.cancel() }
             if usesLivePreview {
                 await livePreviewer?.prepareForStart()
             }
             let realtimeSession: (any RealtimeTranscriptionSession)? = if canUseRealtimeTranscription {
                 await sttRouter.makeRealtimeTranscriptionSession(
                     scenario: .voiceInput,
+                    optimize: optimizeASR,
                     onUpdate: { [weak self] snapshot in
                         let trimmed = snapshot.text.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
                         Task { @MainActor [weak self] in
-                            guard let self, self.isRecording else { return }
-                            self.overlayController.updateRecordingPreviewText(trimmed)
+                            guard let self, isRecording else { return }
+                            latestRecordingPreviewText = trimmed
+                            overlayController.updateRecordingPreviewText(trimmed)
                         }
-                    },
+                    }
                 )
             } else {
                 nil
             }
+            guard isRecording else {
+                recordingAudioBufferRelay?.cancel()
+                await realtimeSession?.cancel()
+                return
+            }
             if effectiveIntent == .askSelection {
-                NetworkDebugLogger.logMessage("[Ask Flow] realtime transcription disabled for isolated Ask Anything recording")
+                NetworkDebugLogger
+                    .logMessage("[Ask Flow] realtime transcription disabled for isolated Ask Anything recording")
             }
             let realtimeAudioBufferPump = realtimeSession.map { RealtimeAudioBufferPump(session: $0) }
             activeRealtimeTranscriptionSession = realtimeSession
             activeRealtimeAudioBufferPump = realtimeAudioBufferPump
             await realtimeSession?.start()
-            try await startAudioRecorderWithStartupRetry(
-                levelHandler: { [weak self] level in
-                    self?.overlayController.updateLevel(level)
-                },
-                audioBufferHandler: (usesLivePreview || realtimeSession != nil) ? { buffer in
+            guard isRecording else {
+                recordingAudioBufferRelay?.cancel()
+                realtimeAudioBufferPump?.cancel()
+                await realtimeSession?.cancel()
+                return
+            }
+            if usesLivePreview || realtimeAudioBufferPump != nil {
+                recordingAudioBufferRelay?.activate { buffer in
                     realtimeAudioBufferPump?.append(buffer)
                     Task {
                         if usesLivePreview {
                             await livePreviewer?.append(buffer)
                         }
                     }
-                } : nil,
-            )
-            RecordingStartupLatencyTrace.shared.mark("workflow.audio_start_return")
-            isAudioRecorderStarting = false
-            isAudioRecorderStarted = true
-            pendingRecordingStartID = nil
+                }
+            } else {
+                recordingAudioBufferRelay?.cancel()
+            }
             if usesLivePreview {
                 startLiveTranscriptionPreviewIfNeeded(livePreviewer)
             }
 
-            guard isRecording else {
-                isAudioRecorderStarted = false
-                _ = try? audioRecorder.stop()
-                Task { await livePreviewer?.cancel() }
-                realtimeAudioBufferPump?.cancel()
-                Task { await realtimeSession?.cancel() }
-                activeRealtimeTranscriptionSession = nil
-                activeRealtimeAudioBufferPump = nil
-                return
-            }
-
-            if shouldFinishRecordingAfterAudioStart {
-                shouldFinishRecordingAfterAudioStart = false
-                finishRecordingFromCurrentMode()
-                return
-            }
-
             let askAnswerWindowIsFrontmost = Self.isTypefluxAskAnswerWindowFrontmost()
             let shouldSkipSelectionCapture = effectiveIntent == .askSelection || askAnswerWindowIsFrontmost
-            selectionTask = Task { [weak self, shouldSkipSelectionCapture, askAnswerWindowIsFrontmost, effectiveIntent] in
+            selectionTask = Task { [
+                weak self,
+                shouldSkipSelectionCapture,
+                askAnswerWindowIsFrontmost,
+                effectiveIntent
+            ] in
                 guard let self else { return TextSelectionSnapshot() }
                 if shouldSkipSelectionCapture {
                     let source = effectiveIntent == .askSelection ? "ask-isolated" : "typeflux-ask-answer-window"
                     NetworkDebugLogger.logMessage(
-                        "[Ask Flow] skipped selection capture source=\(source)",
+                        "[Ask Flow] skipped selection capture source=\(source)"
                     )
                     return TextSelectionSnapshot(
                         processName: askAnswerWindowIsFrontmost ? "Typeflux" : nil,
                         bundleIdentifier: askAnswerWindowIsFrontmost ? Bundle.main.bundleIdentifier : nil,
                         source: source,
                         isEditable: false,
-                        isFocusedTarget: false,
+                        isFocusedTarget: false
                     )
                 }
-                return await textInjector.getSelectionSnapshot()
+                return await textInjector.selectionSnapshot(for: .automaticInsertion)
             }
-            if settingsStore.inputContextOptimizationEnabled && !shouldSkipSelectionCapture {
+            if settingsStore.inputContextOptimizationEnabled, !shouldSkipSelectionCapture {
                 let selectionTask = selectionTask
                 inputContextTask = Task { [weak self] in
                     guard let self else { return nil }
@@ -851,12 +1267,12 @@ final class WorkflowController {
                     let inputSnapshot = await textInjector.currentInputTextSnapshot()
                     let context = InputContextSnapshot.make(
                         inputSnapshot: inputSnapshot,
-                        selectionSnapshot: selectionSnapshot,
+                        selectionSnapshot: selectionSnapshot
                     )
                     InputContextSnapshot.logCapture(
                         inputSnapshot: inputSnapshot,
                         selectionSnapshot: selectionSnapshot,
-                        context: context,
+                        context: context
                     )
                     return context
                 }
@@ -877,15 +1293,28 @@ final class WorkflowController {
                 self?.finishRecordingFromCurrentMode()
             }
         } catch {
+            readiness.cancel()
+            guard isRecording else {
+                isAudioRecorderStarting = false
+                return
+            }
+            // Failed starts still need a correlated analytics event; defer this
+            // work until failure rather than putting it ahead of capture.
+            beginDictationAnalytics(intent: recordingIntent, mode: recordingMode, targetBundleIdentifier: nil)
             Task { await liveTranscriptionPreviewer?.cancel() }
             activeRealtimeAudioBufferPump?.cancel()
             Task { await activeRealtimeTranscriptionSession?.cancel() }
             activeRealtimeTranscriptionSession = nil
             activeRealtimeAudioBufferPump = nil
+            recordingGestureDecision?.resolve()
+            recordingGestureDecision = nil
             isRecording = false
             isAudioRecorderStarted = false
             isAudioRecorderStarting = false
             shouldFinishRecordingAfterAudioStart = false
+            audioRecorderStartedAt = nil
+            let startupContext = recordingStartupContext
+            recordingStartupContext = nil
             pendingRecordingStartID = nil
             suppressActivationTapUntil = nil
             recordingMode = .holdToTalk
@@ -894,22 +1323,30 @@ final class WorkflowController {
                 recordingStatus: .failed,
                 transcriptionStatus: .skipped,
                 processingStatus: .skipped,
-                applyStatus: .skipped,
+                applyStatus: .skipped
             )
-            record.errorMessage = "Audio start failed: \(error.localizedDescription)"
+            record.pipelineTiming = HistoryPipelineTiming(
+                hotkeyDetectedAt: startupContext?.hotkeyDetectedAt,
+                recordingWorkflowStartedAt: startupContext?.recordingWorkflowStartedAt
+            )
+            let userMessage = Self.audioStartFailureMessage(for: error)
+            record.errorMessage = userMessage
             saveHistoryRecord(record)
+            bindPendingDictationAnalytics(to: record.id)
+            UsageStatsStore.shared.recordSession(record: record)
+            reportDictationTerminal(record: record)
+            NetworkDebugLogger.logError(context: "Audio recorder failed to start", error: error)
             Task { @MainActor in
-                let msg = "Audio start failed: \(error.localizedDescription)"
                 self.soundEffectPlayer.play(.error)
-                appState.setStatus(.failed(message: L("workflow.audioStart.failedStatus")))
-                overlayController.showFailure(message: msg)
-                overlayController.dismiss(after: 3.0)
-                ErrorLogStore.shared.log(msg)
+                appState.setStatus(.failed(message: userMessage))
+                overlayController.showFailure(message: userMessage)
+                overlayController.dismiss(after: 6.0)
+                ErrorLogStore.shared.log(userMessage)
             }
         }
     }
 
-    func handlePressEnded() {
+    func handlePressEnded(hotkeyUptime: TimeInterval? = nil) {
         // Prevent double-end or end without start
         guard isRecording else {
             NSLog("[Workflow] Not recording, ignoring release")
@@ -924,14 +1361,21 @@ final class WorkflowController {
 
         guard recordingMode == .holdToTalk else { return }
 
-        let pressDuration = Date().timeIntervalSince(hotkeyPressedAt ?? Date.distantPast)
+        let handledAt = monotonicNow()
+        let releasedAt = hotkeyUptime ?? handledAt
+        extendRecordingGestureDecision(releasedAt: releasedAt)
+        let pressDuration = hotkeyPressedAt.map { max(0, releasedAt - $0) } ?? .infinity
         hotkeyPressedAt = nil
 
-        if pressDuration < Self.tapToLockThreshold {
-            recordingMode = .locked
-            Task { @MainActor in
-                overlayController.showLockedRecording()
-            }
+        let recordedDuration = audioRecorderStartedAt.map { max(0, releasedAt - $0) } ?? 0
+        let shouldLock = pressDuration <= Self.tapToLockThreshold
+            || isAudioRecorderStarting
+            || recordedDuration < Self.minimumRecordingDuration
+        ErrorLogStore.shared.log(
+            "Hotkey release: press=\(pressDuration)s delay=\(max(0, handledAt - releasedAt))s audio=\(recordedDuration)s starting=\(isAudioRecorderStarting) decision=\(shouldLock ? "lock" : "stop")"
+        )
+        if shouldLock {
+            lockActiveRecording()
             return
         }
 
@@ -948,8 +1392,16 @@ final class WorkflowController {
         finishRecordingFromCurrentMode()
     }
 
+    func shouldUseQuickInput(recordingMode: RecordingMode, recordingIntent: RecordingIntent) -> Bool {
+        !recordingUsesAuxiliary && settingsStore.quickInputEnabled
+            && recordingIntent == .dictation
+            && recordingMode == .holdToTalk
+    }
+
     func finishRecordingFromCurrentMode() {
         guard isRecording else { return }
+        recordingAudioReadiness?.cancel()
+        hotkeyService.settleActivationGesture()
 
         let shouldStopAudioRecorder = isAudioRecorderStarted
         if !shouldStopAudioRecorder, isAudioRecorderStarting {
@@ -961,6 +1413,19 @@ final class WorkflowController {
             return
         }
 
+        let useQuickInput = shouldUseQuickInput(
+            recordingMode: recordingMode,
+            recordingIntent: recordingIntent
+        )
+        if recordingPersonaSnapshot == nil {
+            let context = Self.frontmostApplicationContext(includeIcon: false)
+            snapshotRecordingPersona(appName: context.appName, bundleIdentifier: context.bundleIdentifier)
+        }
+        let personaSnapshot = recordingPersonaSnapshot
+        let startupContext = recordingStartupContext
+        recordingStartupContext = nil
+        recordingGestureDecision?.resolve()
+        recordingGestureDecision = nil
         isRecording = false
         if !shouldStopAudioRecorder {
             isAudioRecorderStarted = false
@@ -968,6 +1433,7 @@ final class WorkflowController {
         pendingRecordingStartID = nil
         recordingMode = .holdToTalk
         hotkeyPressedAt = nil
+        audioRecorderStartedAt = nil
         recordingTimeoutTask?.cancel()
         recordingTimeoutTask = nil
         NSLog("[Workflow] Recording stopped")
@@ -988,7 +1454,12 @@ final class WorkflowController {
 
         Task { [weak self] in
             guard let self else { return }
-            await finishRecordingAndProcess(recordingStoppedAt: recordingStoppedAt)
+            await finishRecordingAndProcess(
+                recordingStoppedAt: recordingStoppedAt,
+                startupContext: startupContext,
+                bypassPersonaRewrite: useQuickInput,
+                personaSnapshot: personaSnapshot
+            )
         }
     }
 
@@ -1003,15 +1474,24 @@ final class WorkflowController {
         do {
             try audioRecorder.start(
                 levelHandler: { _ in },
-                audioBufferHandler: nil,
+                audioBufferHandler: nil
             )
             isAudioRecorderStarted = true
         } catch {
+            recordingGestureDecision?.resolve()
+            recordingGestureDecision = nil
             isRecording = false
             isAudioRecorderStarted = false
             isClarificationRecording = false
             agentClarificationWindowController.updateRecordingState(.waitingForReply)
-            NSLog("[Workflow] Clarification recording failed to start: \(error)")
+            let userMessage = Self.audioStartFailureMessage(for: error)
+            NetworkDebugLogger.logError(context: "Clarification recording failed to start", error: error)
+            Task { @MainActor in
+                self.soundEffectPlayer.play(.error)
+                self.appState.setStatus(.failed(message: userMessage))
+                self.overlayController.showFailure(message: userMessage)
+                self.overlayController.dismiss(after: 6.0)
+            }
         }
     }
 
@@ -1065,13 +1545,13 @@ final class WorkflowController {
         let isLoggedIn = await MainActor.run { AuthState.shared.isLoggedIn }
         let validator = LLMConfigurationValidator(
             settingsStore: settingsStore,
-            isLoggedIn: isLoggedIn,
+            isLoggedIn: isLoggedIn
         )
         return validator.validate()
     }
 
     func presentLLMNotConfigured(_ status: LLMConfigurationStatus) async {
-        guard case .notConfigured(let reason) = status else { return }
+        guard case let .notConfigured(reason) = status else { return }
         let presentation = LLMConfigurationReminderPolicy(settingsStore: settingsStore)
             .presentation(for: status)
         await MainActor.run {
@@ -1091,7 +1571,7 @@ final class WorkflowController {
                     isRetry: false,
                     handler: {
                         LoginWindowController.shared.show()
-                    },
+                    }
                 ),
                 OverlayFailureAction(
                     title: L("workflow.llmNotConfigured.action.configureCustomModel"),
@@ -1101,19 +1581,131 @@ final class WorkflowController {
                     handler: { [weak self] in
                         guard let self else { return }
                         SettingsWindowController.shared.show(
-                            settingsStore: self.settingsStore,
-                            historyStore: self.historyStore,
-                            initialSection: .models,
+                            settingsStore: settingsStore,
+                            historyStore: historyStore,
+                            initialSection: .models
                         )
-                    },
-                ),
+                    }
+                )
             ]
 
             self.overlayController.showFailureWithActions(
                 message: reason.localizedMessage,
-                actions: actions,
+                actions: actions
             )
         }
+    }
+
+    func presentTypefluxCloudLoginRequired() async {
+        await presentLLMNotConfigured(.notConfigured(reason: .cloudNotLoggedIn))
+    }
+
+    func presentCloudBillingError(_ error: TypefluxCloudBillingError) async {
+        await MainActor.run {
+            let hasPaidSubscription = AuthState.shared.subscription.hasPaidSubscription
+            let billingEnabled = AuthState.shared.subscription.billingEnabled
+            guard self.shouldPresentCloudBillingError(
+                error,
+                hasPaidSubscription: hasPaidSubscription
+            ) else {
+                return
+            }
+
+            self.shouldPreserveLLMConfigurationNotice = true
+            self.soundEffectPlayer.play(.tip)
+
+            let primaryAction = error.primaryAction(
+                hasPaidSubscription: hasPaidSubscription,
+                billingEnabled: billingEnabled
+            )
+
+            let actions: [OverlayFailureAction] = [
+                OverlayFailureAction(
+                    title: error.primaryActionTitle(
+                        hasPaidSubscription: hasPaidSubscription,
+                        billingEnabled: billingEnabled
+                    ),
+                    isRetry: false,
+                    trailingSystemImage: "arrow.up.right",
+                    handler: { [weak self] in
+                        guard let self else { return }
+                        switch primaryAction {
+                        case .openAccount:
+                            SettingsWindowController.shared.show(
+                                settingsStore: settingsStore,
+                                historyStore: historyStore,
+                                initialSection: .account
+                            )
+                        case .openPlans:
+                            Task { @MainActor [weak self] in
+                                guard let self else { return }
+                                do {
+                                    let url = try await AccountBillingFlow.destination(
+                                        for: .subscribe,
+                                        requestBillingPageToken: {
+                                            try await AuthState.shared.requestBillingPageToken()
+                                        },
+                                        createPortalSession: {
+                                            try await AuthState.shared.createBillingPortalSession()
+                                        }
+                                    )
+                                    NSWorkspace.shared.open(url)
+                                } catch {
+                                    self.logger.error(
+                                        "Failed to open Typeflux Cloud plans: \(error.localizedDescription, privacy: .public)"
+                                    )
+                                    SettingsWindowController.shared.show(
+                                        settingsStore: self.settingsStore,
+                                        historyStore: self.historyStore,
+                                        initialSection: .account
+                                    )
+                                }
+                            }
+                        }
+                    }
+                ),
+                OverlayFailureAction(
+                    title: L("cloud.billing.action.switchModel"),
+                    isRetry: false,
+                    style: .text,
+                    handler: { [weak self] in
+                        guard let self else { return }
+                        SettingsWindowController.shared.show(
+                            settingsStore: settingsStore,
+                            historyStore: historyStore,
+                            initialSection: .models
+                        )
+                    }
+                )
+            ]
+
+            self.overlayController.showFailureWithActions(
+                title: error.title(hasPaidSubscription: hasPaidSubscription, billingEnabled: billingEnabled),
+                message: error.message(hasPaidSubscription: hasPaidSubscription, billingEnabled: billingEnabled),
+                tone: .billing,
+                actions: actions
+            )
+        }
+    }
+
+    @MainActor
+    func shouldPresentCloudBillingError(
+        _ error: TypefluxCloudBillingError,
+        hasPaidSubscription: Bool,
+        now: Date = Date()
+    ) -> Bool {
+        guard error.reason == .quotaExceeded, hasPaidSubscription else {
+            return true
+        }
+
+        if let lastPaidCreditExhaustedPromptPresentedAt,
+           now.timeIntervalSince(lastPaidCreditExhaustedPromptPresentedAt)
+           < Self.paidCreditExhaustedPromptSuppressionInterval {
+            return false
+        }
+
+        lastPaidCreditExhaustedPromptPresentedAt = now
+        return true
     }
 }
 

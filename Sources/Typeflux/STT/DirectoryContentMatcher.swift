@@ -14,7 +14,7 @@ enum DirectoryContentMatcher {
     static func contentsMatch(
         sourceURL: URL,
         targetURL: URL,
-        fileManager: FileManager,
+        fileManager: FileManager
     ) -> Bool {
         guard let sourceFiles = fingerprints(under: sourceURL, fileManager: fileManager),
               let targetFiles = fingerprints(under: targetURL, fileManager: fileManager)
@@ -26,12 +26,12 @@ enum DirectoryContentMatcher {
 
     private static func fingerprints(
         under rootURL: URL,
-        fileManager: FileManager,
+        fileManager: FileManager
     ) -> [String: DirectoryFileFingerprint]? {
         guard let enumerator = fileManager.enumerator(
             at: rootURL,
             includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles],
+            options: [.skipsHiddenFiles]
         ) else {
             return nil
         }
@@ -47,7 +47,7 @@ enum DirectoryContentMatcher {
             let relativePath = String(url.path.dropFirst(rootURL.path.count + 1))
             result[relativePath] = DirectoryFileFingerprint(
                 size: size,
-                sha256: size <= maxHashedFileSize ? sha256Digest(of: url) : nil,
+                sha256: size <= maxHashedFileSize ? sha256Digest(of: url) : nil
             )
         }
         return result

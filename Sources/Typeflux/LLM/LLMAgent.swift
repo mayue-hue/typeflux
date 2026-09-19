@@ -18,7 +18,7 @@ struct LLMAgentRequest: Sendable {
         userPrompt: String,
         tools: [LLMAgentTool],
         forcedToolName: String? = nil,
-        appSystemContext: AppSystemContext? = nil,
+        appSystemContext: AppSystemContext? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.userPrompt = userPrompt

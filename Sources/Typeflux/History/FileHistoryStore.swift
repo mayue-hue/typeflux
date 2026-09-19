@@ -17,8 +17,7 @@ final class FileHistoryStore: HistoryStore {
         let newBaseDir = appSupport.appendingPathComponent("Typeflux", isDirectory: true)
         let legacyBaseDir = appSupport.appendingPathComponent("Typeflux", isDirectory: true)
         if !FileManager.default.fileExists(atPath: newBaseDir.path),
-           FileManager.default.fileExists(atPath: legacyBaseDir.path)
-        {
+           FileManager.default.fileExists(atPath: legacyBaseDir.path) {
             try? FileManager.default.moveItem(at: legacyBaseDir, to: newBaseDir)
         }
         self.init(baseDir: newBaseDir)
@@ -113,6 +112,10 @@ final class FileHistoryStore: HistoryStore {
             if let pipelineTiming = r.pipelineTiming, pipelineTiming.hasData {
                 let pipelineStats = r.pipelineStats ?? pipelineTiming.generatedStats()
                 md += "\n### Pipeline Stats\n\n"
+                md += "- Hotkey detected: \(pipelineStats.hotkeyDetectedAt?.ISO8601Format() ?? "<none>")\n"
+                md += "- Recording workflow started: \(pipelineStats.recordingWorkflowStartedAt?.ISO8601Format() ?? "<none>")\n"
+                md += "- Audio engine started: \(pipelineStats.audioEngineStartedAt?.ISO8601Format() ?? "<none>")\n"
+                md += "- First audio buffer: \(pipelineStats.firstAudioBufferAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Recording stopped: \(pipelineStats.recordingStoppedAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Audio file ready: \(pipelineStats.audioFileReadyAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- STT started: \(pipelineStats.transcriptionStartedAt?.ISO8601Format() ?? "<none>")\n"
@@ -121,6 +124,18 @@ final class FileHistoryStore: HistoryStore {
                 md += "- LLM completed: \(pipelineStats.llmProcessingCompletedAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Apply started: \(pipelineStats.applyStartedAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Apply completed: \(pipelineStats.applyCompletedAt?.ISO8601Format() ?? "<none>")\n"
+                if let value = pipelineStats.hotkeyToFirstAudioMilliseconds {
+                    md += "- Hotkey -> first audio: \(value) ms\n"
+                }
+                if let value = pipelineStats.hotkeyDispatchMilliseconds {
+                    md += "- Hotkey dispatch: \(value) ms\n"
+                }
+                if let value = pipelineStats.recordingPreparationMilliseconds {
+                    md += "- Recording preparation: \(value) ms\n"
+                }
+                if let value = pipelineStats.audioEngineToFirstBufferMilliseconds {
+                    md += "- Audio engine -> first buffer: \(value) ms\n"
+                }
                 if let value = pipelineStats.stopToAudioReadyMilliseconds {
                     md += "- Stop -> audio ready: \(value) ms\n"
                 }
@@ -142,8 +157,13 @@ final class FileHistoryStore: HistoryStore {
                 if let value = pipelineStats.endToEndMilliseconds {
                     md += "- End-to-end: \(value) ms\n"
                 }
+                md += diagnosticMarkdown(for: pipelineStats)
             } else if let pipelineStats = r.pipelineStats, pipelineStats.hasData {
                 md += "\n### Pipeline Stats\n\n"
+                md += "- Hotkey detected: \(pipelineStats.hotkeyDetectedAt?.ISO8601Format() ?? "<none>")\n"
+                md += "- Recording workflow started: \(pipelineStats.recordingWorkflowStartedAt?.ISO8601Format() ?? "<none>")\n"
+                md += "- Audio engine started: \(pipelineStats.audioEngineStartedAt?.ISO8601Format() ?? "<none>")\n"
+                md += "- First audio buffer: \(pipelineStats.firstAudioBufferAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Recording stopped: \(pipelineStats.recordingStoppedAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Audio file ready: \(pipelineStats.audioFileReadyAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- STT started: \(pipelineStats.transcriptionStartedAt?.ISO8601Format() ?? "<none>")\n"
@@ -152,6 +172,19 @@ final class FileHistoryStore: HistoryStore {
                 md += "- LLM completed: \(pipelineStats.llmProcessingCompletedAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Apply started: \(pipelineStats.applyStartedAt?.ISO8601Format() ?? "<none>")\n"
                 md += "- Apply completed: \(pipelineStats.applyCompletedAt?.ISO8601Format() ?? "<none>")\n"
+                if let value = pipelineStats.hotkeyToFirstAudioMilliseconds {
+                    md += "- Hotkey -> first audio: \(value) ms\n"
+                }
+                if let value = pipelineStats.hotkeyDispatchMilliseconds {
+                    md += "- Hotkey dispatch: \(value) ms\n"
+                }
+                if let value = pipelineStats.recordingPreparationMilliseconds {
+                    md += "- Recording preparation: \(value) ms\n"
+                }
+                if let value = pipelineStats.audioEngineToFirstBufferMilliseconds {
+                    md += "- Audio engine -> first buffer: \(value) ms\n"
+                }
+                md += diagnosticMarkdown(for: pipelineStats)
             }
             if let personaResultText = r.personaResultText, !personaResultText.isEmpty {
                 md += "\n### Persona Result\n\n\(personaResultText)\n"
@@ -171,6 +204,47 @@ final class FileHistoryStore: HistoryStore {
         let url = baseDir.appendingPathComponent("history-\(Int(Date().timeIntervalSince1970)).md")
         try md.data(using: .utf8)?.write(to: url)
         return url
+    }
+
+    private func diagnosticMarkdown(for stats: HistoryPipelineStats) -> String {
+        var lines: [String] = []
+        if let race = stats.asrRace {
+            lines.append("- ASR race selected: \(race.selectedSource?.rawValue ?? "none")")
+            lines.append("  - Selection reason: \(race.selectionReason.rawValue)")
+            lines.append("  - Priority window: \(race.priorityWindowMilliseconds) ms")
+            lines.append("  - Priority window exceeded: \(race.cloudPriorityWindowExceeded)")
+            lines.append("  - Decision duration: \(race.decisionDurationMilliseconds) ms")
+            lines.append(
+                "  - Cloud: \(race.cloudAttempt.durationMilliseconds) ms (\(race.cloudAttempt.outcome.rawValue))"
+            )
+            lines.append(
+                "  - Local: \(race.localAttempt.durationMilliseconds) ms (\(race.localAttempt.outcome.rawValue))"
+            )
+        }
+        if let llmOutcome = stats.llmOutcome {
+            lines.append("- LLM outcome: \(llmOutcome.outcome.rawValue)")
+            lines.append("  - Duration: \(llmOutcome.durationMilliseconds) ms")
+            if let timeout = llmOutcome.timeoutMilliseconds {
+                lines.append("  - Timeout limit: \(timeout) ms")
+            }
+            if let baseTimeout = llmOutcome.baseTimeoutMilliseconds {
+                lines.append("  - Base timeout: \(baseTimeout) ms")
+            }
+            if let inputUnits = llmOutcome.estimatedInputUnits {
+                lines.append("  - Estimated input units: \(inputUnits)")
+            }
+            if let firstOutputTimeout = llmOutcome.firstOutputTimeoutMilliseconds {
+                lines.append("  - First output timeout: \(firstOutputTimeout) ms")
+            }
+            if let stallTimeout = llmOutcome.stallTimeoutMilliseconds {
+                lines.append("  - Stall timeout: \(stallTimeout) ms")
+            }
+            if let timeoutKind = llmOutcome.timeoutKind {
+                lines.append("  - Timeout kind: \(timeoutKind.rawValue)")
+            }
+            lines.append("  - Used transcript fallback: \(llmOutcome.usedTranscriptFallback)")
+        }
+        return lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
     }
 
     private func readIndex() -> [HistoryRecord] {

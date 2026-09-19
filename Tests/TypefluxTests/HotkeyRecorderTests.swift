@@ -8,7 +8,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .keyDown,
             keyCode: 49,
             modifierFlags: 0,
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertNil(binding)
@@ -21,7 +21,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .keyDown,
             keyCode: 35,
             modifierFlags: flags,
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertEqual(binding?.keyCode, 35)
@@ -33,7 +33,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .keyDown,
             keyCode: 49,
             modifierFlags: 0,
-            isRepeat: true,
+            isRepeat: true
         )
 
         XCTAssertNil(binding)
@@ -44,7 +44,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .flagsChanged,
             keyCode: HotkeyBinding.functionKeyCode,
             modifierFlags: UInt(NSEvent.ModifierFlags.function.rawValue),
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertEqual(binding?.keyCode, HotkeyBinding.defaultActivation.keyCode)
@@ -56,7 +56,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .flagsChanged,
             keyCode: HotkeyBinding.rightOptionKeyCode,
             modifierFlags: UInt(NSEvent.ModifierFlags.option.rawValue),
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertEqual(binding?.keyCode, HotkeyBinding.rightOptionKeyCode)
@@ -68,7 +68,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .flagsChanged,
             keyCode: HotkeyBinding.rightCommandKeyCode,
             modifierFlags: UInt(NSEvent.ModifierFlags.command.rawValue),
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertEqual(binding?.keyCode, HotkeyBinding.rightCommandKeyCode)
@@ -78,14 +78,14 @@ final class HotkeyRecorderTests: XCTestCase {
     func testRecordsRightCommandModifierOnlyTriggerWithAdditionalFlagsNoise() {
         let flags = UInt(
             NSEvent.ModifierFlags.command.rawValue
-                | NSEvent.ModifierFlags.shift.rawValue,
+                | NSEvent.ModifierFlags.shift.rawValue
         )
 
         let binding = HotkeyRecorder.recordedBinding(
             eventType: .flagsChanged,
             keyCode: HotkeyBinding.rightCommandKeyCode,
             modifierFlags: flags,
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertEqual(binding?.keyCode, HotkeyBinding.rightCommandKeyCode)
@@ -95,14 +95,14 @@ final class HotkeyRecorderTests: XCTestCase {
     func testRecordsRightOptionModifierOnlyTriggerWithAdditionalFlagsNoise() {
         let flags = UInt(
             NSEvent.ModifierFlags.option.rawValue
-                | NSEvent.ModifierFlags.control.rawValue,
+                | NSEvent.ModifierFlags.control.rawValue
         )
 
         let binding = HotkeyRecorder.recordedBinding(
             eventType: .flagsChanged,
             keyCode: HotkeyBinding.rightOptionKeyCode,
             modifierFlags: flags,
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertEqual(binding?.keyCode, HotkeyBinding.rightOptionKeyCode)
@@ -114,7 +114,7 @@ final class HotkeyRecorderTests: XCTestCase {
             eventType: .flagsChanged,
             keyCode: 56,
             modifierFlags: UInt(NSEvent.ModifierFlags.shift.rawValue),
-            isRepeat: false,
+            isRepeat: false
         )
 
         XCTAssertNil(binding)

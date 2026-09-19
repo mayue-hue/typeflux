@@ -62,7 +62,7 @@ actor StdioMCPClient: MCPClient {
         let initParams = MCPInitializeParams(
             protocolVersion: "2024-11-05",
             capabilities: MCPServerCapabilities(tools: MCPToolsCapability(listChanged: nil)),
-            clientInfo: MCPClientInfo(name: "Typeflux", version: "1.0.0"),
+            clientInfo: MCPClientInfo(name: "Typeflux", version: "1.0.0")
         )
         let initMsg = try MCPJsonRPCMessage.initializeRequest(id: .string(id), params: initParams)
         let response = try await sendMessage(initMsg, id: id)
@@ -71,7 +71,7 @@ actor StdioMCPClient: MCPClient {
         connectionInfo = MCPConnectionInfo(
             name: initResult.serverInfo?.name ?? "Unknown",
             protocolVersion: initResult.protocolVersion,
-            capabilities: initResult.capabilities,
+            capabilities: initResult.capabilities
         )
 
         // Send initialized notification (no response expected)
@@ -159,8 +159,7 @@ actor StdioMCPClient: MCPClient {
                     buffer.removeSubrange(buffer.startIndex ... newlineRange.lowerBound)
 
                     if let msg = try? JSONDecoder().decode(MCPJsonRPCMessage.self, from: lineData),
-                       let msgId = msg.id
-                    {
+                       let msgId = msg.id {
                         let idStr = msgId.stringValue
                         pendingRequests[idStr]?.resume(returning: msg)
                         pendingRequests.removeValue(forKey: idStr)
