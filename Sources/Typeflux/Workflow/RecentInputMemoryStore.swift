@@ -92,6 +92,7 @@ final class RecentInputMemoryStore: @unchecked Sendable {
         generation += 1
         items.removeAll { $0.id == id }
         persist()
+        GlobalSoulMemoryStore.shared.removeInput(id: id)
     }
 
     func clear(appIdentifier: String? = nil) {
@@ -104,6 +105,7 @@ final class RecentInputMemoryStore: @unchecked Sendable {
             items.removeAll()
         }
         persist()
+        GlobalSoulMemoryStore.shared.clearPending(appIdentifier: appIdentifier)
     }
 
     private func purgeExpired(at date: Date) {

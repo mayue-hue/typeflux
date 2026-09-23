@@ -189,6 +189,28 @@ struct TextDeliveryPlatformTests {
         ) == .notWritable)
     }
 
+    @Test func textCursorButtonCanReceiveCurrentInputWithoutAppName() {
+        #expect(AXTextDeliveryBackend.allowsOpaqueTextButtonInsertion(
+            role: "AXButton", domClasses: ["flex", "cursor-text", "rounded"]
+        ))
+        #expect(!AXTextDeliveryBackend.allowsOpaqueTextButtonInsertion(
+            destination: .selection(TextSelectionSnapshot()),
+            role: "AXButton", domClasses: ["cursor-text"]
+        ))
+    }
+
+    @Test func ordinaryButtonsAndTextContainersDoNotUseButtonException() {
+        #expect(!AXTextDeliveryBackend.allowsOpaqueTextButtonInsertion(
+            role: "AXButton", domClasses: ["cursor-pointer"]
+        ))
+        #expect(!AXTextDeliveryBackend.allowsOpaqueTextButtonInsertion(
+            role: "AXButton", domClasses: []
+        ))
+        #expect(!AXTextDeliveryBackend.allowsOpaqueTextButtonInsertion(
+            role: "AXStaticText", domClasses: ["cursor-text"]
+        ))
+    }
+
     @Test func focusSearchFollowsExplicitFocusChainAndRejectsCycles() {
         let roles = [0: "AXWindow", 1: "AXGroup", 2: "AXTextArea"]
         #expect(FocusedTextTargetResolver.resolve(

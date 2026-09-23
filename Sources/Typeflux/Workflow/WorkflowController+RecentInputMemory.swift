@@ -51,6 +51,7 @@ enum RecentInputMemoryExcerpt {
 }
 
 extension WorkflowController {
+    @MainActor
     func scheduleRecentInputMemoryObservation(for insertedText: String, deliveryConfirmed: Bool) {
         recentInputMemoryObservationTask?.cancel()
         recentInputMemoryObservationTask = nil
@@ -73,6 +74,8 @@ extension WorkflowController {
         let store = RecentInputMemoryStore.shared
         let storeGeneration = store.currentGeneration()
         let memoryID = UUID()
+        let deliveredAt = Date()
+        let ownerID = GlobalSoulOwner.currentID
         // A confirmed write may be sent before an AX read completes. Save its short
         // delivered text now, then replace it if the user edits the live input.
         if deliveryConfirmed,
@@ -123,6 +126,18 @@ extension WorkflowController {
             ) else { return }
             NetworkDebugLogger.logMessage("[Recent Input Memory] observed input saved app=\(scope.appIdentifier)")
             var latestBody = captured.body
+            defer {
+                if settingsStore.globalSoulMemoryEnabled,
+                   settingsStore.recentInputMemoryAllowed(for: scope.appIdentifier),
+                   store.currentGeneration() == storeGeneration,
+                   GlobalSoulOwner.currentID == ownerID {
+                    GlobalSoulMemoryStore.shared.recordFinalInput(
+                        id: memoryID, ownerID: ownerID, appIdentifier: scope.appIdentifier,
+                        text: latestBody, at: deliveredAt
+                    )
+                    GlobalSoulConsolidator.shared.schedule()
+                }
+            }
             var changedAt: Date?
             let deadline = Date().addingTimeInterval(30)
 
@@ -140,7 +155,10 @@ extension WorkflowController {
                 guard let body = RecentInputMemoryExcerpt.updatedBody(
                     in: currentText, leading: captured.leading, trailing: captured.trailing
                 ) else { break }
-                if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { break }
+                if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    store.delete(id: memoryID)
+                    return
+                }
                 if body != latestBody {
                     latestBody = body
                     changedAt = Date()

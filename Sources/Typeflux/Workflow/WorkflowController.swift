@@ -423,6 +423,11 @@ final class WorkflowController {
         hotkeyService.start()
         Task { @MainActor [weak self] in
             self?.overlayController.prepareRecordingPresentation()
+            if let self {
+                GlobalSoulConsolidator.shared.configure(
+                    llmService: self.llmService, settingsStore: self.settingsStore
+                )
+            }
         }
 
         // Pre-warm the local STT model on startup, and re-warm whenever

@@ -998,6 +998,11 @@
 "settings.advanced.recentInputMemory.emptyApp" = "此应用暂无记忆";
 "settings.advanced.recentInputMemory.appEnabled" = "启用记忆";
 "settings.advanced.recentInputMemory.deleteItem" = "删除这条记忆";
+"settings.advanced.globalSoul.title" = "全局长期记忆";
+"settings.advanced.globalSoul.subtitle" = "开启时也会启用短期记忆。累计 20 条已确认的最终输入，或临近 4 小时清理且至少有 5 条时，用当前文本模型更新 SOUL；该批输入和现有 SOUL 会发送给模型服务。";
+"settings.advanced.globalSoul.manage" = "全局 SOUL";
+"settings.advanced.globalSoul.empty" = "暂无全局记忆";
+"settings.advanced.globalSoul.delete" = "删除全局记忆";
 "workflow.vocabulary.autoAdded.single" = "已自动将 %@ 添加到生词本。";
 "workflow.vocabulary.autoAdded.multiple" = "已自动将 %d 个词添加到生词本。";
 

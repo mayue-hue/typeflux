@@ -994,6 +994,11 @@
 "settings.advanced.recentInputMemory.emptyApp" = "此應用目前沒有記憶";
 "settings.advanced.recentInputMemory.appEnabled" = "啟用記憶";
 "settings.advanced.recentInputMemory.deleteItem" = "刪除這條記憶";
+"settings.advanced.globalSoul.title" = "全域長期記憶";
+"settings.advanced.globalSoul.subtitle" = "開啟時也會啟用短期記憶。累積 20 條已確認的最終輸入，或接近 4 小時清理且至少有 5 條時，使用目前文字模型更新 SOUL；這批輸入和現有 SOUL 會傳送給模型服務。";
+"settings.advanced.globalSoul.manage" = "全域 SOUL";
+"settings.advanced.globalSoul.empty" = "目前沒有全域記憶";
+"settings.advanced.globalSoul.delete" = "刪除全域記憶";
 "workflow.vocabulary.autoAdded.single" = "已自動將 %@ 加入生詞本。";
 "workflow.vocabulary.autoAdded.multiple" = "已自動將 %d 個詞加入生詞本。";
 

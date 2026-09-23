@@ -11,6 +11,15 @@ extension AXTextInjector {
         return value as? String
     }
 
+    func copyStringArrayAttribute(_ attribute: String, from element: AXUIElement) -> [String] {
+        AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+            return []
+        }
+        return value as? [String] ?? []
+    }
+
     func copyElementAttribute(_ attribute: String, from element: AXUIElement) -> AXUIElement? {
         AXUIElementSetMessagingTimeout(element, Self.replacementAXMessagingTimeout)
         var value: AnyObject?

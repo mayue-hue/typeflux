@@ -909,6 +909,11 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: "memory.recentInput.enabled") }
     }
 
+    var globalSoulMemoryEnabled: Bool {
+        get { defaults.bool(forKey: "memory.globalSoul.enabled") }
+        set { defaults.set(newValue, forKey: "memory.globalSoul.enabled") }
+    }
+
     var recentInputMemoryExcludedApps: [String] {
         get { defaults.stringArray(forKey: "memory.recentInput.excludedApps") ?? [] }
         set { defaults.set(newValue, forKey: "memory.recentInput.excludedApps") }

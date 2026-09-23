@@ -38,6 +38,7 @@ final class AXTextDeliveryBackend: TextDeliveryBackend {
         let range: CFRange?
         let before: String?
         var contentBefore: String? = nil
+        var requiresTextCursorEvidence = false
     }
 
     enum Target {
@@ -104,7 +105,12 @@ final class AXTextDeliveryBackend: TextDeliveryBackend {
             let capability = injector.targetCapability(element: element)
             let role = injector.copyStringAttribute(kAXRoleAttribute as String, from: element) ?? "unknown"
             NetworkDebugLogger.logMessage("[Text Delivery] resolved role=\(role) capability=\(capability)")
-            guard capability != .notWritable else {
+            let opaqueTextButton = Self.allowsOpaqueTextButtonInsertion(
+                destination: destination,
+                role: role,
+                domClasses: injector.copyStringArrayAttribute("AXDOMClassList", from: element)
+            )
+            guard capability != .notWritable || opaqueTextButton else {
                 throw TextDeliveryError.noInput
             }
             let range = injector.copySelectedTextRange(from: element)
@@ -112,7 +118,8 @@ final class AXTextDeliveryBackend: TextDeliveryBackend {
             let content = injector.deliveryContentValue(from: element, raw: raw, selection: range)
             return .external(ExternalTarget(
                 element: element, processID: pid, range: range,
-                before: raw, contentBefore: content
+                before: raw, contentBefore: content,
+                requiresTextCursorEvidence: opaqueTextButton
             ))
         }
     }
@@ -222,6 +229,12 @@ final class AXTextDeliveryBackend: TextDeliveryBackend {
         guard injector.frontmostProcessID() == target.processID,
               let focused = injector.deliveryFocusedElement(for: target.processID),
               CFEqual(focused, target.element) else { throw TextDeliveryError.targetChanged }
+        if target.requiresTextCursorEvidence {
+            guard allowsOpaqueTextButtonInsertion(
+                role: injector.copyStringAttribute(kAXRoleAttribute as String, from: focused),
+                domClasses: injector.copyStringArrayAttribute("AXDOMClassList", from: focused)
+            ) else { throw TextDeliveryError.targetChanged }
+        }
         let currentRange = injector.copySelectedTextRange(from: focused)
         if let range = target.range {
             guard currentRange?.location == range.location, currentRange?.length == range.length else {
@@ -232,5 +245,16 @@ final class AXTextDeliveryBackend: TextDeliveryBackend {
            injector.copyTextAttribute(kAXValueAttribute as String, from: focused) != before {
             throw TextDeliveryError.targetChanged
         }
+    }
+
+    nonisolated static func allowsOpaqueTextButtonInsertion(
+        destination: TextDeliveryDestination = .currentInput,
+        role: String?,
+        domClasses: [String]
+    ) -> Bool {
+        // Some custom text composers expose a button as their focused AX target.
+        // A text cursor hint permits one guarded paste, never selection replacement.
+        guard case .currentInput = destination, role == "AXButton" else { return false }
+        return domClasses.contains("cursor-text")
     }
 }

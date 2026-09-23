@@ -987,6 +987,11 @@
 "settings.advanced.recentInputMemory.emptyApp" = "このアプリのメモリはありません";
 "settings.advanced.recentInputMemory.appEnabled" = "メモリを有効にする";
 "settings.advanced.recentInputMemory.deleteItem" = "このメモリを削除";
+"settings.advanced.globalSoul.title" = "グローバル長期メモリ";
+"settings.advanced.globalSoul.subtitle" = "有効にすると短期メモリも有効になります。確認済みの最終入力が20件に達した時、または4時間の削除前に5件以上ある時、選択中のテキストモデルでSOULを更新します。入力と現在のSOULはモデルサービスに送信されます。";
+"settings.advanced.globalSoul.manage" = "グローバル SOUL";
+"settings.advanced.globalSoul.empty" = "グローバルメモリはまだありません";
+"settings.advanced.globalSoul.delete" = "グローバルメモリを削除";
 "workflow.vocabulary.autoAdded.single" = "%@ を語彙に追加しました。";
 "workflow.vocabulary.autoAdded.multiple" = "%d 用語を語彙に追加しました。";
 

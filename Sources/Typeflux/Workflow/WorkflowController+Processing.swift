@@ -72,7 +72,12 @@ extension WorkflowController {
             } else {
                 []
             }
+            let soulOwnerID = await MainActor.run { GlobalSoulOwner.currentID }
+            let globalSoul = settingsStore.globalSoulMemoryEnabled
+                ? GlobalSoulMemoryStore.shared.soul(ownerID: soulOwnerID)?.text
+                : nil
             let instrumentedRequest = request.withRecentInputMemory(rememberedText)
+                .withGlobalSoul(globalSoul)
                 .withDiagnosticsRecorder(diagnosticsRecorder)
             return try await RequestRetry.perform(
                 operationName: "LLM rewrite stream",
@@ -976,15 +981,20 @@ extension WorkflowController {
                 settingsStore.recentInputMemoryAllowed(for: scope.appIdentifier)
                     && !RecentInputMemoryStore.shared.recent(scope: scope.key, limit: 1).isEmpty
             } ?? false
+            let soulOwnerID = await MainActor.run { GlobalSoulOwner.currentID }
+            let hasGlobalSoul = settingsStore.globalSoulMemoryEnabled
+                && settingsStore.isLLMConfigured
+                && GlobalSoulMemoryStore.shared.soul(ownerID: soulOwnerID) != nil
             let multimodalHandlesPersona = settingsStore.sttProvider.handlesPersonaInternally
                 && (selectedText == nil || selectedText!.isEmpty)
                 && !hasRecentMemory
+                && !hasGlobalSoul
             let hasRewritePersona = Self.hasRewritePersona(personaPrompt)
             let hasInputContext = inputContext?.hasContent == true
             let shouldRewriteTranscript = Self.shouldRewriteTranscript(
                 personaPrompt: personaPrompt,
                 inputContext: inputContext
-            ) || hasRecentMemory
+            ) || hasRecentMemory || hasGlobalSoul
             let expectedASROptimize = !shouldRewriteTranscript
             let usableRealtimeTranscriptionSession = realtimeTranscriptionSession
             if let actualASROptimize = (realtimeTranscriptionSession as?
@@ -1021,6 +1031,7 @@ extension WorkflowController {
                 && inputContext == nil
                 && hasRewritePersona
                 && !hasRecentMemory
+                && !hasGlobalSoul
 
             var rawTranscribedText: String
             var mergedLLMResult: String?

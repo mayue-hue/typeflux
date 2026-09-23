@@ -998,6 +998,11 @@
 "settings.advanced.recentInputMemory.emptyApp" = "No memories for this app";
 "settings.advanced.recentInputMemory.appEnabled" = "Enable memory";
 "settings.advanced.recentInputMemory.deleteItem" = "Delete this memory";
+"settings.advanced.globalSoul.title" = "Global long-term memory";
+"settings.advanced.globalSoul.subtitle" = "Also enables short-term memory. Update SOUL with the selected text model after 20 confirmed final inputs, or before the 4-hour cleanup if at least 5 remain. The batch and current SOUL are sent to that model service.";
+"settings.advanced.globalSoul.manage" = "Global SOUL";
+"settings.advanced.globalSoul.empty" = "No global memory yet";
+"settings.advanced.globalSoul.delete" = "Delete global memory";
 "workflow.vocabulary.autoAdded.single" = "Added %@ to vocabulary.";
 "workflow.vocabulary.autoAdded.multiple" = "Added %d terms to vocabulary.";
 

@@ -37,6 +37,7 @@ struct LLMRewriteRequest {
     let appSystemContext: AppSystemContext?
     let inputContext: InputContextSnapshot?
     let recentInputMemory: [String]
+    let globalSoul: String?
     let vocabularyTerms: [String]
     let diagnosticsRecorder: LLMRequestDiagnosticsRecorder?
 
@@ -49,6 +50,7 @@ struct LLMRewriteRequest {
         appSystemContext: AppSystemContext? = nil,
         inputContext: InputContextSnapshot? = nil,
         recentInputMemory: [String] = [],
+        globalSoul: String? = nil,
         vocabularyTerms: [String] = [],
         diagnosticsRecorder: LLMRequestDiagnosticsRecorder? = nil
     ) {
@@ -60,6 +62,7 @@ struct LLMRewriteRequest {
         self.appSystemContext = appSystemContext
         self.inputContext = inputContext
         self.recentInputMemory = recentInputMemory
+        self.globalSoul = globalSoul
         self.vocabularyTerms = vocabularyTerms
         self.diagnosticsRecorder = diagnosticsRecorder
     }
@@ -74,6 +77,7 @@ struct LLMRewriteRequest {
             appSystemContext: appSystemContext,
             inputContext: inputContext,
             recentInputMemory: recentInputMemory,
+            globalSoul: globalSoul,
             vocabularyTerms: vocabularyTerms,
             diagnosticsRecorder: recorder
         )
@@ -89,6 +93,23 @@ struct LLMRewriteRequest {
             appSystemContext: appSystemContext,
             inputContext: inputContext,
             recentInputMemory: excerpts,
+            globalSoul: globalSoul,
+            vocabularyTerms: vocabularyTerms,
+            diagnosticsRecorder: diagnosticsRecorder
+        )
+    }
+
+    func withGlobalSoul(_ soul: String?) -> LLMRewriteRequest {
+        LLMRewriteRequest(
+            mode: mode,
+            sourceText: sourceText,
+            spokenInstruction: spokenInstruction,
+            personaPrompt: personaPrompt,
+            personaID: personaID,
+            appSystemContext: appSystemContext,
+            inputContext: inputContext,
+            recentInputMemory: recentInputMemory,
+            globalSoul: soul,
             vocabularyTerms: vocabularyTerms,
             diagnosticsRecorder: diagnosticsRecorder
         )

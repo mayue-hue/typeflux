@@ -173,6 +173,8 @@ final class StudioViewModel: ObservableObject {
     @Published var appleSpeechFallback: Bool
     @Published var automaticVocabularyCollectionEnabled: Bool
     @Published var recentInputMemoryEnabled: Bool
+    @Published var globalSoulMemoryEnabled: Bool
+    @Published var globalSoulMemory: GlobalSoulMemory?
     @Published var recentInputMemoryExcludedApps: [String]
     @Published var recentInputMemoryApplications: [String]
     @Published var recentInputMemoryItems: [RecentInputMemory]
@@ -385,6 +387,8 @@ final class StudioViewModel: ObservableObject {
         appleSpeechFallback = settingsStore.useAppleSpeechFallback
         automaticVocabularyCollectionEnabled = settingsStore.automaticVocabularyCollectionEnabled
         recentInputMemoryEnabled = settingsStore.recentInputMemoryEnabled
+        globalSoulMemoryEnabled = settingsStore.globalSoulMemoryEnabled
+        globalSoulMemory = GlobalSoulMemoryStore.shared.soul(ownerID: GlobalSoulOwner.currentID)
         recentInputMemoryExcludedApps = settingsStore.recentInputMemoryExcludedApps
         recentInputMemoryApplications = Array(Set(
             RecentInputMemoryStore.shared.appIdentifiers() + settingsStore.recentInputMemoryExcludedApps
@@ -1529,6 +1533,28 @@ final class StudioViewModel: ObservableObject {
     func setRecentInputMemoryEnabled(_ value: Bool) {
         recentInputMemoryEnabled = value
         settingsStore.recentInputMemoryEnabled = value
+        if !value {
+            globalSoulMemoryEnabled = false
+            settingsStore.globalSoulMemoryEnabled = false
+            GlobalSoulMemoryStore.shared.clearPending()
+        }
+        GlobalSoulConsolidator.shared.schedule()
+    }
+
+    func setGlobalSoulMemoryEnabled(_ value: Bool) {
+        if value {
+            recentInputMemoryEnabled = true
+            settingsStore.recentInputMemoryEnabled = true
+        }
+        globalSoulMemoryEnabled = value
+        settingsStore.globalSoulMemoryEnabled = value
+        if !value { GlobalSoulMemoryStore.shared.clearPending() }
+        GlobalSoulConsolidator.shared.schedule()
+    }
+
+    func deleteGlobalSoulMemory() {
+        GlobalSoulMemoryStore.shared.deleteSoul(ownerID: GlobalSoulOwner.currentID)
+        refreshRecentInputMemoryApplications()
     }
 
     func setRecentInputMemoryAllowed(_ allowed: Bool, appIdentifier: String) {
@@ -1536,19 +1562,24 @@ final class StudioViewModel: ObservableObject {
         if allowed { excluded.remove(appIdentifier) } else { excluded.insert(appIdentifier) }
         recentInputMemoryExcludedApps = excluded.sorted()
         settingsStore.recentInputMemoryExcludedApps = recentInputMemoryExcludedApps
+        if !allowed { GlobalSoulMemoryStore.shared.clearPending(appIdentifier: appIdentifier) }
+        GlobalSoulConsolidator.shared.schedule()
     }
 
     func clearRecentInputMemory(appIdentifier: String? = nil) {
         RecentInputMemoryStore.shared.clear(appIdentifier: appIdentifier)
         refreshRecentInputMemoryApplications()
+        GlobalSoulConsolidator.shared.schedule()
     }
 
     func deleteRecentInputMemory(id: UUID) {
         RecentInputMemoryStore.shared.delete(id: id)
         refreshRecentInputMemoryApplications()
+        GlobalSoulConsolidator.shared.schedule()
     }
 
     func refreshRecentInputMemoryApplications() {
+        globalSoulMemory = GlobalSoulMemoryStore.shared.soul(ownerID: GlobalSoulOwner.currentID)
         recentInputMemoryItems = RecentInputMemoryStore.shared.list()
         recentInputMemoryApplications = Array(Set(
             recentInputMemoryItems.map(\.appIdentifier) + recentInputMemoryExcludedApps

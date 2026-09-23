@@ -5,6 +5,7 @@ struct RecentInputMemoryManagementView: View {
     @ObservedObject var viewModel: StudioViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedAppIdentifier: String?
+    @State private var isGlobalSoulSelected = false
 
     private var applications: [String] {
         let identifiers = Set(viewModel.recentInputMemoryApplications)
@@ -39,6 +40,13 @@ struct RecentInputMemoryManagementView: View {
                 ScrollView {
                     VStack(spacing: StudioTheme.Spacing.small) {
                         appFilterRow(
+                            title: L("settings.advanced.globalSoul.manage"),
+                            icon: "sparkles.rectangle.stack",
+                            count: viewModel.globalSoulMemory == nil ? 0 : 1,
+                            appIdentifier: nil,
+                            selectsGlobalSoul: true
+                        )
+                        appFilterRow(
                             title: L("settings.advanced.recentInputMemory.allApps"),
                             icon: "square.grid.2x2",
                             count: viewModel.recentInputMemoryItems.count,
@@ -64,7 +72,10 @@ struct RecentInputMemoryManagementView: View {
                 Divider()
 
                 ScrollView {
-                    if displayedApplications.isEmpty {
+                    if isGlobalSoulSelected {
+                        globalSoulCard
+                            .padding(StudioTheme.Spacing.large)
+                    } else if displayedApplications.isEmpty {
                         Text(L("settings.advanced.recentInputMemory.empty"))
                             .foregroundStyle(StudioTheme.textSecondary)
                             .frame(maxWidth: .infinity, minHeight: 280)
@@ -82,11 +93,24 @@ struct RecentInputMemoryManagementView: View {
         .frame(width: 820, height: 680)
         .background(StudioTheme.modalSurface)
         .onAppear { viewModel.refreshRecentInputMemoryApplications() }
+        .onReceive(NotificationCenter.default.publisher(for: .globalSoulDidChange)) { _ in
+            viewModel.refreshRecentInputMemoryApplications()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .authDidLogin)) { _ in
+            viewModel.refreshRecentInputMemoryApplications()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .authDidLogout)) { _ in
+            viewModel.refreshRecentInputMemoryApplications()
+        }
     }
 
-    private func appFilterRow(title: String, icon: String?, count: Int, appIdentifier: String?) -> some View {
-        let isSelected = selectedAppIdentifier == appIdentifier
+    private func appFilterRow(
+        title: String, icon: String?, count: Int, appIdentifier: String?, selectsGlobalSoul: Bool = false
+    ) -> some View {
+        let isSelected = selectsGlobalSoul ? isGlobalSoulSelected
+            : (!isGlobalSoulSelected && selectedAppIdentifier == appIdentifier)
         return Button {
+            isGlobalSoulSelected = selectsGlobalSoul
             selectedAppIdentifier = appIdentifier
         } label: {
             HStack(spacing: StudioTheme.Spacing.small) {
@@ -117,6 +141,34 @@ struct RecentInputMemoryManagementView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var globalSoulCard: some View {
+        StudioCard {
+            VStack(alignment: .leading, spacing: StudioTheme.Spacing.medium) {
+                HStack {
+                    Text(L("settings.advanced.globalSoul.manage"))
+                        .font(.studioBody(StudioTheme.Typography.body, weight: .semibold))
+                    Spacer()
+                    Button(L("settings.advanced.globalSoul.delete"), role: .destructive) {
+                        viewModel.deleteGlobalSoulMemory()
+                    }
+                    .disabled(viewModel.globalSoulMemory == nil)
+                }
+                Divider()
+                if let soul = viewModel.globalSoulMemory {
+                    Text(soul.text)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(soul.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.studioBody(StudioTheme.Typography.caption))
+                        .foregroundStyle(StudioTheme.textSecondary)
+                } else {
+                    Text(L("settings.advanced.globalSoul.empty"))
+                        .foregroundStyle(StudioTheme.textSecondary)
+                }
+            }
+        }
     }
 
     private func appCard(for appIdentifier: String) -> some View {

@@ -2530,6 +2530,21 @@ struct StudioView: View {
                     }
                     .onAppear { viewModel.refreshRecentInputMemoryApplications() }
 
+                    StudioSettingRow(
+                        title: L("settings.advanced.globalSoul.title"),
+                        subtitle: L("settings.advanced.globalSoul.subtitle")
+                    ) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { viewModel.globalSoulMemoryEnabled },
+                                set: viewModel.setGlobalSoulMemoryEnabled
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+
                     Button(L("settings.advanced.recentInputMemory.manage")) {
                         isRecentInputMemoryManagerPresented = true
                     }
