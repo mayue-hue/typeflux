@@ -172,6 +172,10 @@ final class StudioViewModel: ObservableObject {
     @Published var localOptimizationEnabled: Bool
     @Published var appleSpeechFallback: Bool
     @Published var automaticVocabularyCollectionEnabled: Bool
+    @Published var recentInputMemoryEnabled: Bool
+    @Published var recentInputMemoryExcludedApps: [String]
+    @Published var recentInputMemoryApplications: [String]
+    @Published var recentInputMemoryItems: [RecentInputMemory]
     @Published var inputContextOptimizationEnabled: Bool
     @Published var textTransformationEnabled: Bool
     @Published var textTransformationRule: String
@@ -380,6 +384,12 @@ final class StudioViewModel: ObservableObject {
         localOptimizationEnabled = settingsStore.localOptimizationEnabled
         appleSpeechFallback = settingsStore.useAppleSpeechFallback
         automaticVocabularyCollectionEnabled = settingsStore.automaticVocabularyCollectionEnabled
+        recentInputMemoryEnabled = settingsStore.recentInputMemoryEnabled
+        recentInputMemoryExcludedApps = settingsStore.recentInputMemoryExcludedApps
+        recentInputMemoryApplications = Array(Set(
+            RecentInputMemoryStore.shared.appIdentifiers() + settingsStore.recentInputMemoryExcludedApps
+        )).sorted()
+        recentInputMemoryItems = RecentInputMemoryStore.shared.list()
         inputContextOptimizationEnabled = settingsStore.inputContextOptimizationEnabled
         textTransformationEnabled = settingsStore.outputOpenCCEnabled
         textTransformationRule = settingsStore.outputOpenCCConfig
@@ -1514,6 +1524,35 @@ final class StudioViewModel: ObservableObject {
     func setAutomaticVocabularyCollectionEnabled(_ value: Bool) {
         automaticVocabularyCollectionEnabled = value
         settingsStore.automaticVocabularyCollectionEnabled = value
+    }
+
+    func setRecentInputMemoryEnabled(_ value: Bool) {
+        recentInputMemoryEnabled = value
+        settingsStore.recentInputMemoryEnabled = value
+    }
+
+    func setRecentInputMemoryAllowed(_ allowed: Bool, appIdentifier: String) {
+        var excluded = Set(recentInputMemoryExcludedApps)
+        if allowed { excluded.remove(appIdentifier) } else { excluded.insert(appIdentifier) }
+        recentInputMemoryExcludedApps = excluded.sorted()
+        settingsStore.recentInputMemoryExcludedApps = recentInputMemoryExcludedApps
+    }
+
+    func clearRecentInputMemory(appIdentifier: String? = nil) {
+        RecentInputMemoryStore.shared.clear(appIdentifier: appIdentifier)
+        refreshRecentInputMemoryApplications()
+    }
+
+    func deleteRecentInputMemory(id: UUID) {
+        RecentInputMemoryStore.shared.delete(id: id)
+        refreshRecentInputMemoryApplications()
+    }
+
+    func refreshRecentInputMemoryApplications() {
+        recentInputMemoryItems = RecentInputMemoryStore.shared.list()
+        recentInputMemoryApplications = Array(Set(
+            recentInputMemoryItems.map(\.appIdentifier) + recentInputMemoryExcludedApps
+        )).sorted()
     }
 
     func setInputContextOptimizationEnabled(_ value: Bool) {

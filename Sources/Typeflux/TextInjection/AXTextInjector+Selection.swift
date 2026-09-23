@@ -647,7 +647,7 @@ extension AXTextInjector {
 
       function inputSupportsTextSelection(element) {
         if (!element || element.tagName !== "INPUT") return false;
-        return /^(text|search|url|tel|email|password|number)$/i.test(element.type || "text");
+        return /^(text|search|url|tel|email|number)$/i.test(element.type || "text");
       }
 
       function textNodeOffset(root, targetNode, targetOffset) {

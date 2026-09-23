@@ -987,6 +987,17 @@
 "settings.models.deleteDialog.message" = "模型文件将被删除，下次使用时需要重新下载。";
 "settings.advanced.autoVocabulary.title" = "自动添加修正生词";
 "settings.advanced.autoVocabulary.subtitle" = "语音输入插入后，继续监听当前输入框 30 秒。如果你手动修正了某个词，应用会调用模型判断是否应自动加入生词本。";
+"settings.advanced.recentInputMemory.title" = "近期输入记忆";
+"settings.advanced.recentInputMemory.subtitle" = "开启后适用于所有应用。保存最近 4 小时内的简短最终输入，用于优化后续表达；使用时会发送给当前模型服务。";
+"settings.advanced.recentInputMemory.clearApp" = "清除";
+"settings.advanced.recentInputMemory.clearAll" = "清除全部记忆";
+"settings.advanced.recentInputMemory.manage" = "管理记忆";
+"settings.advanced.recentInputMemory.allApps" = "全部应用";
+"settings.advanced.recentInputMemory.close" = "关闭";
+"settings.advanced.recentInputMemory.empty" = "暂无记忆";
+"settings.advanced.recentInputMemory.emptyApp" = "此应用暂无记忆";
+"settings.advanced.recentInputMemory.appEnabled" = "启用记忆";
+"settings.advanced.recentInputMemory.deleteItem" = "删除这条记忆";
 "workflow.vocabulary.autoAdded.single" = "已自动将 %@ 添加到生词本。";
 "workflow.vocabulary.autoAdded.multiple" = "已自动将 %d 个词添加到生词本。";
 

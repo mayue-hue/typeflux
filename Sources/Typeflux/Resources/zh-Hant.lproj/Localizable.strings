@@ -983,6 +983,17 @@
 "settings.models.deleteDialog.message" = "模型檔案將被刪除，下次使用時需要重新下載。";
 "settings.advanced.autoVocabulary.title" = "自動加入修正生詞";
 "settings.advanced.autoVocabulary.subtitle" = "語音輸入插入後，繼續監聽目前輸入框 30 秒。如果你手動修正了某個詞，應用會呼叫模型判斷是否應自動加入生詞本。";
+"settings.advanced.recentInputMemory.title" = "近期輸入記憶";
+"settings.advanced.recentInputMemory.subtitle" = "開啟後適用於所有應用。保存最近 4 小時的簡短最終輸入，用於改善後續表達；使用時會傳送給目前的模型服務。";
+"settings.advanced.recentInputMemory.clearApp" = "清除";
+"settings.advanced.recentInputMemory.clearAll" = "清除全部記憶";
+"settings.advanced.recentInputMemory.manage" = "管理記憶";
+"settings.advanced.recentInputMemory.allApps" = "全部應用";
+"settings.advanced.recentInputMemory.close" = "關閉";
+"settings.advanced.recentInputMemory.empty" = "目前沒有記憶";
+"settings.advanced.recentInputMemory.emptyApp" = "此應用目前沒有記憶";
+"settings.advanced.recentInputMemory.appEnabled" = "啟用記憶";
+"settings.advanced.recentInputMemory.deleteItem" = "刪除這條記憶";
 "workflow.vocabulary.autoAdded.single" = "已自動將 %@ 加入生詞本。";
 "workflow.vocabulary.autoAdded.multiple" = "已自動將 %d 個詞加入生詞本。";
 

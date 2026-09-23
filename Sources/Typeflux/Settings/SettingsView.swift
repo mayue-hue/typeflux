@@ -407,6 +407,7 @@ struct StudioView: View {
     @State private var personaPendingDeletion: PersonaProfile?
     @State private var personaAppBindingPendingDeletion: PersonaAppBinding?
     @State private var isPersonaAppBindingsSheetPresented = false
+    @State private var isRecentInputMemoryManagerPresented = false
     @State private var isPersonaAppPickerPresented = false
     @State private var personaAppPickerScope: PersonaAppPickerScope = .running
     @State private var personaAppPickerSearchQuery = ""
@@ -596,6 +597,9 @@ struct StudioView: View {
         }
         .sheet(isPresented: $isPersonaAppBindingsSheetPresented) {
             personaAppBindingsSheet
+        }
+        .sheet(isPresented: $isRecentInputMemoryManagerPresented) {
+            RecentInputMemoryManagementView(viewModel: viewModel)
         }
         .confirmationDialog(
             L("agent.mcp.deleteDialog.title"),
@@ -2506,6 +2510,28 @@ struct StudioView: View {
                         )
                         .labelsHidden()
                         .toggleStyle(.switch)
+                    }
+
+                    Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))
+
+                    StudioSettingRow(
+                        title: L("settings.advanced.recentInputMemory.title"),
+                        subtitle: L("settings.advanced.recentInputMemory.subtitle")
+                    ) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { viewModel.recentInputMemoryEnabled },
+                                set: viewModel.setRecentInputMemoryEnabled
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+                    .onAppear { viewModel.refreshRecentInputMemoryApplications() }
+
+                    Button(L("settings.advanced.recentInputMemory.manage")) {
+                        isRecentInputMemoryManagerPresented = true
                     }
 
                     Divider().overlay(StudioTheme.border.opacity(StudioTheme.Opacity.divider))

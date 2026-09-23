@@ -18,7 +18,7 @@ extension AuthState {
     private func refreshProfile(allowTokenRefresh: Bool) async -> SessionRefreshResult {
         guard let token = accessToken else {
             logger.error("Profile refresh found no valid access token; clearing session")
-            logout()
+            logout(clearRecentInputMemory: false)
             return .unauthenticated
         }
 
@@ -45,7 +45,7 @@ extension AuthState {
                         break
                     }
                 }
-                logout()
+                logout(clearRecentInputMemory: false)
                 logger.error("Profile refresh invalidated session: \(error.localizedDescription)")
                 return .unauthenticated
             }

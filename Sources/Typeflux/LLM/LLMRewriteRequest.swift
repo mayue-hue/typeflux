@@ -36,6 +36,7 @@ struct LLMRewriteRequest {
     let personaID: UUID?
     let appSystemContext: AppSystemContext?
     let inputContext: InputContextSnapshot?
+    let recentInputMemory: [String]
     let vocabularyTerms: [String]
     let diagnosticsRecorder: LLMRequestDiagnosticsRecorder?
 
@@ -47,6 +48,7 @@ struct LLMRewriteRequest {
         personaID: UUID? = nil,
         appSystemContext: AppSystemContext? = nil,
         inputContext: InputContextSnapshot? = nil,
+        recentInputMemory: [String] = [],
         vocabularyTerms: [String] = [],
         diagnosticsRecorder: LLMRequestDiagnosticsRecorder? = nil
     ) {
@@ -57,6 +59,7 @@ struct LLMRewriteRequest {
         self.personaID = personaID
         self.appSystemContext = appSystemContext
         self.inputContext = inputContext
+        self.recentInputMemory = recentInputMemory
         self.vocabularyTerms = vocabularyTerms
         self.diagnosticsRecorder = diagnosticsRecorder
     }
@@ -70,8 +73,24 @@ struct LLMRewriteRequest {
             personaID: personaID,
             appSystemContext: appSystemContext,
             inputContext: inputContext,
+            recentInputMemory: recentInputMemory,
             vocabularyTerms: vocabularyTerms,
             diagnosticsRecorder: recorder
+        )
+    }
+
+    func withRecentInputMemory(_ excerpts: [String]) -> LLMRewriteRequest {
+        LLMRewriteRequest(
+            mode: mode,
+            sourceText: sourceText,
+            spokenInstruction: spokenInstruction,
+            personaPrompt: personaPrompt,
+            personaID: personaID,
+            appSystemContext: appSystemContext,
+            inputContext: inputContext,
+            recentInputMemory: excerpts,
+            vocabularyTerms: vocabularyTerms,
+            diagnosticsRecorder: diagnosticsRecorder
         )
     }
 }

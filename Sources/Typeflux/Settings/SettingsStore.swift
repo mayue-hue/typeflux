@@ -904,6 +904,20 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: "vocabulary.automaticCollection.enabled") }
     }
 
+    var recentInputMemoryEnabled: Bool {
+        get { defaults.bool(forKey: "memory.recentInput.enabled") }
+        set { defaults.set(newValue, forKey: "memory.recentInput.enabled") }
+    }
+
+    var recentInputMemoryExcludedApps: [String] {
+        get { defaults.stringArray(forKey: "memory.recentInput.excludedApps") ?? [] }
+        set { defaults.set(newValue, forKey: "memory.recentInput.excludedApps") }
+    }
+
+    func recentInputMemoryAllowed(for bundleIdentifier: String) -> Bool {
+        recentInputMemoryEnabled && !recentInputMemoryExcludedApps.contains(bundleIdentifier)
+    }
+
     var inputContextOptimizationEnabled: Bool {
         get {
             // Keep input-context optimization enabled while its beta setting is hidden.

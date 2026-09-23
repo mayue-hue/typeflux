@@ -26,7 +26,7 @@ extension AuthState {
                 case .refreshed:
                     await refreshProfile()
                 case .invalidated:
-                    logout()
+                    logout(clearRecentInputMemory: false)
                 case .failed, .unavailable:
                     logger.error("Session restore could not refresh access token")
                 }

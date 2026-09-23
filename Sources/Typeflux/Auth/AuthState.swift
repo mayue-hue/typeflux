@@ -190,7 +190,8 @@ final class AuthState: ObservableObject {
 
     // MARK: - Logout
 
-    func logout() {
+    func logout(clearRecentInputMemory: Bool = true) {
+        if clearRecentInputMemory { RecentInputMemoryStore.shared.clear() }
         if let refreshToken = cachedRefreshToken {
             Task {
                 try? await AuthAPIService.logout(refreshToken: refreshToken)
@@ -225,7 +226,7 @@ final class AuthState: ObservableObject {
         guard isLoggedIn else { return }
         let result = await refreshStoredAccessToken(force: false)
         if result == .invalidated {
-            logout()
+            logout(clearRecentInputMemory: false)
         }
     }
 }

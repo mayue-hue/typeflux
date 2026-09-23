@@ -61,7 +61,19 @@ extension WorkflowController {
 
         func performRewrite() async throws -> RewriteGenerationResult {
             let diagnosticsRecorder = request.diagnosticsRecorder ?? LLMRequestDiagnosticsRecorder()
-            let instrumentedRequest = request.withDiagnosticsRecorder(diagnosticsRecorder)
+            let requestAppIdentifier = request.appSystemContext?.bundleIdentifier
+                ?? request.inputContext?.bundleIdentifier
+            let memoryScope = recentInputMemoryScope?.appIdentifier == requestAppIdentifier
+                ? recentInputMemoryScope
+                : RecentInputMemoryScope.resolve(bundleIdentifier: requestAppIdentifier)
+            let rememberedText: [String] = if let memoryScope,
+                                              settingsStore.recentInputMemoryAllowed(for: memoryScope.appIdentifier) {
+                RecentInputMemoryStore.shared.recent(scope: memoryScope.key)
+            } else {
+                []
+            }
+            let instrumentedRequest = request.withRecentInputMemory(rememberedText)
+                .withDiagnosticsRecorder(diagnosticsRecorder)
             return try await RequestRetry.perform(
                 operationName: "LLM rewrite stream",
                 onRetry: { [weak self] _, _, _ in
@@ -370,10 +382,12 @@ extension WorkflowController {
             case let .delivered(method):
                 _ = VocabularyStore.incrementOccurrences(in: text)
                 scheduleAutomaticVocabularyObservation(for: text)
+                scheduleRecentInputMemoryObservation(for: text, deliveryConfirmed: true)
                 return (method == .ax ? .inserted : .pasted, text)
             case .unconfirmed:
                 // Missing AX confirmation is common even after a successful paste.
                 // Keep the result recoverable without interrupting the user's editor.
+                scheduleRecentInputMemoryObservation(for: text, deliveryConfirmed: false)
                 return (.unconfirmed, text)
             case .notApplied:
                 presentResultDialog(title: fallbackTitle, text: text)
@@ -958,14 +972,19 @@ extension WorkflowController {
 
             let isAskSelectionFlow = recordingIntent == .askSelection
                 && !(askContextText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let hasRecentMemory = recentInputMemoryScope.map { scope in
+                settingsStore.recentInputMemoryAllowed(for: scope.appIdentifier)
+                    && !RecentInputMemoryStore.shared.recent(scope: scope.key, limit: 1).isEmpty
+            } ?? false
             let multimodalHandlesPersona = settingsStore.sttProvider.handlesPersonaInternally
                 && (selectedText == nil || selectedText!.isEmpty)
+                && !hasRecentMemory
             let hasRewritePersona = Self.hasRewritePersona(personaPrompt)
             let hasInputContext = inputContext?.hasContent == true
             let shouldRewriteTranscript = Self.shouldRewriteTranscript(
                 personaPrompt: personaPrompt,
                 inputContext: inputContext
-            )
+            ) || hasRecentMemory
             let expectedASROptimize = !shouldRewriteTranscript
             let usableRealtimeTranscriptionSession = realtimeTranscriptionSession
             if let actualASROptimize = (realtimeTranscriptionSession as?
@@ -1001,6 +1020,7 @@ extension WorkflowController {
                 && !multimodalHandlesPersona
                 && inputContext == nil
                 && hasRewritePersona
+                && !hasRecentMemory
 
             var rawTranscribedText: String
             var mergedLLMResult: String?

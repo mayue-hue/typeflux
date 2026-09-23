@@ -173,6 +173,8 @@ final class WorkflowController {
     var processingWatchdogTask: Task<Void, Never>?
     var selectionTask: Task<TextSelectionSnapshot, Never>?
     var inputContextTask: Task<InputContextSnapshot?, Never>?
+    var recentInputMemoryScope: RecentInputMemoryScope?
+    var recentInputMemoryObservationTask: Task<Void, Never>?
     var processingTask: Task<Void, Never>?
     var activeRealtimeTranscriptionSession: (any RealtimeTranscriptionSession)?
     var activeRealtimeAudioBufferPump: RealtimeAudioBufferPump?
@@ -1174,6 +1176,9 @@ final class WorkflowController {
                 appName: frontmostApplicationContext.appName,
                 bundleIdentifier: frontmostApplicationContext.bundleIdentifier
             )
+            recentInputMemoryScope = settingsStore.recentInputMemoryEnabled
+                ? RecentInputMemoryScope.resolve(bundleIdentifier: frontmostApplicationContext.bundleIdentifier)
+                : nil
             let canUseRealtimeTranscription = effectiveIntent != .askSelection
             let usesLivePreview = canUseRealtimeTranscription && shouldUseLiveTranscriptionPreview()
             let optimizeASR = shouldOptimizeTypefluxASR(
