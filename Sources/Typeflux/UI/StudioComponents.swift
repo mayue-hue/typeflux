@@ -763,19 +763,22 @@ struct StudioSidebar: View {
                     showsBorder: false
                 )
 
-                HStack(alignment: .center, spacing: 6) {
-                    Text(L("sidebar.appName"))
-                        .font(.studioDisplay(StudioTheme.Typography.sectionTitle, weight: .bold))
-                        .foregroundStyle(StudioTheme.textPrimary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .center, spacing: 6) {
+                        Text(L("sidebar.appName"))
+                            .font(.studioDisplay(StudioTheme.Typography.sectionTitle, weight: .bold))
+                            .foregroundStyle(StudioTheme.textPrimary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
 
-                    Text(appVersionBadge)
-                        .font(.studioBody(8, weight: .semibold))
-                        .foregroundStyle(StudioTheme.textSecondary.opacity(0.55))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                        Text(appVersionBadge)
+                            .font(.studioBody(8, weight: .semibold))
+                            .foregroundStyle(StudioTheme.textSecondary.opacity(0.55))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
 
+                    // Kept on its own line so the header never exceeds the fixed sidebar width.
                     Text(L("app.personalBuild"))
                         .font(.studioBody(9, weight: .bold))
                         .foregroundStyle(.white)
@@ -783,7 +786,6 @@ struct StudioSidebar: View {
                         .padding(.vertical, 1)
                         .background(Capsule().fill(Color.orange))
                         .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
                 }
 
                 Spacer()
