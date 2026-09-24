@@ -164,10 +164,8 @@ final class OpenAICompatibleResponseSupportTests: XCTestCase {
             baseURL: XCTUnwrap(URL(string: "https://api.openai.com/v1")),
             model: "gpt-5.4"
         )
-        XCTAssertEqual(
-            (modernBody["reasoning"] as? [String: String])?["effort"],
-            "none"
-        )
+        XCTAssertEqual(modernBody["reasoning_effort"] as? String, "none")
+        XCTAssertNil(modernBody["reasoning"])
 
         var legacyBody: [String: Any] = ["model": "gpt-5"]
         try OpenAICompatibleResponseSupport.applyProviderTuning(
@@ -175,10 +173,8 @@ final class OpenAICompatibleResponseSupportTests: XCTestCase {
             baseURL: XCTUnwrap(URL(string: "https://api.openai.com/v1")),
             model: "gpt-5"
         )
-        XCTAssertEqual(
-            (legacyBody["reasoning"] as? [String: String])?["effort"],
-            "minimal"
-        )
+        XCTAssertEqual(legacyBody["reasoning_effort"] as? String, "minimal")
+        XCTAssertNil(legacyBody["reasoning"])
     }
 
     func testProviderTuningDisablesDeepSeekThinkingAndReasoning() throws {

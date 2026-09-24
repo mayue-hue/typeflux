@@ -111,7 +111,12 @@ enum OpenAICompatibleResponseSupport {
             ]
             body["include_reasoning"] = false
         } else if let effort = reasoningEffort(baseURL: baseURL, model: model) {
-            body["reasoning"] = ["effort": effort]
+            if isOpenAIHost(baseURL) {
+                // OpenAI Chat Completions rejects the Responses-API style nested `reasoning` object.
+                body["reasoning_effort"] = effort
+            } else {
+                body["reasoning"] = ["effort": effort]
+            }
         }
     }
 
@@ -301,6 +306,11 @@ enum OpenAICompatibleResponseSupport {
         return host.contains("openrouter.ai")
     }
 
+    private static func isOpenAIHost(_ baseURL: URL) -> Bool {
+        let host = baseURL.host?.lowercased() ?? ""
+        return host == "api.openai.com" || host.hasSuffix(".openai.com")
+    }
+
     private static func reasoningEffort(baseURL: URL, model: String) -> String? {
         let host = baseURL.host?.lowercased() ?? ""
         let normalizedModel = model.lowercased()
@@ -308,7 +318,7 @@ enum OpenAICompatibleResponseSupport {
             return "none"
         }
 
-        if host == "api.openai.com" || host.hasSuffix(".openai.com"),
+        if isOpenAIHost(baseURL),
            normalizedModel.hasPrefix("gpt-5"),
            !normalizedModel.contains("pro") {
             if normalizedModel.hasPrefix("gpt-5.1")
