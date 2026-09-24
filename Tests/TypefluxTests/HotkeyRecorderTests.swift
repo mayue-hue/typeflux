@@ -119,4 +119,20 @@ final class HotkeyRecorderTests: XCTestCase {
 
         XCTAssertNil(binding)
     }
+
+    func testRecordsRightShiftAndRightControlModifierOnlyTriggers() {
+        let cases: [(keyCode: Int, flag: NSEvent.ModifierFlags)] = [(60, .shift), (62, .control)]
+        for (keyCode, flag) in cases {
+            let binding = HotkeyRecorder.recordedBinding(
+                eventType: .flagsChanged,
+                keyCode: keyCode,
+                modifierFlags: UInt(flag.rawValue),
+                isRepeat: false
+            )
+
+            XCTAssertEqual(binding?.keyCode, keyCode)
+            XCTAssertEqual(binding?.modifierFlags, UInt(flag.rawValue))
+            XCTAssertEqual(binding?.isModifierOnlyTrigger, true)
+        }
+    }
 }

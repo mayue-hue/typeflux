@@ -247,18 +247,8 @@ final class HotkeyRecorder: ObservableObject {
     }
 
     private static func modifierOnlyBinding(keyCode: Int, modifierFlags: UInt) -> HotkeyBinding? {
-        let expectedModifierFlags: UInt? = switch keyCode {
-        case HotkeyBinding.rightCommandKeyCode:
-            UInt(NSEvent.ModifierFlags.command.rawValue)
-        case HotkeyBinding.rightOptionKeyCode:
-            UInt(NSEvent.ModifierFlags.option.rawValue)
-        case HotkeyBinding.functionKeyCode:
-            UInt(NSEvent.ModifierFlags.function.rawValue)
-        default:
-            nil
-        }
-
-        guard let expectedModifierFlags else { return nil }
+        guard HotkeyBinding.modifierOnlyTriggerKeyCodes.contains(keyCode) else { return nil }
+        let expectedModifierFlags = HotkeyBinding.modifierFlag(for: keyCode)
         guard modifierFlags & expectedModifierFlags == expectedModifierFlags else { return nil }
         return HotkeyBinding(keyCode: keyCode, modifierFlags: expectedModifierFlags)
     }

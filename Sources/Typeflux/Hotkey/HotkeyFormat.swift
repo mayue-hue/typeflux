@@ -18,14 +18,8 @@ enum HotkeyFormat {
         if binding.isModifierDoubleTapTrigger {
             return [singleKeyDisplay(binding)]
         }
-        if binding.isRightCommandTrigger {
-            return ["⌘(R)"]
-        }
-        if binding.isRightOptionTrigger {
-            return ["⌥(R)"]
-        }
-        if binding.isFunctionTrigger {
-            return ["Fn"]
+        if binding.isModifierOnlyTrigger {
+            return [singleKeyDisplay(binding)]
         }
 
         let flags = NSEvent.ModifierFlags(rawValue: binding.modifierFlags)

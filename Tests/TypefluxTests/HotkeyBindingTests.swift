@@ -113,6 +113,24 @@ final class HotkeyBindingTests: XCTestCase {
         XCTAssertTrue(binding.isModifierOnlyTrigger)
     }
 
+    func testModifierOnlyForRightShiftAndRightControl() {
+        let rightShift = HotkeyBinding(keyCode: 60, modifierFlags: UInt(NSEvent.ModifierFlags.shift.rawValue))
+        let rightControl = HotkeyBinding(keyCode: 62, modifierFlags: UInt(NSEvent.ModifierFlags.control.rawValue))
+        XCTAssertTrue(rightShift.isModifierOnlyTrigger)
+        XCTAssertTrue(rightControl.isModifierOnlyTrigger)
+        XCTAssertEqual(HotkeyFormat.display(rightShift), "⇧(R)")
+        XCTAssertEqual(HotkeyFormat.display(rightControl), "⌃(R)")
+
+        let doubleTap = HotkeyBinding(keyCode: 60, modifierFlags: rightShift.modifierFlags, pressCount: 2)
+        XCTAssertTrue(doubleTap.isModifierDoubleTapTrigger)
+        XCTAssertFalse(doubleTap.isModifierOnlyTrigger)
+    }
+
+    func testNotModifierOnlyForLeftShift() {
+        let leftShift = HotkeyBinding(keyCode: 56, modifierFlags: UInt(NSEvent.ModifierFlags.shift.rawValue))
+        XCTAssertFalse(leftShift.isModifierOnlyTrigger)
+    }
+
     func testNotModifierOnlyForRegularKey() {
         let binding = HotkeyBinding(keyCode: 0, modifierFlags: 1_048_576)
         XCTAssertFalse(binding.isModifierOnlyTrigger)

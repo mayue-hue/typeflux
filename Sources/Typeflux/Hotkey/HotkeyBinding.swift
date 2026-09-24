@@ -6,6 +6,9 @@ struct HotkeyBinding: Codable, Equatable, Identifiable {
     static let rightOptionKeyCode = 61
     static let functionKeyCode = 63
     static let oKeyCode = 31
+    /// Keys that can trigger on their own: right-side ⌘ ⇧ ⌥ ⌃ and Fn. Left-side modifiers are
+    /// excluded because they are pressed constantly while typing.
+    static let modifierOnlyTriggerKeyCodes: Set<Int> = [54, 60, 61, 62, 63]
 
     var id: UUID
     var keyCode: Int
@@ -45,21 +48,17 @@ struct HotkeyBinding: Codable, Equatable, Identifiable {
     }
 
     var isModifierOnlyTrigger: Bool {
-        isRightCommandTrigger || isRightOptionTrigger || isFunctionTrigger
+        isStandaloneModifier && (pressCount ?? 1) == 1
+    }
+
+    private var isStandaloneModifier: Bool {
+        Self.modifierOnlyTriggerKeyCodes.contains(keyCode)
+            && modifierKeyCodes == nil
+            && modifierFlags == Self.modifierFlag(for: keyCode)
     }
 
     var isModifierDoubleTapTrigger: Bool {
-        guard pressCount == 2 else { return false }
-        return (
-            keyCode == Self.rightCommandKeyCode
-                && modifierFlags == UInt(NSEvent.ModifierFlags.command.rawValue)
-        ) || (
-            keyCode == Self.rightOptionKeyCode
-                && modifierFlags == UInt(NSEvent.ModifierFlags.option.rawValue)
-        ) || (
-            keyCode == Self.functionKeyCode
-                && modifierFlags == UInt(NSEvent.ModifierFlags.function.rawValue)
-        )
+        isStandaloneModifier && pressCount == 2
     }
 
     func matches(keyCode: Int, modifierFlags: UInt) -> Bool {
