@@ -177,6 +177,17 @@ final class OpenAICompatibleResponseSupportTests: XCTestCase {
         XCTAssertNil(legacyBody["reasoning"])
     }
 
+    func testProviderTuningSendsNoneReasoningEffortForOpenAIGPT6() throws {
+        var body: [String: Any] = ["model": "gpt-6-luna"]
+        try OpenAICompatibleResponseSupport.applyProviderTuning(
+            body: &body,
+            baseURL: XCTUnwrap(URL(string: "https://api.openai.com/v1")),
+            model: "gpt-6-luna"
+        )
+        XCTAssertEqual(body["reasoning_effort"] as? String, "none")
+        XCTAssertNil(body["reasoning"])
+    }
+
     func testProviderTuningDisablesDeepSeekThinkingAndReasoning() throws {
         var body: [String: Any] = ["model": "deepseek-reasoner"]
         try OpenAICompatibleResponseSupport.applyProviderTuning(

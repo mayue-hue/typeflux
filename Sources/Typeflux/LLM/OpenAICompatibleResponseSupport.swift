@@ -263,6 +263,7 @@ enum OpenAICompatibleResponseSupport {
             "doubao",
             "deepseek",
             "gpt-5",
+            "gpt-6",
             "qwen",
             "grok",
             "glm",
@@ -315,6 +316,11 @@ enum OpenAICompatibleResponseSupport {
         let host = baseURL.host?.lowercased() ?? ""
         let normalizedModel = model.lowercased()
         if host.contains("deepseek.com") || normalizedModel.contains("deepseek") {
+            return "none"
+        }
+
+        // OpenAI requires an explicit "none" when function tools are sent to gpt-6 over Chat Completions.
+        if isOpenAIHost(baseURL), normalizedModel.hasPrefix("gpt-6") {
             return "none"
         }
 
