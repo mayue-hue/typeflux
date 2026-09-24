@@ -775,6 +775,15 @@ struct StudioSidebar: View {
                         .foregroundStyle(StudioTheme.textSecondary.opacity(0.55))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
+
+                    Text(L("app.personalBuild"))
+                        .font(.studioBody(9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.orange))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
 
                 Spacer()

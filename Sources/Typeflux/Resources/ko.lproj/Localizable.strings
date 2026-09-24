@@ -1377,3 +1377,6 @@
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "보조 단축키는 선택한 키 + 왼쪽 Shift로 변경됩니다. 사용자 지정 보조 단축키는 유지됩니다.";
 "onboarding.shortcuts.auxiliary.active" = "보조 단축키: %@";
 "settings.personaAuxiliary.subtitle" = "보조 단축키에 사용할 페르소나를 선택하세요.";
+
+// Personal fork marker, so this build is not confused with the official release.
+"app.personalBuild" = "개인 빌드";

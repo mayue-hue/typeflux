@@ -1392,3 +1392,6 @@
 "onboarding.shortcuts.auxiliary.externalKeyboard" = "辅助快捷键会同步使用所选按键 + 左 Shift，已有的自定义辅助绑定会保留。";
 "onboarding.shortcuts.auxiliary.active" = "辅助快捷键：%@";
 "settings.personaAuxiliary.subtitle" = "选择辅助快捷键使用的写作身份。";
+
+// Personal fork marker, so this build is not confused with the official release.
+"app.personalBuild" = "个人改版";

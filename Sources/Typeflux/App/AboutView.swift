@@ -199,10 +199,11 @@ struct AboutView: View {
     private var versionDescription: String {
         let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
         let buildVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        let personalBuild = L("app.personalBuild")
         if let buildVersion, buildVersion != shortVersion {
-            return "\(shortVersion) (\(buildVersion))"
+            return "\(shortVersion) (\(buildVersion)) · \(personalBuild)"
         }
-        return shortVersion
+        return "\(shortVersion) · \(personalBuild)"
     }
 
     private var preferredColorScheme: ColorScheme? {

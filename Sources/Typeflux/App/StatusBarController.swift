@@ -226,6 +226,10 @@ final class StatusBarController: NSObject {
         menu.showsStateColumn = false
         menu.delegate = self
 
+        let personalBuildItem = NSMenuItem(title: L("app.personalBuild"), action: nil, keyEquivalent: "")
+        personalBuildItem.isEnabled = false
+        menu.addItem(personalBuildItem)
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(makeItem(title: L("menu.openVoiceStudio"), action: #selector(openHome)))
         menu.addItem(makeItem(title: L("menu.addVocabulary"), action: #selector(addVocabularyTerm)))
         let historyItem = NSMenuItem(title: L("menu.transcriptionHistory"), action: nil, keyEquivalent: "")
