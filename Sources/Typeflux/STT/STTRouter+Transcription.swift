@@ -17,7 +17,8 @@ extension STTRouter {
         diagnosticsRecorder: ASRRaceDiagnosticsRecorder? = nil,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
-        if settingsStore.sttProvider != .localModel {
+        // Only Typeflux Cloud itself requires a paid plan; bring-your-own-key providers are not gated.
+        if settingsStore.sttProvider == .typefluxOfficial {
             let hasPaidSubscription = await hasPaidTypefluxCloudSubscription()
             if !hasPaidSubscription {
                 return try await transcribeWithTypefluxCloudLocalOnly(

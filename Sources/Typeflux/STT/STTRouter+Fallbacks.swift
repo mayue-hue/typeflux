@@ -224,9 +224,6 @@ extension STTRouter {
         guard settingsStore.useAppleSpeechFallback else {
             return nil
         }
-        guard await hasPaidTypefluxCloudSubscription() else {
-            return nil
-        }
         NetworkDebugLogger.logMessage(message)
         return try await appleSpeech.transcribeStream(audioFile: audioFile, onUpdate: onUpdate)
     }

@@ -277,8 +277,8 @@ final class STTRouterTests: XCTestCase {
         XCTAssertEqual(fallback.transcribeCallCount, 1)
     }
 
-    func testFreePlanUsesDefaultLocalModelForEveryRemoteProvider() async throws {
-        let remoteProviders: [STTProvider] = [
+    func testFreePlanDoesNotForceLocalModelForBringYourOwnKeyProviders() async throws {
+        let bringYourOwnKeyProviders: [STTProvider] = [
             .freeModel,
             .whisperAPI,
             .appleSpeech,
@@ -287,11 +287,10 @@ final class STTRouterTests: XCTestCase {
             .doubaoRealtime,
             .googleCloud,
             .groq,
-            .typefluxOfficial,
             .soniox,
         ]
 
-        for provider in remoteProviders {
+        for provider in bringYourOwnKeyProviders {
             settings.sttProvider = provider
             let fallback = MockTranscriber()
             fallback.resultToReturn = "local result"
@@ -300,22 +299,10 @@ final class STTRouterTests: XCTestCase {
                 hasPaidTypefluxCloudSubscription: { false }
             )
 
-            let result = try await router.transcribe(audioFile: dummyAudioFile())
+            _ = try? await router.transcribe(audioFile: dummyAudioFile())
 
-            XCTAssertEqual(result, "local result", "provider=\(provider.rawValue)")
-            XCTAssertEqual(fallback.transcribeCallCount, 1, "provider=\(provider.rawValue)")
+            XCTAssertEqual(fallback.transcribeCallCount, 0, "provider=\(provider.rawValue)")
         }
-
-        XCTAssertEqual(freeSTT.transcribeCallCount, 0)
-        XCTAssertEqual(whisper.transcribeCallCount, 0)
-        XCTAssertEqual(appleSpeech.transcribeCallCount, 0)
-        XCTAssertEqual(multimodal.transcribeCallCount, 0)
-        XCTAssertEqual(aliCloud.transcribeCallCount, 0)
-        XCTAssertEqual(doubaoRealtime.transcribeCallCount, 0)
-        XCTAssertEqual(googleCloud.transcribeCallCount, 0)
-        XCTAssertEqual(groq.transcribeCallCount, 0)
-        XCTAssertEqual(soniox.transcribeCallCount, 0)
-        XCTAssertEqual(typefluxOfficial.transcribeCallCount, 0)
     }
 
     func testFreePlanDoesNotUseAppleSpeechWhenLocalFallbackFails() async {
@@ -955,7 +942,7 @@ final class STTRouterTests: XCTestCase {
         XCTAssertEqual(cloud.prepareCallCount, 0)
     }
 
-    func testFreePlanDoesNotPrewarmOtherRemoteProviders() async {
+    func testFreePlanStillPrewarmsBringYourOwnKeyProviders() async {
         settings.sttProvider = .doubaoRealtime
         let cloud = MockRecordingPrewarmingTranscriber()
         let router = makeRouter(
@@ -965,7 +952,7 @@ final class STTRouterTests: XCTestCase {
 
         await router.prepareForRecording()
 
-        XCTAssertEqual(cloud.prepareCallCount, 0)
+        XCTAssertEqual(cloud.prepareCallCount, 1)
     }
 
     func testRoutesTypefluxOfficialWithProvidedBusinessScenario() async throws {

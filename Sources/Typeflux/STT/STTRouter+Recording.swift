@@ -1,6 +1,6 @@
 extension STTRouter {
     func prepareForRecording() async {
-        if settingsStore.sttProvider != .localModel {
+        if settingsStore.sttProvider == .typefluxOfficial {
             guard await hasPaidTypefluxCloudSubscription() else { return }
         }
 
@@ -34,7 +34,9 @@ extension STTRouter {
         optimize: Bool = true,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async -> (any RealtimeTranscriptionSession)? {
-        guard await hasPaidTypefluxCloudSubscription() else { return nil }
+        if settingsStore.sttProvider == .typefluxOfficial {
+            guard await hasPaidTypefluxCloudSubscription() else { return nil }
+        }
 
         switch settingsStore.sttProvider {
         case .aliCloud:
